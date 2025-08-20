@@ -1,0 +1,41 @@
+.giant-tree__icon-check-checked {
+  /* 类似一个到路径上做一个遮罩， 用法和background属性一样 */
+  mask: url('../image/fangxingxuanzhongfill.svg') no-repeat center center;
+  mask-size: contain;
+}
+
+.giant-tree__icon-check-unchecked {
+  /* 类似一个到路径上做一个遮罩， 用法和background属性一样 */
+  mask: url('../image/fangxingweixuanzhong.svg') no-repeat center center;
+  mask-size: contain;
+}
+.giant-tree__icon-check-half {
+  /* 类似一个到路径上做一个遮罩， 用法和background属性一样 */
+  mask: url('../image/half-checked .svg') no-repeat center center;
+  mask-size: contain;
+}
+
+.giant-tree__icon-radio-checked {
+  /* 类似一个到路径上做一个遮罩， 用法和background属性一样 */
+  mask: url('../image/radioCheck.svg') no-repeat center center;
+  mask-size: contain;
+}
+
+.giant-tree__icon-radio-unchecked {
+  /* 类似一个到路径上做一个遮罩， 用法和background属性一样 */
+  mask: url('../image/radioUncheck.svg') no-repeat center center;
+  mask-size: contain;
+}
+
+.giant-tree__icon-arrow-down {
+  /* 类似一个到路径上做一个遮罩， 用法和background属性一样 */
+  mask: url('../image/arrow-down-filling.svg') no-repeat center center;
+  mask-size: contain;
+}
+
+.giant-tree__icon-arrow-right {
+  /* 类似一个到路径上做一个遮罩， 用法和background属性一样 */
+  mask: url('../image/arrow-right-filling.svg') no-repeat center center;
+  mask-size: contain;
+}
+

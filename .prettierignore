@@ -1,0 +1,8 @@
+/release/
+/public/
+/docs/
+/.nuxt/
+/.output/
+/dist/
+/node_modules/
+/.vscode/

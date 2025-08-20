@@ -1,0 +1,64 @@
+@use 'icon';
+@use 'common/var' as *;
+
+.giant-tree {
+  &.tree-container {
+    //margin: 5px;
+    overflow: auto;
+    position: relative;
+
+    .infinite-list-phantom {
+      z-index: -1;
+      position: absolute;
+      left: 0;
+      top: 0;
+      right: 0;
+    }
+    .infinite-list {
+      display: grid;
+      position: absolute;
+      white-space: nowrap;
+      width: 100%;
+    }
+  }
+  &__mask-button {
+    height: 100%;
+    background-color: $giant-tree__text-color;
+    transition: $giant-tree__trans;
+    cursor: pointer;
+
+    &:hover {
+      background-color: $giant-tree__color-primary;
+    }
+    &.checked{
+      background-color: $giant-tree__color-primary;
+    }
+
+    //&:active {
+    //  background-color: $giant-tree__color-primary;
+    //}
+  }
+
+  .tree-item {
+    display: flex;
+    align-items: center;
+    padding: 0 5px;
+    gap: 3px;
+    cursor: pointer;
+
+    &:hover,
+    &.selected {
+      background: $giant-tree__color-primary-hover;
+    }
+    .item-icon {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .item-text {
+      flex: 1 1 0;
+      text-align: start;
+    }
+
+  }
+}

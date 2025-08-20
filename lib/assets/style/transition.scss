@@ -1,0 +1,14 @@
+// transition 过渡样式
+.lite-layer-zoom {
+  &-enter-active,
+  &-leave-active {
+    transition: all 0.3s ease-in-out;
+  }
+
+  &-enter-from,
+  &-leave-to {
+    transform: scale(0);
+    transform-origin: center center;
+    opacity: 0;
+  }
+}

@@ -1,0 +1,27 @@
+@use "sass:color";
+$giant-tree__color-primary: #409eff !default;
+$giant-tree__color-primary-invert: #ffac30 !default;
+$giant-tree__color-danger: #ef4f4f !default;
+$giant-tree__color-white: #fff !default;
+$giant-tree__color-black: #000 !default;
+$giant-tree__color-grey: #4d4d4d !default;
+$giant-tree__color-disabled: #aaa !default;
+$giant-tree__color-primary-activate: color.mix($giant-tree__color-primary, #000, 80%) !default;
+$giant-tree__color-primary-hover: color.mix($giant-tree__color-primary, #fff, 30%) !default;
+/*
+tab文本颜色
+ */
+$giant-tree__text-color: $giant-tree__color-grey;
+/*
+tab文本大小
+ */
+$giant-tree__font-size: 16px;
+
+$giant-tree__icon-margin: 10px;
+$giant-tree__icon-size: $giant-tree__font-size;
+
+$giant-tree__trans: all 0.3s ease-in-out;
+
+$shadow-top-inset: inset 0 12px 10px -12px rgb(0 0 0 / 60%); /* 上内阴影 */
+$shadow-bottom-inset: inset 0 -12px 10px -12px rgb(0 0 0 / 60%); /* 上内阴影 */
+$shadow-horizontal-inset: $shadow-top-inset, $shadow-bottom-inset;
