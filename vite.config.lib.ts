@@ -4,10 +4,12 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import vueJsx from '@vitejs/plugin-vue-jsx'
 import loadVersion from 'vite-plugin-package-version'
+import assemblyscriptPlugin from './vite-plugin-assemblyscript'
 
 // https://vitejs.dev/config/
-export default defineConfig(({ mode }) => ({
+export default defineConfig(() => ({
   plugins: [
+    assemblyscriptPlugin(),
     vue(),
     vueJsx(),
     loadVersion(),
@@ -16,24 +18,33 @@ export default defineConfig(({ mode }) => ({
   resolve: {
     alias: {
       '@lib': fileURLToPath(new URL('./lib', import.meta.url)),
+      '../build/release': fileURLToPath(
+        new URL('./build/release', import.meta.url)
+      ),
     },
   },
-  esbuild: {
-    drop: mode === 'production' ? ['console', 'debugger'] : [],
+  oxc: {
+    transform: {
+      target: 'es2022',
+    },
   },
   build: {
     lib: {
       entry: fileURLToPath(new URL('./lib/index.ts', import.meta.url)),
       name: 'vue-giant-tree',
-      fileName: format => `vue-giant-tree.${format}.js`,
+      formats: ['es'],
+      fileName: () => 'vue-giant-tree.es.js',
     },
-    rollupOptions: {
+    rolldownOptions: {
       external: ['vue'],
       output: {
         globals: {
           vue: 'Vue',
         },
+        minify: true,
       },
     },
+    minify: true,
+    cssMinify: true,
   },
 }))

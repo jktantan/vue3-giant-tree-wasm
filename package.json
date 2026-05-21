@@ -22,6 +22,7 @@
     "@eslint/css": "^0.10.0",
     "@eslint/js": "^9.39.4",
     "@types/node": "^24.12.4",
+    "@types/throttle-debounce": "^5.0.2",
     "@typescript-eslint/eslint-plugin": "^8.59.4",
     "@typescript-eslint/parser": "^8.59.4",
     "@vitejs/plugin-vue": "^6.0.7",
@@ -42,16 +43,22 @@
     "sass-loader": "^16.0.8",
     "typescript": "~5.8.3",
     "typescript-eslint": "^8.59.4",
-    "vite": "^7.3.3",
-    "vite-plugin-dts": "^4.5.4",
+    "vite": "^8.0.13",
+    "vite-plugin-dts": "^5.0.1",
     "vite-plugin-package-version": "^1.1.0",
     "vue-eslint-parser": "^10.4.0",
     "vue-tsc": "^3.3.1"
   },
+  "main": "./dist/vue-giant-tree.es.js",
+  "module": "./dist/vue-giant-tree.es.js",
+  "types": "./dist/lib/index.d.ts",
+  "files": [
+    "dist"
+  ],
   "exports": {
     ".": {
-      "import": "./build/release.js",
-      "types": "./build/release.d.ts"
+      "import": "./dist/vue-giant-tree.es.js",
+      "types": "./dist/lib/index.d.ts"
     }
   }
 }
