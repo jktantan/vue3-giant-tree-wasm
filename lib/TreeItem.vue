@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { SelectType, CheckType } from '../build/release'
+import type { TreeNodeData } from './types'
+
 const props = defineProps<{
-  item: any
+  item: TreeNodeData
   fontSize: string
   selectType: SelectType
 }>()
@@ -41,7 +43,7 @@ const itemClick = () => {
       />
       <div
         :style="{ width: fontSize, height: fontSize }"
-        v-if="item.rightNode - item.leftNode > 1 && !item.collapsed"
+        v-else-if="item.rightNode - item.leftNode > 1 && !item.collapsed"
         class="giant-tree__mask-button giant-tree__icon-arrow-down"
         @click="collapsedClick"
       />
@@ -53,24 +55,24 @@ const itemClick = () => {
         class="giant-tree__mask-button giant-tree__icon-check-unchecked"
       ></div>
       <div
-        v-if="item.checked === CheckType.HALF_CHECKED"
+        v-else-if="item.checked === CheckType.HALF_CHECKED"
         :style="{ width: fontSize, height: fontSize }"
         class="giant-tree__mask-button giant-tree__icon-check-half checked"
       ></div>
       <div
-        v-if="item.checked === CheckType.CHECKED"
+        v-else-if="item.checked === CheckType.CHECKED"
         :style="{ width: fontSize, height: fontSize }"
         class="giant-tree__mask-button giant-tree__icon-check-checked checked"
       ></div>
     </div>
-    <div v-if="selectType === SelectType.RADIO" @click="checkClick">
+    <div v-else-if="selectType === SelectType.RADIO" @click="checkClick">
       <div
         v-if="item.checked === CheckType.CHECKED"
         :style="{ width: fontSize, height: fontSize }"
         class="giant-tree__mask-button giant-tree__icon-radio-checked checked"
       ></div>
       <div
-        v-if="item.checked === CheckType.UNCHECKED"
+        v-else-if="item.checked === CheckType.UNCHECKED"
         :style="{ width: fontSize, height: fontSize }"
         class="giant-tree__mask-button giant-tree__icon-radio-unchecked"
       ></div>

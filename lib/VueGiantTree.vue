@@ -11,16 +11,16 @@ import {
   collapseTree,
   checkNode,
   getCheckedNodes,
-} from '../build/debug'
+  CheckType,
+} from '../build/release'
 
-import { ResizeObserver } from '@juggle/resize-observer'
+import { throttle } from 'throttle-debounce'
 import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { ResizeObserverEntry } from '@juggle/resize-observer/lib/ResizeObserverEntry'
 import TreeItem from '@lib/TreeItem.vue'
-import { CheckType } from '../build/release'
+import type { TreeNodeData, TreeInputItem } from './types'
 const props = withDefaults(
   defineProps<{
-    modelValue: any | any[]
+    modelValue: TreeNodeData | TreeNodeData[]
     width?: string
     height?: string
     lineHeight?: number
@@ -28,7 +28,7 @@ const props = withDefaults(
     selectType?: SelectType
     root?: string
     fontSize?: string
-    tree: any[]
+    tree: TreeInputItem[]
   }>(),
   {
     width: '100%',
@@ -43,32 +43,29 @@ const props = withDefaults(
 const emit = defineEmits(['update:modelValue'])
 const container = ref<HTMLDivElement>()
 const listHeight = ref<number>(0)
-const currentTreeList = ref<any[]>([])
+const currentTreeList = ref<TreeNodeData[]>([])
 let scrollTop = 0,
   scrollHeight = 0
 const startOffset = ref<number>(0)
 const ro = new ResizeObserver((entries: ResizeObserverEntry[]) => {
-  console.log('Body has resized!')
-  const { inlineSize: width, blockSize: height } = entries[0].contentBoxSize[0]
+  const { blockSize: height } = entries[0].contentBoxSize[0]
   scrollHeight = height
   setBoundary(tree, scrollTop, scrollHeight)
   listHeight.value = getShownHeight(tree)
-  getTree()
-  console.log(width, height)
+  refreshTree()
 })
-const getTree = () => {
+const refreshTree = () => {
   const nodesStr = getShownNodes(tree)
-  currentTreeList.value.splice(0)
-  currentTreeList.value.push(...JSON.parse(nodesStr))
-  console.log(currentTreeList.value)
+  currentTreeList.value = JSON.parse(nodesStr) as TreeNodeData[]
 }
-const scrollEvent = $event => {
-  scrollTop = $event.target.scrollTop
-  //此时的偏移量
+const handleScroll = (event: Event) => {
+  const target = event.target as HTMLElement
+  scrollTop = target.scrollTop
   startOffset.value = scrollTop - (scrollTop % props.lineHeight)
   setBoundary(tree, scrollTop, scrollHeight)
-  getTree()
+  refreshTree()
 }
+const scrollEvent = throttle(16, handleScroll)
 const transformOffset = computed(
   () => `translate3d(0,${startOffset.value}px,0)`
 )
@@ -76,9 +73,7 @@ const transformOffset = computed(
 const tree = newTree(props.root, props.lineHeight, props.selectType)
 
 onMounted(async () => {
-  console.log('root: ', props.root)
-
-  ro.observe(container.value)
+  ro.observe(container.value!)
   setBoundary(tree, scrollTop, scrollHeight)
   clear(tree)
   for (let i = 0; i < props.tree.length; i++) {
@@ -86,11 +81,6 @@ onMounted(async () => {
     pushNeighborNode(tree, id, name, parentId)
   }
   popNeighbor(tree)
-  // const nodesStr = getShownNodes(tree)
-  //
-  // currentTreeList.value.splice(0)
-  // currentTreeList.value.push(...JSON.parse(nodesStr))
-  // console.log(currentTreeList.value)
 })
 onUnmounted(() => {
   ro.disconnect()
@@ -100,21 +90,19 @@ const itemClick = (id: string) => {
     checkNode(tree, id, CheckType.CHECKED)
     const checkResult = getCheckedNodes(tree)
     emit('update:modelValue', JSON.parse(checkResult))
-    getTree()
+    refreshTree()
   }
 }
 const collapseClick = (id: string, isCollapse: boolean) => {
-  console.log('collapseClick: ', id, isCollapse)
   collapseTree(tree, id, isCollapse)
   listHeight.value = getShownHeight(tree)
-  getTree()
+  refreshTree()
 }
 const checkClick = (id: string, checkType: CheckType) => {
-  console.log('checkClick: ', id, checkType)
   checkNode(tree, id, checkType)
   const checkResult = getCheckedNodes(tree)
   emit('update:modelValue', JSON.parse(checkResult))
-  getTree()
+  refreshTree()
 }
 </script>
 

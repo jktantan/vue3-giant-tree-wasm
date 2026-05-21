@@ -4,7 +4,7 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import vueJsx from '@vitejs/plugin-vue-jsx'
 import loadVersion from 'vite-plugin-package-version'
-import { resolve } from 'path'
+
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
   plugins: [
@@ -20,16 +20,14 @@ export default defineConfig(({ mode }) => ({
   },
   esbuild: {
     drop: mode === 'production' ? ['console', 'debugger'] : [],
-    // drop: ['console','debugger']
   },
   build: {
     lib: {
-      entry: resolve(__dirname, 'lib/index.ts'),
+      entry: fileURLToPath(new URL('./lib/index.ts', import.meta.url)),
       name: 'vue-giant-tree',
       fileName: format => `vue-giant-tree.${format}.js`,
     },
     rollupOptions: {
-      // 确保外部化处理那些你不想打包进库的依赖
       external: ['vue'],
       output: {
         globals: {

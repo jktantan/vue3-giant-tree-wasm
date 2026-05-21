@@ -15,8 +15,6 @@
     "lib:build": "vite --config vite.config.lib.ts build"
   },
   "dependencies": {
-    "@juggle/resize-observer": "^3.4.0",
-    "nanoid": "^5.1.5",
     "throttle-debounce": "^5.0.2",
     "vue": "^3.5.18"
   },
@@ -38,6 +36,7 @@
     "eslint-plugin-vue": "^10.4.0",
     "globals": "^16.3.0",
     "jiti": "^2.5.1",
+    "nanoid": "^5.1.5",
     "prettier": "^3.6.2",
     "sass": "^1.90.0",
     "sass-loader": "^16.0.5",
