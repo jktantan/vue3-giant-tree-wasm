@@ -1,4 +1,3 @@
-// The entry file of your WebAssembly module.
 import { CheckType, MpttTree, NeighborTree } from './models'
 import { JSON, JSONEncoder } from 'assemblyscript-json/assembly/index'
 
@@ -23,46 +22,55 @@ class GiantTree {
   }
 
   tmpTree: NeighborTree[] = []
-  /**
-   * 完整的树
-   */
   fullTree: MpttTree[] = []
-  /**
-   * 搜索树
-   */
   searchTree: MpttTree[] = []
-  /**
-   *  展示树
-   */
   tree: MpttTree[] = this.fullTree
-  /**
-   * 每行高度
-   */
   lineHeight: f32 = 20
-  /**
-   * 根节点
-   */
   root: string = ''
-  /**
-   * 选择方式
-   */
   selectType: SelectType
-  /**
-   * 实时滚动条位置
-   */
   scrollTop: f32 = 0
-  /**
-   * 实时滚动条高度
-   */
   scrollHeight: f32 = 0
 
-  /**
-   * 传入邻接树的json字符串，解析成预排序树
-   * @param jsonTree
-   */
+  // #1 shownCount 计数器
+  shownCount: i32 = 0
+
+  // #2 shownNodes 有序数组（仅 shown===true 的节点）
+  _shownNodes: MpttTree[] = []
+
+  // #3 idToIndex 映射
+  idToIndex: Map<string, i32> = new Map()
+
+  // #7 JSON 序列化缓存
+  _cachedStartIdx: i32 = -1
+  _cachedEndIdx: i32 = -1
+  _cachedJson: string = ''
+  _cacheValid: boolean = false
+
+  _invalidateCache(): void {
+    this._cacheValid = false
+  }
+
+  // #3 构建 id→index 映射
+  _buildIdIndex(): void {
+    this.idToIndex.clear()
+    for (let i: i32 = 0; i < this.fullTree.length; i++) {
+      this.idToIndex.set(this.fullTree[i].id, i)
+    }
+  }
+
+  // #2 重建 shownNodes 数组
+  _rebuildShownNodes(): void {
+    this._shownNodes.splice(0)
+    for (let i: i32 = 0; i < this.tree.length; i++) {
+      if (this.tree[i].shown) {
+        this._shownNodes.push(this.tree[i])
+      }
+    }
+    this._invalidateCache()
+  }
+
   setNeighborTree(jsonTree: JSON.Arr): void {
     this.tmpTree.splice(0)
-    // let neighborTrees: NeighborTree[] = [];
     for (let i = 0; i < jsonTree.valueOf().length; i++) {
       const node: JSON.Obj = <JSON.Obj>jsonTree.valueOf()[i]
       const neighborTree: NeighborTree = new NeighborTree()
@@ -82,13 +90,8 @@ class GiantTree {
     }
     this._convertToMpttTree(this.tmpTree)
     this.tmpTree.splice(0)
-    // this._setPosition();
   }
 
-  /**
-   * 转换成预排序树
-   * @param neighborTrees
-   */
   _convertToMpttTree(neighborTrees: NeighborTree[]): void {
     const treeMap: Map<string, NeighborTree[]> = new Map()
     for (let i = 0; i < neighborTrees.length; i++) {
@@ -98,20 +101,16 @@ class GiantTree {
       }
       treeMap.get(neighborTree.parentId).push(neighborTree)
     }
+    this.shownCount = 0
     this._recursiveAssembly(treeMap, this.root, 0, 0)
     treeMap.clear()
     this.fullTree.sort((a: MpttTree, b: MpttTree): i32 => {
       return a.leftNode - b.leftNode
     })
+    this._buildIdIndex()
+    this._rebuildShownNodes()
   }
 
-  /**
-   * 递归转换成预排序树
-   * @param treeMap
-   * @param parentId
-   * @param lNode
-   * @param deep
-   */
   _recursiveAssembly(
     treeMap: Map<string, NeighborTree[]>,
     parentId: string,
@@ -138,9 +137,9 @@ class GiantTree {
         )
 
         mpttTree.rightNode = rightNode
-        // 如果是根节点，则显示
         if (mpttTree.parentId === this.root) {
           mpttTree.shown = true
+          this.shownCount++
         }
         lNode = rightNode + 1
         this.fullTree.push(mpttTree)
@@ -149,12 +148,9 @@ class GiantTree {
     return lNode
   }
 
-  /**
-   * 传入预排序树的json字符串，解析成预排序树
-   * @param tree
-   */
   setMpttTree(tree: string): void {
     const jsonTree: JSON.Arr = <JSON.Arr>JSON.parse(tree)
+    this.shownCount = 0
     for (let i = 0; i < jsonTree.valueOf().length; i++) {
       const node: JSON.Obj = <JSON.Obj>jsonTree.valueOf()[i]
       const mpttTree: MpttTree = new MpttTree()
@@ -185,47 +181,42 @@ class GiantTree {
       }
       if (mpttTree.parentId === this.root) {
         mpttTree.shown = true
+        this.shownCount++
       }
       this.fullTree.push(mpttTree)
     }
     this.fullTree.sort((a: MpttTree, b: MpttTree): i32 => {
       return a.leftNode - b.leftNode
     })
-    // this._setPosition();
+    this._buildIdIndex()
+    this._rebuildShownNodes()
   }
 
+  // #2 优化后的 getTmpShown：索引直跳 O(k)
   getTmpShown(): MpttTree[] {
-    const maxHeight: f32 = this.scrollTop + this.scrollHeight
-    let top: f32 = 0,
-      bottom: f32 = 0
+    const startIdx: i32 = <i32>Math.floor(this.scrollTop / this.lineHeight)
+    const endIdx: i32 =
+      <i32>Math.ceil((this.scrollTop + this.scrollHeight) / this.lineHeight) + 1
+    const clampedStart: i32 =
+      startIdx < 0
+        ? 0
+        : startIdx >= this._shownNodes.length
+          ? this._shownNodes.length
+          : startIdx
+    const clampedEnd: i32 =
+      endIdx < 0
+        ? 0
+        : endIdx > this._shownNodes.length
+          ? this._shownNodes.length
+          : endIdx
+
     const result: MpttTree[] = []
-    let index: i32 = 0
-    for (let i = 0; i < this.tree.length; i++) {
-      const node: MpttTree = this.tree[i]
-      if (node.shown) {
-        top = (index as f32) * this.lineHeight
-        bottom = top + this.lineHeight - 1
-        if (
-          (top >= this.scrollTop && bottom <= maxHeight) ||
-          (top <= this.scrollTop && bottom >= this.scrollTop) ||
-          (top <= maxHeight && bottom >= maxHeight)
-        ) {
-          result.push(node)
-        }
-        if (top > maxHeight) {
-          break
-        }
-        index += 1
-      }
+    for (let i: i32 = clampedStart; i < clampedEnd; i++) {
+      result.push(this._shownNodes[i])
     }
     return result
   }
 
-  /**
-   * 将结果数组转换成json字符串
-   * convert array to json string.
-   * @param tree
-   */
   convertArrayToJsonString(tree: MpttTree[]): string {
     const encoder = new JSONEncoder()
     encoder.pushArray(null)
@@ -247,11 +238,6 @@ class GiantTree {
     return encoder.toString()
   }
 
-  /**
-   * 将结果转换成json字符串
-   * Convert single result to json string.
-   * @param tree
-   */
   convertToJsonString(tree: MpttTree): string {
     const encoder = new JSONEncoder()
     encoder.pushObject(null)
@@ -268,71 +254,70 @@ class GiantTree {
     return encoder.toString()
   }
 
-  /**
-   * 展开 / 收缩指定ID的节点
-   * @param id
-   * @param collapsed
-   */
+  // #3 + #4 优化后的 collapseTree：O(1) id 查找 + 非递归展开
   collapseTree(id: string, collapsed: boolean): void {
-    for (let i = 0; i < this.fullTree.length; i++) {
-      const node: MpttTree = this.fullTree[i]
-      if (node.id === id) {
-        node.collapsed = collapsed
-        this._setCollapsedShown(
-          i + 1,
-          node.leftNode,
-          node.rightNode,
-          node.deep + 1,
-          !collapsed
-        )
-        break
-      }
-    }
+    if (!this.idToIndex.has(id)) return
+    const i: i32 = this.idToIndex.get(id)
+    const node: MpttTree = this.fullTree[i]
+    node.collapsed = collapsed
+    this._setCollapsedShown(i + 1, node.leftNode, node.rightNode, !collapsed)
+    this._rebuildShownNodes()
   }
+
+  // #4 优化后：非递归，单次遍历 + 栈跟踪折叠状态
   _setCollapsedShown(
     startIndex: i32,
-    leftNode: i32,
-    rightNode: i32,
-    deep: i32,
+    parentLeftNode: i32,
+    parentRightNode: i32,
     shown: boolean
   ): void {
-    for (let i = startIndex; i < this.fullTree.length; i++) {
+    const collapsedBoundaries: i32[] = []
+
+    for (let i: i32 = startIndex; i < this.fullTree.length; i++) {
       const node: MpttTree = this.fullTree[i]
-      if (node.leftNode >= leftNode && node.leftNode <= rightNode) {
-        if (node.deep === deep) {
-          node.shown = shown
-          if (node.rightNode - node.leftNode > 1 && !node.collapsed) {
-            this._setCollapsedShown(
-              i + 1,
-              node.leftNode,
-              node.rightNode,
-              deep + 1,
-              shown
-            )
+      if (node.leftNode >= parentRightNode) break
+
+      while (
+        collapsedBoundaries.length > 0 &&
+        node.leftNode >= collapsedBoundaries[collapsedBoundaries.length - 1]
+      ) {
+        collapsedBoundaries.pop()
+      }
+
+      if (collapsedBoundaries.length > 0) {
+        if (!shown) {
+          if (node.shown) {
+            node.shown = false
+            this.shownCount--
           }
+        }
+      } else {
+        const prevShown: boolean = node.shown
+        node.shown = shown
+        if (shown && !prevShown) this.shownCount++
+        if (!shown && prevShown) this.shownCount--
+
+        if (shown && node.collapsed && node.rightNode - node.leftNode > 1) {
+          collapsedBoundaries.push(node.rightNode)
         }
       }
     }
   }
 
-  /**
-   * 展开 / 收缩所有节点
-   * @param collapsed true 收缩 false 展开
-   */
   collapseAll(collapsed: boolean): void {
+    this.shownCount = 0
     for (let i = 0; i < this.fullTree.length; i++) {
       const node: MpttTree = this.fullTree[i]
       node.collapsed = collapsed
       if (node.deep > 0) {
         node.shown = !collapsed
       }
+      if (node.shown) this.shownCount++
     }
+    this._rebuildShownNodes()
   }
 
-  /**
-   * 下面两个是初始化后批量设置选择的结点
-   * @param ids
-   */
+  // #6 修复：this.tree[i] → this.fullTree[i]
   setCheckedNodes(ids: string[]): void {
     const idSet: Set<string> = new Set()
     const parentNodes: MpttTree[] = []
@@ -343,10 +328,9 @@ class GiantTree {
     }
 
     for (let i = 0; i < this.fullTree.length; i++) {
-      const node: MpttTree = this.tree[i]
+      const node: MpttTree = this.fullTree[i]
       if (idSet.has(node.id)) {
         node.checked = CheckType.CHECKED
-
         this._getParentNodes(node, i - 1, parentNodes, parentIdSet)
       } else {
         node.checked = CheckType.UNCHECKED
@@ -375,14 +359,9 @@ class GiantTree {
     }
   }
 
-  /**
-   * check了当前节点
-   * @param id
-   * @param checked
-   * @param scrollTop
-   * @param scrollHeight
-   */
+  // #3 优化：CHECKBOX 分支使用 idToIndex 直接跳转
   checkNode(id: string, checked: CheckType): string {
+    this._invalidateCache()
     const result: MpttTree[] = this.getTmpShown()
     if (this.selectType === SelectType.RADIO) {
       for (let i = 0; i < this.fullTree.length; i++) {
@@ -395,22 +374,20 @@ class GiantTree {
         node.selected = node.id !== id ? CheckType.UNCHECKED : checked
       }
     } else {
-      for (let i = 0; i < this.fullTree.length; i++) {
+      if (this.idToIndex.has(id)) {
+        const i: i32 = this.idToIndex.get(id)
         const node: MpttTree = this.fullTree[i]
-        if (node.id === id) {
-          node.checked = checked
-          this._setSubTreeChecked(node, checked, i + 1)
+        node.checked = checked
+        this._setSubTreeChecked(node, checked, i + 1)
 
-          for (let j = i - 1; j >= 0; j--) {
-            const prevNode: MpttTree = this.fullTree[j]
-            if (
-              prevNode.leftNode <= node.leftNode &&
-              prevNode.rightNode >= node.rightNode
-            ) {
-              prevNode.checked = this._getParentNodeCheckType(prevNode, j + 1)
-            }
+        for (let j = i - 1; j >= 0; j--) {
+          const prevNode: MpttTree = this.fullTree[j]
+          if (
+            prevNode.leftNode <= node.leftNode &&
+            prevNode.rightNode >= node.rightNode
+          ) {
+            prevNode.checked = this._getParentNodeCheckType(prevNode, j + 1)
           }
-          break
         }
       }
     }
@@ -470,12 +447,6 @@ class GiantTree {
     }
   }
 
-  /**
-   * 设置子树的选中状态
-   * @param node
-   * @param checked
-   * @param startIndex
-   */
   _setSubTreeChecked(
     node: MpttTree,
     checked: CheckType,
@@ -494,10 +465,6 @@ class GiantTree {
     }
   }
 
-  /**
-   * 获取选中的节点（结果）
-   * Get the selected node (result).
-   */
   getCheckedNodes(): string {
     if (this.selectType === SelectType.RADIO) {
       for (let i = 0; i < this.fullTree.length; i++) {
@@ -526,10 +493,6 @@ class GiantTree {
     return ''
   }
 
-  /**
-   *
-   * 清空所有选中的节点
-   */
   clearCheckedNodes(): void {
     for (let i = 0; i < this.fullTree.length; i++) {
       const node: MpttTree = this.fullTree[i]
@@ -537,30 +500,35 @@ class GiantTree {
     }
   }
 
-  /**
-   * 获取当前应显示的节点
-   * Get the nodes that should be displayed.
-   * @param scrollTop
-   * @param scrollHeight
-   */
+  // #7 JSON 序列化缓存
   getShownNodes(): string {
+    const startIdx: i32 = <i32>Math.floor(this.scrollTop / this.lineHeight)
+    const endIdx: i32 =
+      <i32>Math.ceil((this.scrollTop + this.scrollHeight) / this.lineHeight) + 1
+
+    if (
+      this._cacheValid &&
+      startIdx === this._cachedStartIdx &&
+      endIdx === this._cachedEndIdx
+    ) {
+      return this._cachedJson
+    }
+
     const result: MpttTree[] = this.getTmpShown()
-    return this.convertArrayToJsonString(result)
+    const json: string = this.convertArrayToJsonString(result)
+
+    this._cachedStartIdx = startIdx
+    this._cachedEndIdx = endIdx
+    this._cachedJson = json
+    this._cacheValid = true
+
+    return json
   }
 
-  /**
-   * 获取节点数量
-   * Get the size of the tree.
-   * @returns {number}
-   */
   getSize(): i32 {
     return this.fullTree.length
   }
 
-  /**
-   * 转换要显示的树
-   * @param type
-   */
   switchDisplayTree(type: DisplayType): void {
     if (type === DisplayType.TREE) {
       this.tree = this.fullTree
@@ -568,56 +536,71 @@ class GiantTree {
     } else if (type === DisplayType.SEARCH) {
       this.tree = this.searchTree
     }
+    this._recalcShownCount()
+    this._rebuildShownNodes()
   }
 
+  // #5 优化后的 fuzzySearch：修复 bug + O(n) 单次遍历父节点查找
   fuzzySearch(keyword: string): string {
     if (keyword === null || keyword === '') {
       this.tree = this.fullTree
+      this._recalcShownCount()
+      this._rebuildShownNodes()
       return this.convertArrayToJsonString(this.getTmpShown())
     } else {
       this.searchTree.splice(0)
       this.tree = this.searchTree
       const idSet: Set<string> = new Set()
-      const tmpTree: MpttTree[] = []
-      // 先搜索符合条件的
-      for (let i = 0; i < this.fullTree.length; i++) {
+
+      for (let i: i32 = 0; i < this.fullTree.length; i++) {
         const node: MpttTree = this.fullTree[i]
         if (node.name.indexOf(keyword) !== -1) {
           this.searchTree.push(node)
           idSet.add(node.id)
         }
       }
-      // 再把父节点搜索出来
-      for (let i = 0; i < this.fullTree.length; i++) {
+
+      const parentNodes: MpttTree[] = []
+      for (let i: i32 = 0; i < this.fullTree.length; i++) {
         const node: MpttTree = this.fullTree[i]
-        if (idSet.has(node.id)) {
-          continue
-        }
-        for (let j = 0; j < this.searchTree.length; j++) {
+        if (idSet.has(node.id)) continue
+
+        let isAncestor: boolean = false
+        for (let j: i32 = 0; j < this.searchTree.length; j++) {
           const searchNode: MpttTree = this.searchTree[j]
           if (
             node.leftNode <= searchNode.leftNode &&
             node.rightNode >= searchNode.rightNode
           ) {
-            idSet.add(node.id)
-            tmpTree.push(node)
+            isAncestor = true
             break
           }
         }
+        if (isAncestor) {
+          idSet.add(node.id)
+          parentNodes.push(node)
+        }
       }
-      // 整合
-      for (let i = 0; i < tmpTree.length; i++) {
-        const node: MpttTree = this.fullTree[i]
-        this.searchTree.push(node)
+
+      // #5 修复 bug：使用 parentNodes[i] 而非错误的 this.fullTree[i]
+      for (let i: i32 = 0; i < parentNodes.length; i++) {
+        this.searchTree.push(parentNodes[i])
       }
-      // 排序
+
       this.searchTree.sort((a: MpttTree, b: MpttTree): i32 => {
         return a.leftNode - b.leftNode
       })
       this.tree = this.searchTree
-      // 清空临时变量
+
       idSet.clear()
-      tmpTree.splice(0)
+      parentNodes.splice(0)
+
+      this.shownCount = this.searchTree.length
+      for (let i: i32 = 0; i < this.searchTree.length; i++) {
+        this.searchTree[i].shown = true
+      }
+      this._rebuildShownNodes()
+
       return this.convertArrayToJsonString(this.getTmpShown())
     }
   }
@@ -627,29 +610,29 @@ class GiantTree {
     this.scrollHeight = scrollHeight
   }
 
+  // #1 优化后的 getShownHeight：O(1)
   getShownHeight(): f32 {
-    let num: f32 = 0
-    for (let i = 0; i < this.tree.length; i++) {
-      const node: MpttTree = this.tree[i]
-      if (node.shown) {
-        num += 1
-      }
-    }
-    return num * this.lineHeight
+    return (this.shownCount as f32) * this.lineHeight
   }
+
+  _recalcShownCount(): void {
+    this.shownCount = 0
+    for (let i: i32 = 0; i < this.tree.length; i++) {
+      if (this.tree[i].shown) this.shownCount++
+    }
+  }
+
   clear(): void {
     this.fullTree.splice(0)
     this.searchTree.splice(0)
     this.tree = this.fullTree
     this.tmpTree.splice(0)
+    this.shownCount = 0
+    this.idToIndex.clear()
+    this._shownNodes.splice(0)
+    this._invalidateCache()
   }
 
-  /**
-   * 以下用于创建新的树
-   * @param id
-   * @param name
-   * @param parentId
-   */
   pushNeighborNode(id: string, name: string, parentId: string): void {
     const neighborTree: NeighborTree = new NeighborTree()
     neighborTree.id = id
@@ -680,6 +663,7 @@ class GiantTree {
     mpttTree.deep = deep
     if (mpttTree.deep === 0) {
       mpttTree.shown = true
+      this.shownCount++
     }
     this.fullTree.push(mpttTree)
   }
@@ -688,30 +672,11 @@ class GiantTree {
     this.fullTree.sort((a: MpttTree, b: MpttTree): i32 => {
       return a.leftNode - b.leftNode
     })
+    this._buildIdIndex()
+    this._rebuildShownNodes()
   }
 }
 
-// export function add(a: i32, b: i32): i32 {
-//   // let jsonTree: JSON.Arr = <JSON.Arr>(JSON.parse('[{"a":1,"b":2}]'));
-//   // for (let i=0;i<jsonTree.valueOf().length;i++){
-//   //     let node:JSON.Obj = <JSON.Obj>jsonTree.valueOf()[i];
-//   //     console.log(`${node.getInteger("a")}`);
-//   // }
-//   //
-//   const encoder = new JSONEncoder()
-//   encoder.pushArray(null)
-//   encoder.pushObject(null)
-//   encoder.setInteger('a', 1)
-//   encoder.setInteger('b', 2)
-//   encoder.popObject()
-//   encoder.popArray()
-//   // console.log(encoder.toString());
-//   return a + b
-// }
-
-/**
- * 生成一个新的树
- */
 export function newTree(
   root: string,
   lineHeight: f32,
@@ -720,21 +685,11 @@ export function newTree(
   return new GiantTree(root, lineHeight, selectType)
 }
 
-/**
- * 设置邻接树
- * @param target
- * @param tree
- */
 export function setNeighborTree(target: GiantTree, tree: string): void {
   const jsonTree: JSON.Arr = <JSON.Arr>JSON.parse(tree)
   target.setNeighborTree(jsonTree)
 }
 
-/**
- * 设置预排序树
- * @param target
- * @param tree
- */
 export function setMpttTree(target: GiantTree, tree: string): void {
   target.setMpttTree(tree)
 }
@@ -751,11 +706,6 @@ export function getCheckedNodes(target: GiantTree): string {
   return target.getCheckedNodes()
 }
 
-/**
- * 切换显示树
- * @param target
- * @param displayType
- */
 export function switchDisplayTree(
   target: GiantTree,
   displayType: DisplayType
@@ -763,30 +713,14 @@ export function switchDisplayTree(
   target.switchDisplayTree(displayType)
 }
 
-/**
- * 清空树
- * @param target
- */
 export function clear(target: GiantTree): void {
   target.clear()
 }
 
-/**
- * 弹出邻接节点
- * @param target
- */
-// 弹出邻接节点
 export function popNeighbor(target: GiantTree): void {
   target.popNeighbor()
 }
 
-/**
- * 插入邻接节点
- * @param target
- * @param id
- * @param name
- * @param parentId
- */
 export function pushNeighborNode(
   target: GiantTree,
   id: string,
@@ -796,24 +730,10 @@ export function pushNeighborNode(
   target.pushNeighborNode(id, name, parentId)
 }
 
-/**
- * 弹出预排序节点(组装好后）
- * @param target
- */
 export function popMptt(target: GiantTree): void {
   target.popMptt()
 }
 
-/**
- * 插入预排序节点
- * @param target
- * @param id
- * @param name
- * @param parentId
- * @param leftNode
- * @param rightNode
- * @param deep
- */
 export function pushMpttNode(
   target: GiantTree,
   id: string,
