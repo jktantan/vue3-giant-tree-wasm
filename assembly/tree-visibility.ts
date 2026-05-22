@@ -195,7 +195,7 @@ export function incrementalUpdateShownNodes(
     )
     if (parentShownIdx < 0) return
 
-    let removeStart: i32 = parentShownIdx + 1
+    const removeStart: i32 = parentShownIdx + 1
     let removeEnd: i32 = removeStart
     while (removeEnd < shownNodes.length) {
       const node: MpttTree = shownNodes[removeEnd]
