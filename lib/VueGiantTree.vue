@@ -84,8 +84,8 @@ onMounted(async () => {
   setBoundary(tree, scrollTop, scrollHeight)
   clear(tree)
   for (let i = 0; i < props.tree.length; i++) {
-    const { id, name, parentId } = props.tree[i]
-    pushNeighborNode(tree, id, name, parentId)
+    const item = props.tree[i]
+    pushNeighborNode(tree, item.id, item.name, item.parentId, item.disabled ?? false)
   }
   popNeighbor(tree)
 })
@@ -181,7 +181,11 @@ defineExpose({
           :select-type="selectType"
           @check-click="checkClick"
           @item-click="itemClick"
-        />
+        >
+          <template v-if="$slots.node" #node="slotProps">
+            <slot name="node" v-bind="slotProps" />
+          </template>
+        </tree-item>
       </template>
     </div>
   </div>

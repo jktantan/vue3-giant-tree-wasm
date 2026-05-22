@@ -1,5 +1,5 @@
 import { MpttTree } from './models'
-import { JSONEncoder } from 'assemblyscript-json'
+import { JSONEncoder } from 'assemblyscript-json/assembly/index'
 
 /**
  * 将 MpttTree 数组序列化为 JSON 字符串
@@ -24,6 +24,7 @@ export function serializeMpttArray(tree: MpttTree[]): string {
     encoder.setInteger('checked', node.checked)
     encoder.setInteger('selected', node.selected)
     encoder.setBoolean('collapsed', node.collapsed)
+    encoder.setBoolean('disabled', node.disabled)
     encoder.popObject()
   }
   encoder.popArray()
@@ -50,6 +51,7 @@ export function serializeMpttNode(node: MpttTree): string {
   encoder.setInteger('checked', node.checked)
   encoder.setInteger('selected', node.selected)
   encoder.setBoolean('collapsed', node.collapsed)
+  encoder.setBoolean('disabled', node.disabled)
   encoder.popObject()
   return encoder.toString()
 }

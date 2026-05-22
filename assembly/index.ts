@@ -57,9 +57,10 @@ export function pushNeighborNode(
   target: GiantTree,
   id: string,
   name: string,
-  parentId: string
+  parentId: string,
+  disabled: boolean = false
 ): void {
-  target.pushNeighborNode(id, name, parentId)
+  target.pushNeighborNode(id, name, parentId, disabled)
 }
 
 export function popMptt(target: GiantTree): void {

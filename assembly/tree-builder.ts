@@ -20,6 +20,8 @@ export function parseNeighborTreeFromJson(jsonTree: JSON.Arr): NeighborTree[] {
     if (name !== null) neighborTree.name = name.toString()
     const parentId: JSON.Str = <JSON.Str>node.get('parentId')
     if (parentId !== null) neighborTree.parentId = parentId.toString()
+    const disabled: JSON.Bool = <JSON.Bool>node.get('disabled')
+    if (disabled !== null) neighborTree.disabled = disabled.valueOf()
     result.push(neighborTree)
   }
   return result
@@ -107,6 +109,7 @@ function _recursiveAssembly(
       mptt.id = nt.id
       mptt.name = nt.name
       mptt.parentId = nt.parentId
+      mptt.disabled = nt.disabled
       mptt.leftNode = lNode
       mptt.deep = currentDeep
 
@@ -172,6 +175,8 @@ export function parseMpttTreeFromJson(
     if (rightNode !== null) mptt.rightNode = rightNode.valueOf() as i32
     const deep: JSON.Integer = <JSON.Integer>node.get('deep')
     if (deep !== null) mptt.deep = deep.valueOf() as i32
+    const disabled: JSON.Bool = <JSON.Bool>node.get('disabled')
+    if (disabled !== null) mptt.disabled = disabled.valueOf()
 
     if (mptt.parentId === root) {
       mptt.shown = true

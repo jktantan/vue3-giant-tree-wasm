@@ -14,6 +14,7 @@ const collapsedClick = () => {
 }
 
 const checkClick = () => {
+  if (props.item.disabled) return
   emit(
     'check-click',
     props.item.id,
@@ -23,6 +24,7 @@ const checkClick = () => {
   )
 }
 const itemClick = () => {
+  if (props.item.disabled) return
   emit('item-click', props.item.id)
 }
 </script>
@@ -31,7 +33,7 @@ const itemClick = () => {
   <div
     class="tree-item"
     :style="{ fontSize: fontSize }"
-    :class="{ selected: item.selected }"
+    :class="{ selected: item.selected, disabled: item.disabled }"
   >
     <div v-for="i in item.deep" :style="{ width: fontSize }" :key="i"></div>
     <div class="item-icon" :style="{ width: fontSize }">
@@ -78,7 +80,9 @@ const itemClick = () => {
       ></div>
     </div>
     <div class="item-text" @click="itemClick">
-      <span>{{ item.name }}</span>
+      <slot name="node" :node="item">
+        <span>{{ item.name }}</span>
+      </slot>
     </div>
   </div>
 </template>

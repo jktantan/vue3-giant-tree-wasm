@@ -26,21 +26,25 @@ const setCheckedIdsInput = ref('')
 const currentDisplayType = ref<DisplayType>(DisplayType.TREE)
 const wasmTreeSize = ref(0)
 const treeRef = ref<InstanceType<typeof VueGiantTree>>()
+const useCustomSlot = ref(false)
+const enableDisabled = ref(true)
 
 const rootId = nanoid()
 
 const generateTreeData = (size: TreeSize) => {
   const config = TREE_SIZES[size]
-  const data: { id: string; parentId: string; name: string }[] = []
+  const data: { id: string; parentId: string; name: string; disabled?: boolean }[] = []
   for (let i = 0; i < config.l1; i++) {
     const id1 = nanoid()
     data.push({ id: id1, parentId: rootId, name: `L1-${i}: ${id1.slice(0, 6)}` })
     for (let j = 0; j < config.l2; j++) {
       const id2 = nanoid()
-      data.push({ id: id2, parentId: id1, name: `L2-${i}-${j}: ${id2.slice(0, 6)}` })
+      const disableL2 = enableDisabled.value && j === 0
+      data.push({ id: id2, parentId: id1, name: `L2-${i}-${j}: ${id2.slice(0, 6)}`, disabled: disableL2 })
       for (let z = 0; z < config.l3; z++) {
         const id3 = nanoid()
-        data.push({ id: id3, parentId: id2, name: `L3-${i}-${j}-${z}: ${id3.slice(0, 6)}` })
+        const disableL3 = enableDisabled.value && j === 0 && z === 0
+        data.push({ id: id3, parentId: id2, name: `L3-${i}-${j}-${z}: ${id3.slice(0, 6)}`, disabled: disableL3 })
       }
     }
   }
@@ -262,6 +266,20 @@ const switchDisplay = (type: DisplayType) => {
         </section>
 
         <section class="ctrl-section">
+          <h3>功能开关</h3>
+          <div class="toggle-group">
+            <label class="toggle-label">
+              <input type="checkbox" v-model="enableDisabled" @change="rebuildTree" />
+              启用节点禁用 (每组第1个L2/L3)
+            </label>
+            <label class="toggle-label">
+              <input type="checkbox" v-model="useCustomSlot" />
+              启用自定义插槽
+            </label>
+          </div>
+        </section>
+
+        <section class="ctrl-section">
           <h3>编程式选中 (回显)</h3>
           <div class="search-box">
             <input
@@ -331,7 +349,13 @@ const switchDisplay = (type: DisplayType) => {
             :height="'100%'"
             :width="'100%'"
             v-model="checkedResult"
-          />
+          >
+            <template v-if="useCustomSlot" #node="{ node }">
+              <span>{{ node.name }}</span>
+              <span class="custom-badge">D{{ node.deep }}</span>
+              <span v-if="node.disabled" class="custom-disabled-tag">禁用</span>
+            </template>
+          </VueGiantTree>
         </div>
       </main>
     </div>
@@ -565,5 +589,48 @@ input[type='range'] {
   .dev-layout {
     grid-template-columns: 1fr;
   }
+}
+
+.toggle-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #333;
+  cursor: pointer;
+}
+
+.toggle-label input[type='checkbox'] {
+  accent-color: #4096ff;
+}
+
+.custom-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 4px;
+  font-size: 10px;
+  line-height: 16px;
+  border-radius: 3px;
+  background: #e6f4ff;
+  color: #1677ff;
+  border: 1px solid #bae0ff;
+}
+
+.custom-disabled-tag {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 0 4px;
+  font-size: 10px;
+  line-height: 16px;
+  border-radius: 3px;
+  background: #fff1f0;
+  color: #ff4d4f;
+  border: 1px solid #ffccc7;
 }
 </style>

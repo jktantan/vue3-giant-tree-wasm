@@ -10,10 +10,12 @@ export interface TreeNodeData {
   checked: CheckType
   selected: CheckType
   collapsed: boolean
+  disabled: boolean
 }
 
 export interface TreeInputItem {
   id: string
   name: string
   parentId: string
+  disabled?: boolean
 }

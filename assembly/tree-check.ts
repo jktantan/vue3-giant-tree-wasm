@@ -24,11 +24,13 @@ export function checkNodeInTree(
   selectType: SelectType
 ): void {
   if (selectType === SelectType.RADIO) {
+    if (idToIndex.has(id) && fullTree[idToIndex.get(id)].disabled) return
     for (let i = 0; i < fullTree.length; i++) {
       fullTree[i].checked =
         fullTree[i].id !== id ? CheckType.UNCHECKED : checked
     }
   } else if (selectType === SelectType.SELECT) {
+    if (idToIndex.has(id) && fullTree[idToIndex.get(id)].disabled) return
     for (let i = 0; i < fullTree.length; i++) {
       fullTree[i].selected =
         fullTree[i].id !== id ? CheckType.UNCHECKED : checked
@@ -37,6 +39,7 @@ export function checkNodeInTree(
     if (idToIndex.has(id)) {
       const i: i32 = idToIndex.get(id)
       const node: MpttTree = fullTree[i]
+      if (node.disabled) return
       node.checked = checked
       setSubTreeChecked(fullTree, node, checked, i + 1)
       for (let j = i - 1; j >= 0; j--) {
@@ -74,7 +77,9 @@ export function setSubTreeChecked(
       currentNode.leftNode >= node.leftNode &&
       currentNode.rightNode <= node.rightNode
     ) {
-      currentNode.checked = checked
+      if (!currentNode.disabled) {
+        currentNode.checked = checked
+      }
     } else {
       break
     }
@@ -181,10 +186,10 @@ export function setCheckedNodesInTree(
   }
   for (let i = 0; i < fullTree.length; i++) {
     const node: MpttTree = fullTree[i]
-    if (idSet.has(node.id)) {
+    if (idSet.has(node.id) && !node.disabled) {
       node.checked = CheckType.CHECKED
       collectParentNodes(fullTree, node, i - 1, parentNodes, parentIdSet)
-    } else {
+    } else if (!node.disabled) {
       node.checked = CheckType.UNCHECKED
     }
   }
@@ -215,11 +220,27 @@ export function setCheckedNodeInTree(
   selectType: SelectType
 ): void {
   if (selectType === SelectType.RADIO) {
+    let targetDisabled = false
+    for (let i = 0; i < fullTree.length; i++) {
+      if (fullTree[i].id === id && fullTree[i].disabled) {
+        targetDisabled = true
+        break
+      }
+    }
+    if (targetDisabled) return
     for (let i = 0; i < fullTree.length; i++) {
       fullTree[i].checked =
         fullTree[i].id !== id ? CheckType.UNCHECKED : CheckType.CHECKED
     }
   } else if (selectType === SelectType.SELECT) {
+    let targetDisabled = false
+    for (let i = 0; i < fullTree.length; i++) {
+      if (fullTree[i].id === id && fullTree[i].disabled) {
+        targetDisabled = true
+        break
+      }
+    }
+    if (targetDisabled) return
     for (let i = 0; i < fullTree.length; i++) {
       fullTree[i].selected =
         fullTree[i].id !== id ? CheckType.UNCHECKED : CheckType.CHECKED

@@ -49,6 +49,13 @@
     &.selected {
       background: $giant-tree__color-primary-hover;
     }
+    &.disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+      &:hover {
+        background: transparent;
+      }
+    }
     .item-icon {
       display: flex;
       align-items: center;

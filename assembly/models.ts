@@ -52,6 +52,8 @@ export class NeighborTree {
   parentId: string = ''
   /** 扩展数据（预留字段） / Extended data (reserved field) / Расширенные данные (зарезервированное поле) */
   extendData: string = ''
+  /** 是否禁用（禁用节点不可选中） / Whether disabled (disabled nodes cannot be checked) / Отключён ли (отключённые узлы не могут быть выбраны) */
+  disabled: boolean = false
 }
 
 /**
