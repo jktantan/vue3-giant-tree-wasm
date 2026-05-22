@@ -12,6 +12,13 @@ import {
   checkNode,
   getCheckedNodes,
   CheckType,
+  DisplayType,
+  fuzzyTree,
+  getSize,
+  switchDisplayTree,
+  clearCheckedNodes,
+  setCheckedNode,
+  setCheckedNodes,
 } from '../build/release'
 
 import { throttle } from 'throttle-debounce'
@@ -104,6 +111,53 @@ const checkClick = (id: string, checkType: CheckType) => {
   emit('update:modelValue', JSON.parse(checkResult))
   refreshTree()
 }
+
+const fuzzySearch = (keyword: string) => {
+  fuzzyTree(tree, keyword)
+  listHeight.value = getShownHeight(tree)
+  refreshTree()
+}
+
+const getTreeSize = (): number => {
+  return getSize(tree)
+}
+
+const setChecked = (id: string) => {
+  setCheckedNode(tree, id)
+  const checkResult = getCheckedNodes(tree)
+  emit('update:modelValue', JSON.parse(checkResult))
+  listHeight.value = getShownHeight(tree)
+  refreshTree()
+}
+
+const setCheckedByIds = (ids: string[]) => {
+  setCheckedNodes(tree, ids)
+  const checkResult = getCheckedNodes(tree)
+  emit('update:modelValue', JSON.parse(checkResult))
+  listHeight.value = getShownHeight(tree)
+  refreshTree()
+}
+
+const clearAllChecked = () => {
+  clearCheckedNodes(tree)
+  emit('update:modelValue', [])
+  refreshTree()
+}
+
+const switchDisplay = (displayType: DisplayType) => {
+  switchDisplayTree(tree, displayType)
+  listHeight.value = getShownHeight(tree)
+  refreshTree()
+}
+
+defineExpose({
+  fuzzySearch,
+  getTreeSize,
+  setChecked,
+  setCheckedByIds,
+  clearAllChecked,
+  switchDisplay,
+})
 </script>
 
 <template>
