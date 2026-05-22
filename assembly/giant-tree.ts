@@ -160,7 +160,12 @@ export class GiantTree {
    * Pushes adjacency list nodes one by one (for batch input of large data)
    * Пошаговый ввод узлов списка смежности (для пакетного ввода больших данных)
    */
-  pushNeighborNode(id: string, name: string, parentId: string, disabled: boolean = false): void {
+  pushNeighborNode(
+    id: string,
+    name: string,
+    parentId: string,
+    disabled: boolean = false
+  ): void {
     const nt: NeighborTree = new NeighborTree()
     nt.id = id
     nt.name = name

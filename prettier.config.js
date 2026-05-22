@@ -27,4 +27,5 @@ export default {
   //  "auto"- 保持现有的行尾（一个文件中的混合值通过查看第一行之后使用的内容进行标准化）
   endOfLine: 'lf',
   jsxBracketSameLine: true,
+  plugins: ['assemblyscript-prettier'],
 }
