@@ -97,6 +97,11 @@ export class GiantTree {
   /** id→fullTree 索引映射 / id→fullTree index map / Маппинг id→индекс в fullTree */
   idToIndex: Map<string, i32> = new Map()
 
+  /** RADIO 模式下当前选中节点的 fullTree 索引（-1=无），避免全树 O(N) 扫描 / RADIO mode: current checked node index in fullTree (-1=none), avoids O(N) full scan / RADIO: индекс текущего выбранного узла в fullTree (-1=нет), избегает полного O(N) сканирования */
+  _radioCheckedIdx: i32 = -1
+  /** SELECT 模式下当前选中节点的 fullTree 索引（-1=无），避免全树 O(N) 扫描 / SELECT mode: current selected node index in fullTree (-1=none), avoids O(N) full scan / SELECT: индекс текущего выбранного узла в fullTree (-1=нет), избегает полного O(N) сканирования */
+  _selectSelectedIdx: i32 = -1
+
   /** JSON 缓存：起始索引 / JSON cache: start index / Кэш JSON: начальный индекс */
   _cachedStartIdx: i32 = -1
   /** JSON 缓存：结束索引 / JSON cache: end index / Кэш JSON: конечный индекс */
@@ -367,10 +372,37 @@ export class GiantTree {
    */
   checkNode(id: string, checked: CheckType): string {
     this._invalidateCache()
-    // 先执行选中操作，再获取最新快照（修复返回旧状态的问题）
-    // Apply check first, then capture snapshot (fixes returning stale state)
-    // Сначала выполнить выбор, затем получить актуальный срез (исправление возврата устаревшего состояния)
-    checkNodeInTree(this.fullTree, this.idToIndex, id, checked, this.selectType)
+
+    // RADIO/SELECT: 用缓存索引 O(1) 替代全树 O(N) 扫描
+    // RADIO/SELECT: use cached index O(1) instead of full tree O(N) scan
+    // RADIO/SELECT: используем кэшированный индекс O(1) вместо полного сканирования O(N)
+    if (this.selectType === SelectType.RADIO) {
+      if (this.idToIndex.has(id) && this.fullTree[this.idToIndex.get(id)].disabled) {
+        return serializeMpttArray(this.getTmpShown())
+      }
+      const targetIdx: i32 = this.idToIndex.get(id)
+      if (this._radioCheckedIdx >= 0 && this._radioCheckedIdx !== targetIdx) {
+        this.fullTree[this._radioCheckedIdx].checked = CheckType.UNCHECKED
+      }
+      this.fullTree[targetIdx].checked = checked
+      this._radioCheckedIdx = targetIdx
+    } else if (this.selectType === SelectType.SELECT) {
+      if (this.idToIndex.has(id) && this.fullTree[this.idToIndex.get(id)].disabled) {
+        return serializeMpttArray(this.getTmpShown())
+      }
+      const targetIdx: i32 = this.idToIndex.get(id)
+      if (this._selectSelectedIdx >= 0 && this._selectSelectedIdx !== targetIdx) {
+        this.fullTree[this._selectSelectedIdx].selected = CheckType.UNCHECKED
+      }
+      this.fullTree[targetIdx].selected = checked
+      this._selectSelectedIdx = targetIdx
+    } else {
+      // CHECKBOX: 使用原有函数
+      // CHECKBOX: use existing function
+      // CHECKBOX: используем существующую функцию
+      checkNodeInTree(this.fullTree, this.idToIndex, id, checked, this.selectType)
+    }
+
     const result: MpttTree[] = this.getTmpShown()
     return serializeMpttArray(result)
   }
@@ -382,6 +414,12 @@ export class GiantTree {
    */
   setCheckedNodes(ids: string[]): void {
     setCheckedNodesInTree(this.fullTree, ids, this.idToIndex)
+    this._invalidateCache()
+    // 批量设置后缓存索引失效
+    // Cached indices invalidated after batch set
+    // Кэшированные индексы недействительны после пакетной установки
+    this._radioCheckedIdx = -1
+    this._selectSelectedIdx = -1
   }
 
   /**
@@ -390,7 +428,29 @@ export class GiantTree {
    * Установить один узел выбранным (режим RADIO/SELECT)
    */
   setCheckedNode(id: string): void {
-    setCheckedNodeInTree(this.fullTree, id, this.selectType)
+    this._invalidateCache()
+    // RADIO/SELECT: 缓存索引 O(1) 路径
+    // RADIO/SELECT: cached index O(1) path
+    // RADIO/SELECT: путь с кэшированным индексом O(1)
+    if (this.selectType === SelectType.RADIO) {
+      if (this.idToIndex.has(id) && this.fullTree[this.idToIndex.get(id)].disabled) return
+      const targetIdx: i32 = this.idToIndex.get(id)
+      if (this._radioCheckedIdx >= 0 && this._radioCheckedIdx !== targetIdx) {
+        this.fullTree[this._radioCheckedIdx].checked = CheckType.UNCHECKED
+      }
+      this.fullTree[targetIdx].checked = CheckType.CHECKED
+      this._radioCheckedIdx = targetIdx
+    } else if (this.selectType === SelectType.SELECT) {
+      if (this.idToIndex.has(id) && this.fullTree[this.idToIndex.get(id)].disabled) return
+      const targetIdx: i32 = this.idToIndex.get(id)
+      if (this._selectSelectedIdx >= 0 && this._selectSelectedIdx !== targetIdx) {
+        this.fullTree[this._selectSelectedIdx].selected = CheckType.UNCHECKED
+      }
+      this.fullTree[targetIdx].selected = CheckType.CHECKED
+      this._selectSelectedIdx = targetIdx
+    } else {
+      setCheckedNodeInTree(this.fullTree, id, this.selectType)
+    }
   }
 
   /**
@@ -409,6 +469,9 @@ export class GiantTree {
    */
   clearCheckedNodes(): void {
     clearAllChecked(this.fullTree)
+    this._invalidateCache()
+    this._radioCheckedIdx = -1
+    this._selectSelectedIdx = -1
   }
 
   // ─── 搜索 / Search / Поиск ───
@@ -498,6 +561,8 @@ export class GiantTree {
     this.shownCount = 0
     this.idToIndex.clear()
     this._shownNodes.splice(0)
+    this._radioCheckedIdx = -1
+    this._selectSelectedIdx = -1
     this._invalidateCache()
   }
 }

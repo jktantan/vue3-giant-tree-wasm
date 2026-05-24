@@ -65,9 +65,11 @@ export function convertNeighborToMptt(
   // shownCount passed via array reference (AssemblyScript has no ref/out params)
   // shownCount передаётся через ссылку на массив (AssemblyScript не имеет ref/out параметров)
   const shownCountRef: i32[] = [0]
+  // 前序 push 已保证 fullTree 按 leftNode 升序，无需排序
+  // Preorder push guarantees fullTree is in leftNode ascending order, no sort needed
+  // Пре-порядок push гарантирует порядок fullTree по leftNode, сортировка не требуется
   _recursiveAssembly(treeMap, root, 0, 0, root, fullTree, shownCountRef)
   treeMap.clear()
-  sortByLeftNode(fullTree)
   return shownCountRef[0]
 }
 
@@ -116,6 +118,11 @@ function _recursiveAssembly(
       mptt.leftNode = lNode
       mptt.deep = currentDeep
 
+      // 前序 push：在递归子节点之前推入数组（使 push 顺序 = leftNode 升序，无需后续排序）
+      // Preorder push: push before recursing children (push order = leftNode asc, no sort needed)
+      // Пре-порядок push: помещаем в массив до рекурсии потомков (порядок push = порядок leftNode)
+      fullTree.push(mptt)
+
       // 递归处理子节点，返回值为子树消耗后的下一个可用编号
       // Recurse into children; return value is the next number after subtree
       // Рекурсия в дочерние; возвращаемое значение — следующий номер после поддерева
@@ -139,7 +146,6 @@ function _recursiveAssembly(
         shownCountRef[0]++
       }
       lNode = rightNode + 1
-      fullTree.push(mptt)
     }
   }
   return lNode

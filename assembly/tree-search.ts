@@ -28,14 +28,18 @@ export function fuzzySearchTree(
   searchTree.splice(0)
   const idSet: Set<string> = new Set()
 
-  // 第一遍：收集名称匹配的节点
-  // Pass 1: collect nodes whose names match the keyword
-  // Проход 1: сбор узлов, имена которых совпадают с ключевым словом
+  // 第一遍：收集名称匹配的节点（上限 5000，避免单汉字"一"匹配全树的极端情况）
+  // Pass 1: collect matched nodes (cap at 5000 to avoid worst-case single-char match)
+  // Проход 1: сбор совпавших узлов (макс 5000, чтобы избежать худшего случая)
+  const MAX_RESULTS: i32 = 5000
+  let matchCount: i32 = 0
   for (let i: i32 = 0; i < fullTree.length; i++) {
     const node: MpttTree = fullTree[i]
     if (node.name.indexOf(keyword) !== -1) {
       searchTree.push(node)
       idSet.add(node.id)
+      matchCount++
+      if (matchCount >= MAX_RESULTS) break
     }
   }
 

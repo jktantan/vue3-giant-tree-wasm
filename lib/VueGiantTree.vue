@@ -21,7 +21,7 @@ import {
   setCheckedNodes,
 } from '../build/release'
 
-import { throttle } from 'throttle-debounce'
+import { throttle, debounce } from 'throttle-debounce'
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import TreeItem from '@lib/TreeItem.vue'
 import type { TreeNodeData, TreeInputItem } from './types'
@@ -112,11 +112,13 @@ const checkClick = (id: string, checkType: CheckType) => {
   refreshTree()
 }
 
-const fuzzySearch = (keyword: string) => {
+const rawFuzzySearch = (keyword: string) => {
   fuzzyTree(tree, keyword)
   listHeight.value = getShownHeight(tree)
   refreshTree()
 }
+/** 带 300ms 防抖的模糊搜索（适合 input 实时输入） */
+const fuzzySearch = debounce(300, rawFuzzySearch)
 
 const getTreeSize = (): number => {
   return getSize(tree)
@@ -152,6 +154,7 @@ const switchDisplay = (displayType: DisplayType) => {
 
 defineExpose({
   fuzzySearch,
+  fuzzySearchRaw: rawFuzzySearch,
   getTreeSize,
   setChecked,
   setCheckedByIds,
