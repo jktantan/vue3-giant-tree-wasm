@@ -39,6 +39,67 @@ export function recalcShownCount(tree: MpttTree[]): i32 {
 }
 
 /**
+ * 从折叠状态重建整棵树的 shown 标志（不依赖已有 shown 值）。
+ * 用于搜索结果清空后恢复正确可见性，修复搜索时 shown 标志被污染的问题。
+ *
+ * Rebuilds all node shown flags from collapse state (does not depend on existing shown values).
+ * Used to restore correct visibility after clearing search results, fixing the shown-flag pollution issue.
+ *
+ * Перестраивает флаги shown всех узлов из состояния свёртки (не зависит от существующих значений shown).
+ * Используется для восстановления корректной видимости после очистки поиска.
+ *
+ * @param fullTree - 完整树数组 / Full tree array / Полный массив дерева
+ * @returns 可见节点总数 / Total visible node count / Общее количество видимых узлов
+ */
+export function resetShownFlags(fullTree: MpttTree[]): i32 {
+  let count: i32 = 0
+
+  // 先全部重置
+  // Reset all to false first
+  // Сброс всех в false
+  for (let i: i32 = 0; i < fullTree.length; i++) {
+    fullTree[i].shown = false
+  }
+
+  // 用栈跟踪折叠祖先的 rightNode，单次遍历重建 shown
+  // Single-pass rebuild using stack to track collapsed ancestors' rightNode
+  // Одноразовый проход со стеком для отслеживания rightNode свёрнутых предков
+  const collapsedBoundaries: i32[] = []
+
+  for (let i: i32 = 0; i < fullTree.length; i++) {
+    const node: MpttTree = fullTree[i]
+
+    // 弹出超出范围的折叠边界
+    // Pop collapsed boundaries that are out of range
+    // Извлечение границ свёртки, вышедших за пределы
+    while (
+      collapsedBoundaries.length > 0 &&
+      node.leftNode >= collapsedBoundaries[collapsedBoundaries.length - 1]
+    ) {
+      collapsedBoundaries.pop()
+    }
+
+    if (collapsedBoundaries.length === 0) {
+      // 没有折叠的祖先 → 节点可见
+      // No collapsed ancestor → node is visible
+      // Нет свёрнутых предков → узел видим
+      node.shown = true
+      count++
+
+      // 如果该节点自身折叠且有子节点，压入折叠边界
+      // If node itself is collapsed and has children, push collapse boundary
+      // Если узел свёрнут и имеет потомков, поместить границу свёртки в стек
+      if (node.collapsed && node.rightNode - node.leftNode > 1) {
+        collapsedBoundaries.push(node.rightNode)
+      }
+    }
+  }
+
+  collapsedBoundaries.splice(0)
+  return count
+}
+
+/**
  * 非递归设置子树的显示状态：单次遍历 + 栈跟踪折叠边界
  * Non-recursive subtree visibility setter: single pass + stack tracking collapsed boundaries
  * Нерекурсивная установка видимости поддерева: один проход + стек отслеживания свёрнутых границ

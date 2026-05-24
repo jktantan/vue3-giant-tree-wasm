@@ -14,13 +14,16 @@ export function parseNeighborTreeFromJson(jsonTree: JSON.Arr): NeighborTree[] {
   for (let i = 0; i < jsonTree.valueOf().length; i++) {
     const node: JSON.Obj = <JSON.Obj>jsonTree.valueOf()[i]
     const neighborTree: NeighborTree = new NeighborTree()
-    const id: JSON.Str = <JSON.Str>node.get('id')
+    // 使用安全 getter 替代强制转型，避免缺少字段时 null 转型失败
+    // Use safe getters instead of forceful casts to avoid null cast failure on missing fields
+    // Использование безопасных геттеров вместо принудительного приведения для избежания ошибок при отсутствии полей
+    const id: JSON.Str | null = node.getString('id')
     if (id !== null) neighborTree.id = id.toString()
-    const name: JSON.Str = <JSON.Str>node.get('name')
+    const name: JSON.Str | null = node.getString('name')
     if (name !== null) neighborTree.name = name.toString()
-    const parentId: JSON.Str = <JSON.Str>node.get('parentId')
+    const parentId: JSON.Str | null = node.getString('parentId')
     if (parentId !== null) neighborTree.parentId = parentId.toString()
-    const disabled: JSON.Bool = <JSON.Bool>node.get('disabled')
+    const disabled: JSON.Bool | null = node.getBool('disabled')
     if (disabled !== null) neighborTree.disabled = disabled.valueOf()
     result.push(neighborTree)
   }
@@ -163,19 +166,22 @@ export function parseMpttTreeFromJson(
     const node: JSON.Obj = <JSON.Obj>jsonTree.valueOf()[i]
     const mptt: MpttTree = new MpttTree()
 
-    const id: JSON.Str = <JSON.Str>node.get('id')
+    // 使用安全 getter 替代强制转型，避免缺少字段时 null 转型失败
+    // Use safe getters instead of forceful casts to avoid null cast failure on missing fields
+    // Использование безопасных геттеров вместо принудительного приведения для избежания ошибок при отсутствии полей
+    const id: JSON.Str | null = node.getString('id')
     if (id !== null) mptt.id = id.toString()
-    const name: JSON.Str = <JSON.Str>node.get('name')
+    const name: JSON.Str | null = node.getString('name')
     if (name !== null) mptt.name = name.toString()
-    const parentId: JSON.Str = <JSON.Str>node.get('parentId')
+    const parentId: JSON.Str | null = node.getString('parentId')
     if (parentId !== null) mptt.parentId = parentId.toString()
-    const leftNode: JSON.Integer = <JSON.Integer>node.get('leftNode')
+    const leftNode: JSON.Integer | null = node.getInteger('leftNode')
     if (leftNode !== null) mptt.leftNode = leftNode.valueOf() as i32
-    const rightNode: JSON.Integer = <JSON.Integer>node.get('rightNode')
+    const rightNode: JSON.Integer | null = node.getInteger('rightNode')
     if (rightNode !== null) mptt.rightNode = rightNode.valueOf() as i32
-    const deep: JSON.Integer = <JSON.Integer>node.get('deep')
+    const deep: JSON.Integer | null = node.getInteger('deep')
     if (deep !== null) mptt.deep = deep.valueOf() as i32
-    const disabled: JSON.Bool = <JSON.Bool>node.get('disabled')
+    const disabled: JSON.Bool | null = node.getBool('disabled')
     if (disabled !== null) mptt.disabled = disabled.valueOf()
 
     if (mptt.parentId === root) {

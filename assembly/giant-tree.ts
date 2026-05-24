@@ -15,10 +15,10 @@ import {
 } from './tree-builder'
 import {
   rebuildShownNodes,
-  recalcShownCount,
   setCollapsedShown,
   incrementalUpdateShownNodes,
   getVisibleSlice,
+  resetShownFlags,
 } from './tree-visibility'
 import {
   checkNodeInTree,
@@ -231,6 +231,7 @@ export class GiantTree {
    */
   _rebuildShownNodes(): void {
     this._shownNodes = rebuildShownNodes(this.tree)
+    this.shownCount = this._shownNodes.length as i32
     this._invalidateCache()
   }
 
@@ -272,15 +273,16 @@ export class GiantTree {
    * Развернуть все / Свернуть все
    */
   collapseAll(collapsed: boolean): void {
-    this.shownCount = 0
     for (let i = 0; i < this.fullTree.length; i++) {
       const node: MpttTree = this.fullTree[i]
       node.collapsed = collapsed
       if (node.deep > 0) {
         node.shown = !collapsed
       }
-      if (node.shown) this.shownCount++
     }
+    // _rebuildShownNodes 会自动更新 shownCount，无需手动计数
+    // _rebuildShownNodes updates shownCount automatically
+    // _rebuildShownNodes обновляет shownCount автоматически
     this._rebuildShownNodes()
   }
 
@@ -365,8 +367,11 @@ export class GiantTree {
    */
   checkNode(id: string, checked: CheckType): string {
     this._invalidateCache()
-    const result: MpttTree[] = this.getTmpShown()
+    // 先执行选中操作，再获取最新快照（修复返回旧状态的问题）
+    // Apply check first, then capture snapshot (fixes returning stale state)
+    // Сначала выполнить выбор, затем получить актуальный срез (исправление возврата устаревшего состояния)
     checkNodeInTree(this.fullTree, this.idToIndex, id, checked, this.selectType)
+    const result: MpttTree[] = this.getTmpShown()
     return serializeMpttArray(result)
   }
 
@@ -376,7 +381,7 @@ export class GiantTree {
    * Пакетная установка выбранных узлов (режим CHECKBOX)
    */
   setCheckedNodes(ids: string[]): void {
-    setCheckedNodesInTree(this.fullTree, ids)
+    setCheckedNodesInTree(this.fullTree, ids, this.idToIndex)
   }
 
   /**
@@ -413,20 +418,38 @@ export class GiantTree {
    * Fuzzy search: filters tree by keyword and returns viewport JSON
    * Нечёткий поиск: фильтрует дерево по ключевому слову и возвращает JSON viewport
    *
-   * 空关键词时切回完整树；非空时构建搜索结果树并自动补全祖先链
-   * Empty keyword switches back to full tree; non-empty builds search result tree with auto-completed ancestor chains
-   * Пустое ключевое слово переключает на полное дерево; непустое строит дерево результатов с автодополнением цепочек предков
+   * 空关键词时切回完整树，从 collapse 状态重建 shown 标志（修复搜索污染问题）；
+   * 非空时构建搜索结果树并将 _shownNodes 直接设为搜索结果的引用副本。
+   *
+   * Empty keyword switches back to full tree, rebuilds shown flags from collapse state;
+   * Non-empty builds search result tree and sets _shownNodes directly to search results.
+   *
+   * Пустое ключевое слово переключает на полное дерево, восстанавливая флаги shown из состояния свёртки;
+   * Непустое строит дерево результатов и устанавливает _shownNodes напрямую.
    */
   fuzzySearch(keyword: string): string {
     if (keyword === null || keyword === '') {
       this.tree = this.fullTree
-      this.shownCount = recalcShownCount(this.tree)
+      // 重建 shown 标志：从 collapse 状态恢复，修复搜索时 shown 污染
+      // Rebuild shown flags from collapse state, fixing search pollution
+      // Восстановление флагов shown из состояния свёртки, исправление загрязнения поиском
+      resetShownFlags(this.fullTree)
+      // _rebuildShownNodes 会自动更新 shownCount
+      // _rebuildShownNodes updates shownCount automatically
+      // _rebuildShownNodes обновляет shownCount автоматически
       this._rebuildShownNodes()
       return serializeMpttArray(this.getTmpShown())
     } else {
       this.shownCount = fuzzySearchTree(this.fullTree, this.searchTree, keyword)
       this.tree = this.searchTree
-      this._rebuildShownNodes()
+      // 搜索结果所有节点都可见，直接赋给 _shownNodes（不修改 fullTree 的 shown 标志）
+      // All search results are visible, assign directly to _shownNodes (no modification of fullTree's shown flag)
+      // Все результаты поиска видимы, присваиваем напрямую _shownNodes (без модификации флагов fullTree)
+      this._shownNodes.splice(0)
+      for (let i: i32 = 0; i < this.searchTree.length; i++) {
+        this._shownNodes.push(this.searchTree[i])
+      }
+      this._invalidateCache()
       return serializeMpttArray(this.getTmpShown())
     }
   }
@@ -445,7 +468,9 @@ export class GiantTree {
     } else if (type === DisplayType.SEARCH) {
       this.tree = this.searchTree
     }
-    this.shownCount = recalcShownCount(this.tree)
+    // _rebuildShownNodes 会自动更新 shownCount，无需 recalcShownCount
+    // _rebuildShownNodes updates shownCount automatically
+    // _rebuildShownNodes обновляет shownCount автоматически
     this._rebuildShownNodes()
   }
 

@@ -170,39 +170,79 @@ export function collectParentNodes(
  * Batch-sets check state for multiple nodes (CHECKBOX mode), updating ancestors
  * Пакетная установка выбора для нескольких узлов (CHECKBOX), обновление предков
  *
+ * 修复了三个 Bug:
+ * 1. 不再破坏性地清除非目标节点（先清全树再设置目标）
+ * 2. 使用 ancestorSet 正确去重祖先节点（替代原形同虚设的 parentIdSet）
+ * 3. 通过 idToIndex 获取正确索引传入 getParentNodeCheckType
+ *
  * @param fullTree - 完整树数组 / Full tree array / Полный массив дерева
  * @param ids - 选中节点ID列表 / Checked node ID list / Список ID выбранных узлов
+ * @param idToIndex - id→索引映射 / id→index map / Маппинг id→индекс
  */
 export function setCheckedNodesInTree(
   fullTree: MpttTree[],
-  ids: string[]
+  ids: string[],
+  idToIndex: Map<string, i32>
 ): void {
-  const idSet: Set<string> = new Set()
-  const parentNodes: MpttTree[] = []
-  const parentIdSet: Set<string> = new Set()
-
-  for (let i = 0; i < ids.length; i++) {
-    idSet.add(ids[i])
-  }
+  // Pass 1: 将所有非禁用节点重置为 UNCHECKED
+  // Pass 1: reset all non-disabled nodes to UNCHECKED
+  // Проход 1: сброс всех неотключённых узлов в UNCHECKED
   for (let i = 0; i < fullTree.length; i++) {
-    const node: MpttTree = fullTree[i]
-    if (idSet.has(node.id) && !node.disabled) {
-      node.checked = CheckType.CHECKED
-      collectParentNodes(fullTree, node, i - 1, parentNodes, parentIdSet)
-    } else if (!node.disabled) {
-      node.checked = CheckType.UNCHECKED
+    if (!fullTree[i].disabled) {
+      fullTree[i].checked = CheckType.UNCHECKED
     }
   }
-  parentNodes.sort((a: MpttTree, b: MpttTree) => {
+
+  // Pass 2: 设置目标节点 + 子树为 CHECKED，收集唯一祖先
+  // Pass 2: set target nodes + subtree to CHECKED, collect unique ancestors
+  // Проход 2: установка целевых узлов + поддерева в CHECKED, сбор уникальных предков
+  const ancestorSet: Set<string> = new Set()
+  const ancestors: MpttTree[] = []
+
+  for (let i = 0; i < ids.length; i++) {
+    const id = ids[i]
+    if (!idToIndex.has(id)) continue
+    const idx: i32 = idToIndex.get(id)
+    const node: MpttTree = fullTree[idx]
+    if (node.disabled) continue
+
+    node.checked = CheckType.CHECKED
+    setSubTreeChecked(fullTree, node, CheckType.CHECKED, idx + 1)
+
+    // 逆序遍历收集祖先节点（使用 MPTT 范围判定），遇到已处理过的祖先则跳出
+    // Backward traversal to collect ancestors (via MPTT range), break on already-seen
+    // Обратный обход для сбора предков (через диапазон MPTT), останов при уже обработанном
+    for (let j: i32 = idx - 1; j >= 0; j--) {
+      const prev: MpttTree = fullTree[j]
+      if (prev.leftNode <= node.leftNode && prev.rightNode >= node.rightNode) {
+        if (ancestorSet.has(prev.id)) break
+        ancestorSet.add(prev.id)
+        ancestors.push(prev)
+      }
+    }
+  }
+
+  // 按 leftNode 降序排序（从最深祖先开始，构建自底向上的更新顺序）
+  // Sort by leftNode descending (deepest first) for bottom-up ancestor update
+  // Сортировка по leftNode по убыванию (сначала самый глубокий) для обновления снизу вверх
+  ancestors.sort((a: MpttTree, b: MpttTree): i32 => {
     return b.leftNode - a.leftNode
   })
-  for (let i = 0; i < parentNodes.length; i++) {
-    parentNodes[i].checked = getParentNodeCheckType(
-      fullTree,
-      parentNodes[i],
-      i + 1
-    )
+
+  // 用正确的 fullTree 索引重算每个祖先的选中状态
+  // Recalculate each ancestor using its actual fullTree index
+  // Пересчёт каждого предка с использованием его реального индекса в fullTree
+  for (let i = 0; i < ancestors.length; i++) {
+    const anc: MpttTree = ancestors[i]
+    const ancIdx: i32 = idToIndex.get(anc.id)
+    anc.checked = getParentNodeCheckType(fullTree, anc, ancIdx + 1)
   }
+
+  // 清理临时集合
+  // Cleanup
+  // Очистка
+  ancestorSet.clear()
+  ancestors.splice(0)
 }
 
 /**
@@ -286,14 +326,19 @@ export function getCheckedNodesFromTree(
 }
 
 /**
- * 清除所有节点的选中状态
- * Clears check state of all nodes
- * Сбрасывает состояние выбора всех узлов
+ * 清除所有节点的选中状态（同时清理 checked 和 selected 字段）
+ * Clears check state of all nodes (clears both checked and selected fields)
+ * Сбрасывает состояние выбора всех узлов (очищает поля checked и selected)
+ *
+ * 修复：SELECT 模式需要清理 selected 而非 checked
+ * Fix: SELECT mode requires clearing selected instead of checked
+ * Исправление: режим SELECT требует очистки selected, а не checked
  *
  * @param fullTree - 完整树数组 / Full tree array / Полный массив дерева
  */
 export function clearAllChecked(fullTree: MpttTree[]): void {
   for (let i = 0; i < fullTree.length; i++) {
     fullTree[i].checked = CheckType.UNCHECKED
+    fullTree[i].selected = CheckType.UNCHECKED
   }
 }

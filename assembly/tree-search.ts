@@ -42,21 +42,42 @@ export function fuzzySearchTree(
   // 第二遍：收集匹配节点的祖先节点（通过 MPTT 范围判定）
   // Pass 2: collect ancestor nodes of matched nodes (via MPTT range check)
   // Проход 2: сбор узлов-предков совпавших узлов (через проверку диапазона MPTT)
+  //
+  // 优化：双指针法 O(N+M+K) 替代 O(N×M)
+  // 由于 searchTree 和 fullTree 都按 leftNode 顺序遍历，
+  // 维护一个 searchIdx 指针跳跃式前进，避免每次扫描全部 searchTree。
+  //
+  // Optimization: two-pointer O(N+M+K) replaces O(N×M)
+  // Both searchTree and fullTree traverse in leftNode order,
+  // maintain a searchIdx pointer that advances, avoiding full scan of searchTree.
+  //
+  // Оптимизация: двухpointerный метод O(N+M+K) вместо O(N×M)
+  // searchTree и fullTree обходятся в порядке leftNode,
+  // поддерживается указатель searchIdx, избегая полного сканирования searchTree.
   const parentNodes: MpttTree[] = []
+  let searchIdx: i32 = 0
   for (let i: i32 = 0; i < fullTree.length; i++) {
     const node: MpttTree = fullTree[i]
     if (idSet.has(node.id)) continue
 
-    // 检查该节点是否是任何搜索结果节点的祖先
-    // Check if this node is an ancestor of any search result node
-    // Проверить, является ли этот узел предком любого узла результатов поиска
+    // 推进 searchIdx 到第一个 leftNode >= node.leftNode 的结果
+    // Advance searchIdx to the first result with leftNode >= node.leftNode
+    // Продвинуть searchIdx к первому результату с leftNode >= node.leftNode
+    while (
+      searchIdx < searchTree.length &&
+      searchTree[searchIdx].leftNode < node.leftNode
+    ) {
+      searchIdx++
+    }
+
+    // 检查 [searchIdx..) 范围内是否有节点被 node 包含
+    // Check if any node in the range [searchIdx..) is contained by node
+    // Проверить, содержится ли какой-либо узел в диапазоне [searchIdx..) внутри node
     let isAncestor: boolean = false
-    for (let j: i32 = 0; j < searchTree.length; j++) {
+    for (let j: i32 = searchIdx; j < searchTree.length; j++) {
       const searchNode: MpttTree = searchTree[j]
-      if (
-        node.leftNode <= searchNode.leftNode &&
-        node.rightNode >= searchNode.rightNode
-      ) {
+      if (searchNode.leftNode >= node.rightNode) break
+      if (searchNode.rightNode <= node.rightNode) {
         isAncestor = true
         break
       }
@@ -85,12 +106,12 @@ export function fuzzySearchTree(
   idSet.clear()
   parentNodes.splice(0)
 
-  // 设置所有搜索结果节点为可见
-  // Set all search result nodes as visible
-  // Установить все узлы результатов поиска как видимые
-  for (let i: i32 = 0; i < searchTree.length; i++) {
-    searchTree[i].shown = true
-  }
+  // 注意：不再修改 fullTree 节点的 shown 标志（searchTree 存储的是引用）
+  // 搜索结果中的可见性由 GiantTree.fuzzySearch 直接设置 _shownNodes
+  // Note: no longer modifies shown flag on fullTree nodes (searchTree stores references)
+  // Visibility for search results is set by GiantTree.fuzzySearch via _shownNodes directly
+  // Примечание: больше не изменяем флаг shown на узлах fullTree (searchTree хранит ссылки)
+  // Видимость результатов поиска устанавливается GiantTree.fuzzySearch через _shownNodes
 
   return searchTree.length
 }
