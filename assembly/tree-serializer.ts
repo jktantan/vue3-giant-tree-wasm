@@ -1,5 +1,5 @@
 import { MpttTree } from './models'
-import { JSONEncoder } from 'assemblyscript-json/assembly/index'
+import { JSONEncoder } from '@devcycle/assemblyscript-json/assembly/index'
 
 /**
  * 将 MpttTree 数组序列化为 JSON 字符串

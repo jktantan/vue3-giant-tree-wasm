@@ -1,5 +1,5 @@
 import { MpttTree, NeighborTree } from './models'
-import { JSON } from 'assemblyscript-json/assembly/index'
+import { JSON } from '@devcycle/assemblyscript-json/assembly/index'
 
 /**
  * 从 JSON 数组解析邻接表节点列表

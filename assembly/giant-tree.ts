@@ -5,7 +5,7 @@ import {
   NeighborTree,
   SelectType,
 } from './models'
-import { JSON } from 'assemblyscript-json/assembly/index'
+import { JSON } from '@devcycle/assemblyscript-json/assembly/index'
 import {
   parseNeighborTreeFromJson,
   convertNeighborToMptt,
@@ -377,7 +377,10 @@ export class GiantTree {
     // RADIO/SELECT: use cached index O(1) instead of full tree O(N) scan
     // RADIO/SELECT: используем кэшированный индекс O(1) вместо полного сканирования O(N)
     if (this.selectType === SelectType.RADIO) {
-      if (this.idToIndex.has(id) && this.fullTree[this.idToIndex.get(id)].disabled) {
+      if (
+        this.idToIndex.has(id) &&
+        this.fullTree[this.idToIndex.get(id)].disabled
+      ) {
         return serializeMpttArray(this.getTmpShown())
       }
       const targetIdx: i32 = this.idToIndex.get(id)
@@ -387,11 +390,17 @@ export class GiantTree {
       this.fullTree[targetIdx].checked = checked
       this._radioCheckedIdx = targetIdx
     } else if (this.selectType === SelectType.SELECT) {
-      if (this.idToIndex.has(id) && this.fullTree[this.idToIndex.get(id)].disabled) {
+      if (
+        this.idToIndex.has(id) &&
+        this.fullTree[this.idToIndex.get(id)].disabled
+      ) {
         return serializeMpttArray(this.getTmpShown())
       }
       const targetIdx: i32 = this.idToIndex.get(id)
-      if (this._selectSelectedIdx >= 0 && this._selectSelectedIdx !== targetIdx) {
+      if (
+        this._selectSelectedIdx >= 0 &&
+        this._selectSelectedIdx !== targetIdx
+      ) {
         this.fullTree[this._selectSelectedIdx].selected = CheckType.UNCHECKED
       }
       this.fullTree[targetIdx].selected = checked
@@ -400,7 +409,13 @@ export class GiantTree {
       // CHECKBOX: 使用原有函数
       // CHECKBOX: use existing function
       // CHECKBOX: используем существующую функцию
-      checkNodeInTree(this.fullTree, this.idToIndex, id, checked, this.selectType)
+      checkNodeInTree(
+        this.fullTree,
+        this.idToIndex,
+        id,
+        checked,
+        this.selectType
+      )
     }
 
     const result: MpttTree[] = this.getTmpShown()
@@ -433,7 +448,11 @@ export class GiantTree {
     // RADIO/SELECT: cached index O(1) path
     // RADIO/SELECT: путь с кэшированным индексом O(1)
     if (this.selectType === SelectType.RADIO) {
-      if (this.idToIndex.has(id) && this.fullTree[this.idToIndex.get(id)].disabled) return
+      if (
+        this.idToIndex.has(id) &&
+        this.fullTree[this.idToIndex.get(id)].disabled
+      )
+        return
       const targetIdx: i32 = this.idToIndex.get(id)
       if (this._radioCheckedIdx >= 0 && this._radioCheckedIdx !== targetIdx) {
         this.fullTree[this._radioCheckedIdx].checked = CheckType.UNCHECKED
@@ -441,9 +460,16 @@ export class GiantTree {
       this.fullTree[targetIdx].checked = CheckType.CHECKED
       this._radioCheckedIdx = targetIdx
     } else if (this.selectType === SelectType.SELECT) {
-      if (this.idToIndex.has(id) && this.fullTree[this.idToIndex.get(id)].disabled) return
+      if (
+        this.idToIndex.has(id) &&
+        this.fullTree[this.idToIndex.get(id)].disabled
+      )
+        return
       const targetIdx: i32 = this.idToIndex.get(id)
-      if (this._selectSelectedIdx >= 0 && this._selectSelectedIdx !== targetIdx) {
+      if (
+        this._selectSelectedIdx >= 0 &&
+        this._selectSelectedIdx !== targetIdx
+      ) {
         this.fullTree[this._selectSelectedIdx].selected = CheckType.UNCHECKED
       }
       this.fullTree[targetIdx].selected = CheckType.CHECKED

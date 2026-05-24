@@ -5,7 +5,7 @@
  */
 import { CheckType, DisplayType, SelectType } from './models'
 import { GiantTree } from './giant-tree'
-import { JSON } from 'assemblyscript-json/assembly/index'
+import { JSON } from '@devcycle/assemblyscript-json/assembly/index'
 
 export { CheckType, SelectType, DisplayType } from './models'
 
