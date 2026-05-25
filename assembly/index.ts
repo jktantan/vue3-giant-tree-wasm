@@ -5,7 +5,7 @@
  */
 import { CheckType, DisplayType, SelectType } from './models'
 import { GiantTree } from './giant-tree'
-import { JSON } from '@devcycle/assemblyscript-json/assembly/index'
+import { jsonParse, JsonArr } from './json'
 
 export { CheckType, SelectType, DisplayType } from './models'
 
@@ -18,7 +18,7 @@ export function newTree(
 }
 
 export function setNeighborTree(target: GiantTree, tree: string): void {
-  const jsonTree: JSON.Arr = <JSON.Arr>JSON.parse(tree)
+  const jsonTree = jsonParse(tree) as JsonArr
   target.setNeighborTree(jsonTree)
 }
 

@@ -5,7 +5,7 @@ import {
   NeighborTree,
   SelectType,
 } from './models'
-import { JSON } from '@devcycle/assemblyscript-json/assembly/index'
+import { JsonArr } from './json'
 import {
   parseNeighborTreeFromJson,
   convertNeighborToMptt,
@@ -127,7 +127,7 @@ export class GiantTree {
    * Sets adjacency list tree from JSON array, auto-converts to MPTT structure
    * Устанавливает дерево списка смежности из массива JSON, автоматически преобразует в структуру MPTT
    */
-  setNeighborTree(jsonTree: JSON.Arr): void {
+  setNeighborTree(jsonTree: JsonArr): void {
     this.tmpTree.splice(0)
     this.tmpTree = parseNeighborTreeFromJson(jsonTree)
     this._convertToMpttTree(this.tmpTree)

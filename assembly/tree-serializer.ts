@@ -1,5 +1,5 @@
 import { MpttTree } from './models'
-import { JSONEncoder } from '@devcycle/assemblyscript-json/assembly/index'
+import { JsonEncoder } from './json/index'
 
 /**
  * 将 MpttTree 数组序列化为 JSON 字符串
@@ -10,7 +10,7 @@ import { JSONEncoder } from '@devcycle/assemblyscript-json/assembly/index'
  * @returns JSON 字符串，格式为 [{id,name,parentId,leftNode,rightNode,deep,checked,selected,collapsed}, ...] / JSON string / Строка JSON
  */
 export function serializeMpttArray(tree: MpttTree[]): string {
-  const encoder = new JSONEncoder()
+  const encoder = new JsonEncoder()
   encoder.pushArray(null)
   for (let i = 0; i < tree.length; i++) {
     const node: MpttTree = tree[i]
@@ -40,7 +40,7 @@ export function serializeMpttArray(tree: MpttTree[]): string {
  * @returns JSON 字符串，格式为 {id,name,parentId,...} / JSON string / Строка JSON
  */
 export function serializeMpttNode(node: MpttTree): string {
-  const encoder = new JSONEncoder()
+  const encoder = new JsonEncoder()
   encoder.pushObject(null)
   encoder.setString('id', node.id)
   encoder.setString('name', node.name)

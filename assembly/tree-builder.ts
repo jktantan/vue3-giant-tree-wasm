@@ -1,5 +1,5 @@
 import { MpttTree, NeighborTree } from './models'
-import { JSON } from '@devcycle/assemblyscript-json/assembly/index'
+import { jsonParse, JsonArr, JsonObj } from './json'
 
 /**
  * 从 JSON 数组解析邻接表节点列表
@@ -9,21 +9,18 @@ import { JSON } from '@devcycle/assemblyscript-json/assembly/index'
  * @param jsonTree - assemblyscript-json 解析后的 JSON 数组 / Parsed JSON array / Разобранный массив JSON
  * @returns 邻接表节点数组 / Array of adjacency list nodes / Массив узлов списка смежности
  */
-export function parseNeighborTreeFromJson(jsonTree: JSON.Arr): NeighborTree[] {
+export function parseNeighborTreeFromJson(jsonTree: JsonArr): NeighborTree[] {
   const result: NeighborTree[] = []
-  for (let i = 0; i < jsonTree.valueOf().length; i++) {
-    const node: JSON.Obj = <JSON.Obj>jsonTree.valueOf()[i]
+  for (let i = 0; i < jsonTree.length; i++) {
+    const node = jsonTree.getItem(i) as JsonObj
     const neighborTree: NeighborTree = new NeighborTree()
-    // 使用安全 getter 替代强制转型，避免缺少字段时 null 转型失败
-    // Use safe getters instead of forceful casts to avoid null cast failure on missing fields
-    // Использование безопасных геттеров вместо принудительного приведения для избежания ошибок при отсутствии полей
-    const id: JSON.Str | null = node.getString('id')
-    if (id !== null) neighborTree.id = id.toString()
-    const name: JSON.Str | null = node.getString('name')
-    if (name !== null) neighborTree.name = name.toString()
-    const parentId: JSON.Str | null = node.getString('parentId')
-    if (parentId !== null) neighborTree.parentId = parentId.toString()
-    const disabled: JSON.Bool | null = node.getBool('disabled')
+    const id = node.getStringValue('id')
+    if (id !== null) neighborTree.id = id
+    const name = node.getStringValue('name')
+    if (name !== null) neighborTree.name = name
+    const parentId = node.getStringValue('parentId')
+    if (parentId !== null) neighborTree.parentId = parentId
+    const disabled = node.getBool('disabled')
     if (disabled !== null) neighborTree.disabled = disabled.valueOf()
     result.push(neighborTree)
   }
@@ -166,28 +163,25 @@ export function parseMpttTreeFromJson(
   root: string,
   fullTree: MpttTree[]
 ): i32 {
-  const jsonTree: JSON.Arr = <JSON.Arr>JSON.parse(tree)
+  const jsonTree = jsonParse(tree) as JsonArr
   let shownCount: i32 = 0
-  for (let i = 0; i < jsonTree.valueOf().length; i++) {
-    const node: JSON.Obj = <JSON.Obj>jsonTree.valueOf()[i]
+  for (let i = 0; i < jsonTree.length; i++) {
+    const node = jsonTree.getItem(i) as JsonObj
     const mptt: MpttTree = new MpttTree()
 
-    // 使用安全 getter 替代强制转型，避免缺少字段时 null 转型失败
-    // Use safe getters instead of forceful casts to avoid null cast failure on missing fields
-    // Использование безопасных геттеров вместо принудительного приведения для избежания ошибок при отсутствии полей
-    const id: JSON.Str | null = node.getString('id')
-    if (id !== null) mptt.id = id.toString()
-    const name: JSON.Str | null = node.getString('name')
-    if (name !== null) mptt.name = name.toString()
-    const parentId: JSON.Str | null = node.getString('parentId')
-    if (parentId !== null) mptt.parentId = parentId.toString()
-    const leftNode: JSON.Integer | null = node.getInteger('leftNode')
+    const id = node.getStringValue('id')
+    if (id !== null) mptt.id = id
+    const name = node.getStringValue('name')
+    if (name !== null) mptt.name = name
+    const parentId = node.getStringValue('parentId')
+    if (parentId !== null) mptt.parentId = parentId
+    const leftNode = node.getInteger('leftNode')
     if (leftNode !== null) mptt.leftNode = leftNode.valueOf() as i32
-    const rightNode: JSON.Integer | null = node.getInteger('rightNode')
+    const rightNode = node.getInteger('rightNode')
     if (rightNode !== null) mptt.rightNode = rightNode.valueOf() as i32
-    const deep: JSON.Integer | null = node.getInteger('deep')
+    const deep = node.getInteger('deep')
     if (deep !== null) mptt.deep = deep.valueOf() as i32
-    const disabled: JSON.Bool | null = node.getBool('disabled')
+    const disabled = node.getBool('disabled')
     if (disabled !== null) mptt.disabled = disabled.valueOf()
 
     if (mptt.parentId === root) {
