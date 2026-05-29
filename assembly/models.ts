@@ -27,6 +27,43 @@ export enum SelectType {
 }
 
 /**
+ * JSON 字段键名配置：允许用户自定义传入 JSON 中的字段映射
+ * JSON field key configuration: allows custom field name mapping in input JSON
+ * Конфигурация имён полей JSON: позволяет настроить соответствие полей во входном JSON
+ *
+ * 默认值 / Default values / Значения по умолчанию:
+ * - id: 'id'
+ * - name: 'name'
+ * - parentId: 'parentId'
+ * - leftNode: 'leftNode'
+ * - rightNode: 'rightNode'
+ */
+export class TreeFieldKeys {
+  constructor(
+    public idField: string = 'id',
+    public nameField: string = 'name',
+    public parentIdField: string = 'parentId',
+    public leftNodeField: string = 'leftNode',
+    public rightNodeField: string = 'rightNode'
+  ) {}
+}
+
+/**
+ * CHECKBOX 输出 ID 模式：控制 getCheckedIds 返回哪些 ID
+ * CHECKBOX output ID mode: controls which IDs getCheckedIds returns
+ * Режим вывода ID для CHECKBOX: управляет тем, какие ID возвращает getCheckedIds
+ *
+ * - All: 所有选中的节点（包括根节点和叶子节点）/ All checked nodes (roots + leaves)
+ * - RootOnly: 全选子树只传根节点，去重 / Only roots of fully-checked subtrees
+ * - LeafOnly: 只传叶子节点 / Only leaf nodes
+ */
+export enum CheckedOutputMode {
+  All,
+  RootOnly,
+  LeafOnly,
+}
+
+/**
  * 显示模式枚举：切换主树与搜索结果树
  * Display mode enumeration: switch between main tree and search result tree
  * Перечисление режимов отображения: переключение между основным деревом и деревом результатов поиска

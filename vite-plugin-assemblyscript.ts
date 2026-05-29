@@ -24,7 +24,10 @@ export default function assemblyscriptPlugin(
       console.log(`\x1b[36m[AS]\x1b[0m Compiled (${target})`)
       return true
     } catch (e: unknown) {
-      const msg = e instanceof Error && 'stderr' in e ? (e as { stderr: Buffer }).stderr?.toString() : String(e)
+      const msg =
+        e instanceof Error && 'stderr' in e
+          ? (e as { stderr: Buffer }).stderr?.toString()
+          : String(e)
       console.error(`\x1b[31m[AS]\x1b[0m Compile failed:\n${msg}`)
       return false
     }
@@ -51,7 +54,9 @@ export default function assemblyscriptPlugin(
 
         if (debounceTimer) clearTimeout(debounceTimer)
         debounceTimer = setTimeout(() => {
-          console.log(`\x1b[36m[AS]\x1b[0m File changed: ${file.replace(projectRoot + '/', '')}`)
+          console.log(
+            `\x1b[36m[AS]\x1b[0m File changed: ${file.replace(projectRoot + '/', '')}`
+          )
           if (compile('debug')) {
             server.ws.send({ type: 'full-reload' })
           }

@@ -3,11 +3,11 @@
  * WASM export bridge layer: all export function declarations, delegating to GiantTree instance methods
  * Мост экспорта WASM: все объявления export function, делегирующие методам экземпляра GiantTree
  */
-import { CheckType, DisplayType, SelectType } from './models'
+import { CheckType, CheckedOutputMode, DisplayType, SelectType, TreeFieldKeys } from './models'
 import { GiantTree } from './giant-tree'
 import { jsonParse, JsonArr } from './json'
 
-export { CheckType, SelectType, DisplayType } from './models'
+export { CheckType, SelectType, DisplayType, TreeFieldKeys, CheckedOutputMode } from './models'
 
 export function newTree(
   root: string,
@@ -15,6 +15,33 @@ export function newTree(
   selectType: SelectType
 ): GiantTree {
   return new GiantTree(root, lineHeight, selectType)
+}
+
+export function newTreeWithKeys(
+  root: string,
+  lineHeight: f32,
+  selectType: SelectType,
+  idField: string,
+  nameField: string,
+  parentIdField: string,
+  leftNodeField: string,
+  rightNodeField: string
+): GiantTree {
+  return new GiantTree(
+    root,
+    lineHeight,
+    selectType,
+    idField,
+    nameField,
+    parentIdField,
+    leftNodeField,
+    rightNodeField
+  )
+}
+
+export function setTree(target: GiantTree, tree: string): void {
+  const jsonTree = jsonParse(tree) as JsonArr
+  target.setTree(jsonTree)
 }
 
 export function setNeighborTree(target: GiantTree, tree: string): void {
@@ -36,6 +63,14 @@ export function getShownNodes(target: GiantTree): string {
 
 export function getCheckedNodes(target: GiantTree): string {
   return target.getCheckedNodes()
+}
+
+export function getCheckedIds(target: GiantTree): string {
+  return target.getCheckedIds()
+}
+
+export function setCheckedOutputMode(target: GiantTree, mode: CheckedOutputMode): void {
+  target.checkedOutputMode = mode
 }
 
 export function switchDisplayTree(

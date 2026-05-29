@@ -1,30 +1,75 @@
-import { MpttTree, NeighborTree } from './models'
+import { MpttTree, NeighborTree, TreeFieldKeys } from './models'
 import { jsonParse, JsonArr, JsonObj } from './json'
 
 /**
- * 从 JSON 数组解析邻接表节点列表
- * Parses adjacency list nodes from a JSON array
- * Разбирает узлы списка смежности из массива JSON
+ * 检测 JSON 数组中是否包含 MPTT 字段（leftNode/rightNode）
+ * Detects whether the JSON array contains MPTT fields (leftNode/rightNode)
+ * Определяет, содержит ли массив JSON поля MPTT (leftNode/rightNode)
  *
- * @param jsonTree - assemblyscript-json 解析后的 JSON 数组 / Parsed JSON array / Разобранный массив JSON
+ * @param jsonTree - JSON 数组 / JSON array / Массив JSON
+ * @param fieldKeys - 字段键名配置 / Field key configuration / Конфигурация имён полей
+ * @returns 存在 leftNode 和 rightNode 字段返回 true / true if both leftNode and rightNode exist / true, если оба поля leftNode и rightNode существуют
+ */
+export function hasMpttFields(
+  jsonTree: JsonArr,
+  fieldKeys: TreeFieldKeys
+): bool {
+  if (jsonTree.length === 0) return false
+  const sample = jsonTree.getItem(0) as JsonObj
+  return (
+    sample.has(fieldKeys.leftNodeField) && sample.has(fieldKeys.rightNodeField)
+  )
+}
+
+/**
+ * 使用可配置字段键名从 JSON 数组解析邻接表节点列表
+ * Parses adjacency list nodes from a JSON array using configurable field keys
+ * Разбирает узлы списка смежности из массива JSON с использованием настраиваемых ключей полей
+ *
+ * @param jsonTree - JSON 数组 / JSON array / Массив JSON
+ * @param fieldKeys - 字段键名配置 / Field key configuration / Конфигурация имён полей
  * @returns 邻接表节点数组 / Array of adjacency list nodes / Массив узлов списка смежности
  */
-export function parseNeighborTreeFromJson(jsonTree: JsonArr): NeighborTree[] {
+export function parseTreeFromJson(
+  jsonTree: JsonArr,
+  fieldKeys: TreeFieldKeys
+): NeighborTree[] {
   const result: NeighborTree[] = []
   for (let i = 0; i < jsonTree.length; i++) {
     const node = jsonTree.getItem(i) as JsonObj
     const neighborTree: NeighborTree = new NeighborTree()
-    const id = node.getStringValue('id')
+
+    // 将原始行 JSON 存入 extendData，保留所有自定义字段
+    // Store the original row JSON in extendData, preserving all custom fields
+    // Сохраняем исходный JSON строки в extendData, сохраняя все пользовательские поля
+    neighborTree.extendData = node.stringify()
+
+    // 从原始数据中提取 id/name/parentId 作为缓存字段（MPTT 内部运算需要 O(1) 访问）
+    // Extract id/name/parentId from original data as cached fields (MPTT needs O(1) access)
+    // Извлекаем id/name/parentId из исходных данных как кэшированные поля (MPTT требует O(1) доступа)
+    const id = node.getStringValue(fieldKeys.idField)
     if (id !== null) neighborTree.id = id
-    const name = node.getStringValue('name')
+    const name = node.getStringValue(fieldKeys.nameField)
     if (name !== null) neighborTree.name = name
-    const parentId = node.getStringValue('parentId')
+    const parentId = node.getStringValue(fieldKeys.parentIdField)
     if (parentId !== null) neighborTree.parentId = parentId
     const disabled = node.getBool('disabled')
     if (disabled !== null) neighborTree.disabled = disabled.valueOf()
     result.push(neighborTree)
   }
   return result
+}
+
+/**
+ * 从 JSON 数组解析邻接表节点列表（默认键名，向后兼容）
+ * Parses adjacency list nodes from a JSON array (default key names, backward compat)
+ * Разбирает узлы списка смежности из массива JSON (имена полей по умолчанию, обратная совместимость)
+ *
+ * @param jsonTree - assemblyscript-json 解析后的 JSON 数组 / Parsed JSON array / Разобранный массив JSON
+ * @returns 邻接表节点数组 / Array of adjacency list nodes / Массив узлов списка смежности
+ */
+export function parseNeighborTreeFromJson(jsonTree: JsonArr): NeighborTree[] {
+  return parseTreeFromJson(jsonTree, new TreeFieldKeys())
 }
 
 /**
@@ -100,7 +145,8 @@ function _recursiveAssembly(
   deep: i32,
   root: string,
   fullTree: MpttTree[],
-  shownCountRef: i32[]
+  shownCountRef: i32[],
+  parentDisabled: bool = false
 ): i32 {
   if (treeMap.has(parentId)) {
     const children = treeMap.get(parentId)
@@ -111,7 +157,10 @@ function _recursiveAssembly(
       mptt.id = nt.id
       mptt.name = nt.name
       mptt.parentId = nt.parentId
-      mptt.disabled = nt.disabled
+      // 如果父节点 disabled，子节点强制 disabled（继承）
+      // If parent is disabled, children are forcibly disabled (inherited)
+      mptt.disabled = nt.disabled || parentDisabled
+      mptt.extendData = nt.extendData
       mptt.leftNode = lNode
       mptt.deep = currentDeep
 
@@ -123,6 +172,8 @@ function _recursiveAssembly(
       // 递归处理子节点，返回值为子树消耗后的下一个可用编号
       // Recurse into children; return value is the next number after subtree
       // Рекурсия в дочерние; возвращаемое значение — следующий номер после поддерева
+      // 传递 disabled 状态：当前节点 disabled → 子节点全部继承
+      // Pass disabled state: current node disabled → all children inherit
       const rightNode: i32 = _recursiveAssembly(
         treeMap,
         mptt.id,
@@ -130,7 +181,8 @@ function _recursiveAssembly(
         currentDeep + 1,
         root,
         fullTree,
-        shownCountRef
+        shownCountRef,
+        mptt.disabled
       )
 
       mptt.rightNode = rightNode
@@ -149,9 +201,13 @@ function _recursiveAssembly(
 }
 
 /**
- * 从 JSON 字符串解析已有的 MPTT 树数据，结果追加到 fullTree 数组
- * Parses existing MPTT tree data from a JSON string, appending to fullTree array
- * Разбирает существующие данные дерева MPTT из строки JSON, добавляя в массив fullTree
+ * 从 JSON 字符串解析树数据，始终重新构建 MPTT（避免 stale leftNode/rightNode）
+ * Parses tree data from a JSON string, always rebuilds MPTT (avoids stale leftNode/rightNode)
+ * Разбирает данные дерева из строки JSON, всегда перестраивает MPTT (избегает устаревших leftNode/rightNode)
+ *
+ * 无论输入数据是否包含 leftNode/rightNode，都基于 parentId 关系重建 MPTT 编号。
+ * Regardless of whether input data contains leftNode/rightNode, rebuilds MPTT based on parentId.
+ * Независимо от наличия leftNode/rightNode во входных данных, перестраивает MPTT на основе parentId.
  *
  * @param tree - JSON 字符串 / JSON string / Строка JSON
  * @param root - 根节点标识 / Root identifier / Идентификатор корня
@@ -161,37 +217,13 @@ function _recursiveAssembly(
 export function parseMpttTreeFromJson(
   tree: string,
   root: string,
-  fullTree: MpttTree[]
+  fullTree: MpttTree[],
+  fieldKeys: TreeFieldKeys | null = null
 ): i32 {
   const jsonTree = jsonParse(tree) as JsonArr
-  let shownCount: i32 = 0
-  for (let i = 0; i < jsonTree.length; i++) {
-    const node = jsonTree.getItem(i) as JsonObj
-    const mptt: MpttTree = new MpttTree()
-
-    const id = node.getStringValue('id')
-    if (id !== null) mptt.id = id
-    const name = node.getStringValue('name')
-    if (name !== null) mptt.name = name
-    const parentId = node.getStringValue('parentId')
-    if (parentId !== null) mptt.parentId = parentId
-    const leftNode = node.getInteger('leftNode')
-    if (leftNode !== null) mptt.leftNode = leftNode.valueOf() as i32
-    const rightNode = node.getInteger('rightNode')
-    if (rightNode !== null) mptt.rightNode = rightNode.valueOf() as i32
-    const deep = node.getInteger('deep')
-    if (deep !== null) mptt.deep = deep.valueOf() as i32
-    const disabled = node.getBool('disabled')
-    if (disabled !== null) mptt.disabled = disabled.valueOf()
-
-    if (mptt.parentId === root) {
-      mptt.shown = true
-      shownCount++
-    }
-    fullTree.push(mptt)
-  }
-  sortByLeftNode(fullTree)
-  return shownCount
+  const fk = fieldKeys !== null ? fieldKeys : new TreeFieldKeys()
+  const neighborTrees = parseTreeFromJson(jsonTree, fk)
+  return convertNeighborToMptt(neighborTrees, root, fullTree)
 }
 
 /**

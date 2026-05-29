@@ -95,8 +95,22 @@ describe('tree-builder: 树构建', () => {
     const tree = newTree('', 26, SelectType.CHECKBOX)
     clear(tree)
     const mpttData = JSON.stringify([
-      { id: 'P', name: 'NodeP', parentId: '', leftNode: 0, rightNode: 3, deep: 0 },
-      { id: 'P1', name: 'NodeP1', parentId: 'P', leftNode: 1, rightNode: 2, deep: 1 },
+      {
+        id: 'P',
+        name: 'NodeP',
+        parentId: '',
+        leftNode: 0,
+        rightNode: 3,
+        deep: 0,
+      },
+      {
+        id: 'P1',
+        name: 'NodeP1',
+        parentId: 'P',
+        leftNode: 1,
+        rightNode: 2,
+        deep: 1,
+      },
     ])
     setMpttTree(tree, mpttData)
     expect(getSize(tree)).toBe(2)

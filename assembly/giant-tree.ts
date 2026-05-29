@@ -1,17 +1,21 @@
 import {
   CheckType,
+  CheckedOutputMode,
   DisplayType,
   MpttTree,
   NeighborTree,
   SelectType,
+  TreeFieldKeys,
 } from './models'
 import { JsonArr } from './json'
 import {
+  parseTreeFromJson,
   parseNeighborTreeFromJson,
   convertNeighborToMptt,
   parseMpttTreeFromJson,
   buildIdIndex,
   sortByLeftNode,
+  hasMpttFields,
 } from './tree-builder'
 import {
   rebuildShownNodes,
@@ -25,6 +29,7 @@ import {
   setCheckedNodesInTree,
   setCheckedNodeInTree,
   getCheckedNodesFromTree,
+  getCheckedIdsFromTree,
   clearAllChecked,
 } from './tree-check'
 import { fuzzySearchTree } from './tree-search'
@@ -63,12 +68,32 @@ import { serializeMpttArray } from './tree-serializer'
  * - Кэш JSON: избегает повторной сериализации того же viewport
  */
 export class GiantTree {
-  constructor(root: string, lineHeight: f32, selectType: SelectType) {
+  constructor(
+    root: string,
+    lineHeight: f32,
+    selectType: SelectType,
+    idField: string = 'id',
+    nameField: string = 'name',
+    parentIdField: string = 'parentId',
+    leftNodeField: string = 'leftNode',
+    rightNodeField: string = 'rightNode'
+  ) {
     this.root = root
     this.lineHeight = lineHeight
     this.selectType = selectType
+    this.fieldKeys = new TreeFieldKeys(
+      idField,
+      nameField,
+      parentIdField,
+      leftNodeField,
+      rightNodeField
+    )
   }
 
+  /** JSON 字段键名配置 / JSON field key configuration / Конфигурация имён полей JSON */
+  fieldKeys: TreeFieldKeys
+  /** CHECKBOX 输出 ID 模式（仅影响 getCheckedIds）/ CHECKBOX output ID mode (affects getCheckedIds only) / Режим вывода ID для CHECKBOX (влияет только на getCheckedIds) */
+  checkedOutputMode: CheckedOutputMode = CheckedOutputMode.All
   /** 临时邻接表缓冲区（逐条 push 场景） / Temporary adjacency list buffer (for incremental push) / Временный буфер списка смежности (для пошагового push) */
   tmpTree: NeighborTree[] = []
   /** 完整 MPTT 树数组，按 leftNode 升序 / Full MPTT tree array, sorted by leftNode ascending / Полный массив дерева MPTT, отсортирован по leftNode */
@@ -123,15 +148,36 @@ export class GiantTree {
   // ─── 树构建 / Tree Building / Построение дерева ───
 
   /**
+   * 统一设置树数据：使用可配置字段键名从 JSON 数组解析，
+   * 自动检测邻接表/MPTT 输入，始终重新构建 MPTT（避免 stale leftNode/rightNode）
+   *
+   * Unified tree setter: parses JSON array with configurable field keys,
+   * auto-detects adjacency list / MPTT input, always rebuilds MPTT (avoids stale leftNode/rightNode)
+   *
+   * Единый установщик дерева: разбирает массив JSON с настраиваемыми ключами полей,
+   * автоопределяет список смежности / ввод MPTT, всегда перестраивает MPTT
+   *
+   * @param jsonTree - JSON 数组 / JSON array / Массив JSON
+   */
+  setTree(jsonTree: JsonArr): void {
+    this.fullTree.splice(0)
+    this.tmpTree.splice(0)
+    this.tmpTree = parseTreeFromJson(jsonTree, this.fieldKeys)
+    this._convertToMpttTree(this.tmpTree)
+    this.tmpTree.splice(0)
+  }
+
+  /**
    * 从 JSON 数组设置邻接表树，自动转换为 MPTT 结构
    * Sets adjacency list tree from JSON array, auto-converts to MPTT structure
    * Устанавливает дерево списка смежности из массива JSON, автоматически преобразует в структуру MPTT
+   *
+   * 内部委托给 setTree，使用可配置字段键名
+   * Delegates to setTree internally, using configurable field keys
+   * Делегирует setTree внутри, используя настраиваемые ключи полей
    */
   setNeighborTree(jsonTree: JsonArr): void {
-    this.tmpTree.splice(0)
-    this.tmpTree = parseNeighborTreeFromJson(jsonTree)
-    this._convertToMpttTree(this.tmpTree)
-    this.tmpTree.splice(0)
+    this.setTree(jsonTree)
   }
 
   /**
@@ -140,21 +186,23 @@ export class GiantTree {
    * Внутренний метод преобразования списка смежности → MPTT
    */
   _convertToMpttTree(neighborTrees: NeighborTree[]): void {
-    this.shownCount = convertNeighborToMptt(
-      neighborTrees,
-      this.root,
-      this.fullTree
-    )
+    convertNeighborToMptt(neighborTrees, this.root, this.fullTree)
     this.idToIndex = buildIdIndex(this.fullTree)
     this._rebuildShownNodes()
   }
 
   /**
-   * 从 JSON 字符串设置已有的 MPTT 树数据
-   * Sets existing MPTT tree data from JSON string
-   * Устанавливает существующие данные дерева MPTT из строки JSON
+   * 从 JSON 字符串设置树数据（始终重建 MPTT，避免 stale leftNode/rightNode）
+   * Sets tree data from JSON string (always rebuilds MPTT, avoids stale leftNode/rightNode)
+   * Устанавливает данные дерева из строки JSON (всегда перестраивает MPTT)
+   *
+   * 无论输入是否包含 leftNode/rightNode，都基于 parentId 重建 MPTT。
+   * Regardless of whether input contains leftNode/rightNode, rebuilds MPTT based on parentId.
+   *
+   * @param tree - JSON 字符串 / JSON string / Строка JSON
    */
   setMpttTree(tree: string): void {
+    this.fullTree.splice(0)
     this.shownCount = parseMpttTreeFromJson(tree, this.root, this.fullTree)
     this.idToIndex = buildIdIndex(this.fullTree)
     this._rebuildShownNodes()
@@ -185,6 +233,7 @@ export class GiantTree {
    * Завершает пакетный ввод списка смежности, запускает преобразование в MPTT
    */
   popNeighbor(): void {
+    this.fullTree.splice(0)
     this._convertToMpttTree(this.tmpTree)
     this.tmpTree.splice(0)
   }
@@ -281,13 +330,10 @@ export class GiantTree {
     for (let i = 0; i < this.fullTree.length; i++) {
       const node: MpttTree = this.fullTree[i]
       node.collapsed = collapsed
-      if (node.deep > 0) {
-        node.shown = !collapsed
-      }
     }
-    // _rebuildShownNodes 会自动更新 shownCount，无需手动计数
-    // _rebuildShownNodes updates shownCount automatically
-    // _rebuildShownNodes обновляет shownCount автоматически
+    // 从 collapse 状态重建 shown 标志
+    // Rebuild shown flags from collapse state
+    resetShownFlags(this.fullTree)
     this._rebuildShownNodes()
   }
 
@@ -480,12 +526,24 @@ export class GiantTree {
   }
 
   /**
-   * 获取所有已选中节点的 JSON
-   * Gets JSON of all checked nodes
-   * Получает JSON всех выбранных узлов
+   * 获取所有已选中节点的 JSON（包含完整节点数据）
+   * Gets JSON of all checked nodes (full node data)
+   * Получает JSON всех выбранных узлов (полные данные)
    */
   getCheckedNodes(): string {
-    return getCheckedNodesFromTree(this.fullTree, this.selectType)
+    return getCheckedNodesFromTree(this.fullTree, this.selectType, this.checkedOutputMode)
+  }
+
+  /**
+   * 获取所有已选中节点的 ID（仅 ID，不包含完整节点数据）
+   * Gets IDs of all checked/selected nodes (ID only)
+   * Получает ID всех выбранных узлов (только ID, без полных данных)
+   *
+   * CHECKBOX: 返回 JSON 数组 ["id1","id2",...]
+   * RADIO/SELECT: 返回单个 ID "id1"
+   */
+  getCheckedIds(): string {
+    return getCheckedIdsFromTree(this.fullTree, this.selectType, this.checkedOutputMode)
   }
 
   /**
@@ -553,13 +611,9 @@ export class GiantTree {
   switchDisplayTree(type: DisplayType): void {
     if (type === DisplayType.TREE) {
       this.tree = this.fullTree
-      this.searchTree.splice(0)
     } else if (type === DisplayType.SEARCH) {
       this.tree = this.searchTree
     }
-    // _rebuildShownNodes 会自动更新 shownCount，无需 recalcShownCount
-    // _rebuildShownNodes updates shownCount automatically
-    // _rebuildShownNodes обновляет shownCount автоматически
     this._rebuildShownNodes()
   }
 

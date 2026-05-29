@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import '@lib/assets/style/index.scss'
 import VueGiantTree from '@lib/VueGiantTree.vue'
-import { SelectType, DisplayType } from '../build/release'
+import { SelectType, DisplayType, CheckedOutputMode } from '../build/release'
 
 import { nanoid } from 'nanoid'
 import { ref, computed, watch } from 'vue'
@@ -20,7 +20,7 @@ const currentSelectType = ref<SelectType>(SelectType.CHECKBOX)
 const treeHeight = ref('500px')
 const treeFontSize = ref('14px')
 const lineHeight = ref(26)
-const checkedResult = ref<TreeNodeData[]>([])
+const checkedResult = ref<TreeNodeData | TreeNodeData[] | string | string[]>([])
 const searchKeyword = ref('')
 const setCheckedIdsInput = ref('')
 const currentDisplayType = ref<DisplayType>(DisplayType.TREE)
@@ -29,22 +29,51 @@ const treeRef = ref<InstanceType<typeof VueGiantTree>>()
 const useCustomSlot = ref(false)
 const enableDisabled = ref(true)
 
+// 新增：输出模式配置
+const outputIdOnly = ref(true)
+const checkedOutputMode = ref<CheckedOutputMode>(CheckedOutputMode.All)
+
+// 切换 outputIdOnly 或 checkedOutputMode 时清空结果（组件内部会自动重发）
+// 但本地 ref 需要同步置空避免显示旧格式数据
+watch([outputIdOnly, checkedOutputMode], () => {
+  checkedResult.value = []
+})
+
 const rootId = nanoid()
 
 const generateTreeData = (size: TreeSize) => {
   const config = TREE_SIZES[size]
-  const data: { id: string; parentId: string; name: string; disabled?: boolean }[] = []
+  const data: {
+    id: string
+    parentId: string
+    name: string
+    disabled?: boolean
+  }[] = []
   for (let i = 0; i < config.l1; i++) {
     const id1 = nanoid()
-    data.push({ id: id1, parentId: rootId, name: `L1-${i}: ${id1.slice(0, 6)}` })
+    data.push({
+      id: id1,
+      parentId: rootId,
+      name: `L1-${i}: ${id1.slice(0, 6)}`,
+    })
     for (let j = 0; j < config.l2; j++) {
       const id2 = nanoid()
       const disableL2 = enableDisabled.value && j === 0
-      data.push({ id: id2, parentId: id1, name: `L2-${i}-${j}: ${id2.slice(0, 6)}`, disabled: disableL2 })
+      data.push({
+        id: id2,
+        parentId: id1,
+        name: `L2-${i}-${j}: ${id2.slice(0, 6)}`,
+        disabled: disableL2,
+      })
       for (let z = 0; z < config.l3; z++) {
         const id3 = nanoid()
         const disableL3 = enableDisabled.value && j === 0 && z === 0
-        data.push({ id: id3, parentId: id2, name: `L3-${i}-${j}-${z}: ${id3.slice(0, 6)}`, disabled: disableL3 })
+        data.push({
+          id: id3,
+          parentId: id2,
+          name: `L3-${i}-${j}-${z}: ${id3.slice(0, 6)}`,
+          disabled: disableL3,
+        })
       }
     }
   }
@@ -89,6 +118,9 @@ const checkedCount = computed(() => {
   if (Array.isArray(checkedResult.value)) {
     return checkedResult.value.length
   }
+  if (checkedResult.value && typeof checkedResult.value === 'object') {
+    return 1
+  }
   return checkedResult.value ? 1 : 0
 })
 
@@ -113,7 +145,7 @@ const clearAllChecked = () => {
 const setCheckedFromInput = () => {
   const ids = setCheckedIdsInput.value
     .split(',')
-    .map((s) => s.trim())
+    .map(s => s.trim())
     .filter(Boolean)
   if (ids.length === 0) return
   treeRef.value?.setCheckedByIds(ids)
@@ -156,13 +188,17 @@ const switchDisplay = (type: DisplayType) => {
           <h3>数据规模</h3>
           <div class="btn-group">
             <button
-              v-for="size in (['small', 'medium', 'large'] as const)"
+              v-for="size in ['small', 'medium', 'large'] as const"
               :key="size"
               :class="{ active: currentSize === size }"
               @click="currentSize = size"
             >
               {{ size }}
-              <span class="btn-detail">{{ TREE_SIZES[size].l1 }}x{{ TREE_SIZES[size].l2 }}x{{ TREE_SIZES[size].l3 }}</span>
+              <span class="btn-detail"
+                >{{ TREE_SIZES[size].l1 }}x{{ TREE_SIZES[size].l2 }}x{{
+                  TREE_SIZES[size].l3
+                }}</span
+              >
             </button>
           </div>
         </section>
@@ -241,7 +277,9 @@ const switchDisplay = (type: DisplayType) => {
               @keyup.enter="doSearch"
             />
             <div class="search-actions">
-              <button class="action-btn search-btn" @click="doSearch">搜索</button>
+              <button class="action-btn search-btn" @click="doSearch">
+                搜索
+              </button>
               <button class="action-btn" @click="clearSearch">清除</button>
             </div>
           </div>
@@ -269,13 +307,52 @@ const switchDisplay = (type: DisplayType) => {
           <h3>功能开关</h3>
           <div class="toggle-group">
             <label class="toggle-label">
-              <input type="checkbox" v-model="enableDisabled" @change="rebuildTree" />
+              <input
+                type="checkbox"
+                v-model="enableDisabled"
+                @change="rebuildTree"
+              />
               启用节点禁用 (每组第1个L2/L3)
             </label>
             <label class="toggle-label">
               <input type="checkbox" v-model="useCustomSlot" />
               启用自定义插槽
             </label>
+            <label class="toggle-label">
+              <input type="checkbox" v-model="outputIdOnly" />
+              仅输出 ID（默认，否则完整 JSON）
+            </label>
+          </div>
+        </section>
+
+        <section
+          v-if="currentSelectType === SelectType.CHECKBOX"
+          class="ctrl-section"
+        >
+          <h3>CHECKBOX 输出 ID 模式</h3>
+          <div class="btn-group">
+            <button
+              :class="{ active: checkedOutputMode === CheckedOutputMode.All }"
+              @click="checkedOutputMode = CheckedOutputMode.All"
+            >
+              All
+            </button>
+            <button
+              :class="{
+                active: checkedOutputMode === CheckedOutputMode.RootOnly,
+              }"
+              @click="checkedOutputMode = CheckedOutputMode.RootOnly"
+            >
+              RootOnly
+            </button>
+            <button
+              :class="{
+                active: checkedOutputMode === CheckedOutputMode.LeafOnly,
+              }"
+              @click="checkedOutputMode = CheckedOutputMode.LeafOnly"
+            >
+              LeafOnly
+            </button>
           </div>
         </section>
 
@@ -289,8 +366,15 @@ const switchDisplay = (type: DisplayType) => {
               class="search-input"
             />
             <div class="search-actions">
-              <button class="action-btn search-btn" @click="setCheckedFromInput">设置选中</button>
-              <button class="action-btn" @click="setRandomChecked">随机选中3个</button>
+              <button
+                class="action-btn search-btn"
+                @click="setCheckedFromInput"
+              >
+                设置选中
+              </button>
+              <button class="action-btn" @click="setRandomChecked">
+                随机选中3个
+              </button>
             </div>
           </div>
         </section>
@@ -316,20 +400,58 @@ const switchDisplay = (type: DisplayType) => {
         <section class="ctrl-section">
           <h3>选中结果 ({{ checkedCount }})</h3>
           <div class="result-box">
-            <template v-if="Array.isArray(checkedResult) && checkedResult.length > 0">
+            <!-- ID 模式：string[] -->
+            <template
+              v-if="outputIdOnly && Array.isArray(checkedResult) && checkedResult.length > 0"
+            >
               <div
-                v-for="node in checkedResult.slice(0, 20)"
-                :key="node.id"
-                class="result-item"
+                v-for="id in (checkedResult as string[]).slice(0, 20)"
+                :key="id"
+                class="result-item result-id"
               >
-                {{ node.name || node.id }}
+                {{ id }}
               </div>
               <div v-if="checkedResult.length > 20" class="result-more">
                 ... 还有 {{ checkedResult.length - 20 }} 项
               </div>
             </template>
-            <div v-else-if="!Array.isArray(checkedResult) && checkedResult" class="result-item">
-              {{ (checkedResult as TreeNodeData).name || (checkedResult as TreeNodeData).id }}
+            <!-- ID 模式单值 -->
+            <div
+              v-else-if="outputIdOnly && typeof checkedResult === 'string' && checkedResult"
+              class="result-item result-id"
+            >
+              {{ checkedResult }}
+            </div>
+            <!-- 完整 JSON 模式：TreeNodeData[] -->
+            <template
+              v-else-if="!outputIdOnly && Array.isArray(checkedResult) && checkedResult.length > 0"
+            >
+              <div
+                v-for="node in (checkedResult as TreeNodeData[]).slice(0, 20)"
+                :key="node.id"
+                class="result-item"
+              >
+                <span class="result-name">{{ node.name || node.id }}</span>
+                <span class="result-extend" v-if="node.extendData">
+                  {{ JSON.stringify(node.extendData) }}
+                </span>
+              </div>
+              <div v-if="checkedResult.length > 20" class="result-more">
+                ... 还有 {{ checkedResult.length - 20 }} 项
+              </div>
+            </template>
+            <!-- 完整 JSON 模式单值 -->
+            <div
+              v-else-if="!outputIdOnly && !Array.isArray(checkedResult) && checkedResult"
+              class="result-item"
+            >
+              <span class="result-name">{{
+                (checkedResult as TreeNodeData).name ||
+                (checkedResult as TreeNodeData).id
+              }}</span>
+              <span class="result-extend" v-if="(checkedResult as TreeNodeData).extendData">
+                {{ JSON.stringify((checkedResult as TreeNodeData).extendData) }}
+              </span>
             </div>
             <div v-else class="result-empty">暂无选中节点</div>
           </div>
@@ -348,6 +470,8 @@ const switchDisplay = (type: DisplayType) => {
             :font-size="treeFontSize"
             :height="'100%'"
             :width="'100%'"
+            :output-id-only="outputIdOnly"
+            :checked-output-mode="checkedOutputMode"
             v-model="checkedResult"
           >
             <template v-if="useCustomSlot" #node="{ node }">
@@ -370,7 +494,8 @@ const switchDisplay = (type: DisplayType) => {
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   background: #f0f2f5;
   color: #1a1a2e;
 }
@@ -552,6 +677,26 @@ input[type='range'] {
   border-radius: 4px;
   background: #f5f5f5;
   margin-bottom: 3px;
+  word-break: break-all;
+}
+
+.result-id {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 11px;
+  color: #1677ff;
+  background: #f0f7ff;
+}
+
+.result-name {
+  font-weight: 500;
+}
+
+.result-extend {
+  display: block;
+  font-size: 10px;
+  color: #888;
+  margin-top: 2px;
+  font-family: 'SF Mono', 'Fira Code', monospace;
   word-break: break-all;
 }
 

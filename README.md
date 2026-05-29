@@ -17,6 +17,8 @@
 - **MPTT 算法** — O(1) 子树判定，O(k) 视口切片，O(subtree + log N) 展开/折叠
 - **三种选择模式** — 多选 (Checkbox)、单选 (Radio)、点击选中 (Select)
 - **模糊搜索** — 关键词过滤并自动补全祖先链
+- **可配置字段名** — 支持自定义输入 JSON 的字段映射（id / name / parentId / leftNode / rightNode）
+- **统一树构建** — 无论输入是邻接表还是 MPTT 格式，始终自动重建 MPTT，避免 stale leftNode/rightNode
 - **JSON 缓存** — 滚动位置不变时直接返回缓存，避免重复序列化
 - **TypeScript 类型支持** — 完整的类型定义导出
 
@@ -70,6 +72,42 @@ const selected = ref([])
 | `lineHeight` | `number` | `26` | 每行高度（像素） |
 | `fontSize` | `string` | `'14px'` | 字体大小 |
 | `selectType` | `SelectType` | `CHECKBOX` | 选择模式：`CHECKBOX` / `RADIO` / `SELECT` |
+| `fieldKeys` | `TreeFieldKeys` | `{}` | JSON 字段名映射，见下方说明 |
+| `outputIdOnly` | `boolean` | `true` | `true` 时 v-model 只传选中节点的 ID（默认）；`false` 时传完整 JSON |
+
+### 字段名映射 (fieldKeys)
+
+当输入数据的 JSON 字段名不是默认的 `id`/`name`/`parentId`/`leftNode`/`rightNode` 时，可通过 `fieldKeys` 指定映射关系：
+
+```typescript
+interface TreeFieldKeys {
+  idField?: string       // 默认 'id'
+  nameField?: string     // 默认 'name'
+  parentIdField?: string // 默认 'parentId'
+  leftNodeField?: string // 默认 'leftNode'
+  rightNodeField?: string // 默认 'rightNode'
+}
+```
+
+**示例：** 数据字段名为 `key` / `label` / `parent` / `lft` / `rgt`
+
+```vue
+<template>
+  <VueGiantTree
+    :tree="treeData"
+    root="root"
+    :fieldKeys="{
+      idField: 'key',
+      nameField: 'label',
+      parentIdField: 'parent',
+      leftNodeField: 'lft',
+      rightNodeField: 'rgt',
+    }"
+  />
+</template>
+```
+
+> **注意：** leftNode/rightNode 字段仅用于自动检测输入类型。无论输入是否包含这两个字段，组件始终基于 parentId 关系重新构建 MPTT 树，以确保 leftNode/rightNode 值准确无误。
 
 ### 数据格式
 
@@ -142,6 +180,8 @@ A high-performance virtual-scrolling tree component built with Vue 3 + WebAssemb
 - **MPTT Algorithm** — O(1) subtree checks, O(k) viewport slicing, O(subtree + log N) expand/collapse
 - **Three Selection Modes** — Checkbox (multi-select), Radio (single-select), Click-to-Select
 - **Fuzzy Search** — Keyword filtering with automatic ancestor chain completion
+- **Configurable Field Keys** — Custom JSON field name mapping for id / name / parentId / leftNode / rightNode
+- **Unified Tree Building** — Always rebuilds MPTT from parentId regardless of input format, avoiding stale leftNode/rightNode
 - **JSON Caching** — Returns cached results when scroll position is unchanged
 - **TypeScript Support** — Full type definitions exported
 
@@ -195,6 +235,42 @@ const selected = ref([])
 | `lineHeight` | `number` | `26` | Row height in pixels |
 | `fontSize` | `string` | `'14px'` | Font size |
 | `selectType` | `SelectType` | `CHECKBOX` | Selection mode: `CHECKBOX` / `RADIO` / `SELECT` |
+| `fieldKeys` | `TreeFieldKeys` | `{}` | JSON field name mapping, see below |
+| `outputIdOnly` | `boolean` | `true` | When `true` (default), v-model emits only selected node IDs; `false` emits full JSON |
+
+### Field Key Mapping (fieldKeys)
+
+When your input data uses custom JSON field names instead of the default `id`/`name`/`parentId`/`leftNode`/`rightNode`, use `fieldKeys` to specify the mapping:
+
+```typescript
+interface TreeFieldKeys {
+  idField?: string       // default 'id'
+  nameField?: string     // default 'name'
+  parentIdField?: string // default 'parentId'
+  leftNodeField?: string // default 'leftNode'
+  rightNodeField?: string // default 'rightNode'
+}
+```
+
+**Example:** data with `key` / `label` / `parent` / `lft` / `rgt` fields
+
+```vue
+<template>
+  <VueGiantTree
+    :tree="treeData"
+    root="root"
+    :fieldKeys="{
+      idField: 'key',
+      nameField: 'label',
+      parentIdField: 'parent',
+      leftNodeField: 'lft',
+      rightNodeField: 'rgt',
+    }"
+  />
+</template>
+```
+
+> **Note:** The leftNode/rightNode fields are only used for input type auto-detection. Regardless of whether these fields are present, the component always rebuilds the MPTT tree from parentId relationships to ensure accurate leftNode/rightNode values.
 
 ### Data Format
 
@@ -267,6 +343,8 @@ pnpm lib:build
 - **Алгоритм MPTT** — Проверка поддерева за O(1), срез viewport за O(k), развёртывание/свёртывание за O(поддерево + log N)
 - **Три режима выбора** — Чекбокс (множественный), Радиокнопка (одиночный), Выбор по клику
 - **Нечёткий поиск** — Фильтрация по ключевому слову с автоматическим дополнением цепочки предков
+- **Настраиваемые ключи полей** — Сопоставление пользовательских имён полей JSON (id / name / parentId / leftNode / rightNode)
+- **Единое построение дерева** — Всегда перестраивает MPTT из parentId независимо от формата входных данных, избегая устаревших leftNode/rightNode
 - **Кэширование JSON** — При неизменной позиции прокрутки возвращается кэшированный результат
 - **Поддержка TypeScript** — Полные определения типов
 
@@ -320,6 +398,42 @@ const selected = ref([])
 | `lineHeight` | `number` | `26` | Высота строки в пикселях |
 | `fontSize` | `string` | `'14px'` | Размер шрифта |
 | `selectType` | `SelectType` | `CHECKBOX` | Режим выбора: `CHECKBOX` / `RADIO` / `SELECT` |
+| `fieldKeys` | `TreeFieldKeys` | `{}` | Сопоставление имён полей JSON, см. ниже |
+| `outputIdOnly` | `boolean` | `true` | Если `true` (по умолч.), v-model передаёт только ID выбранных узлов; `false` — полные данные |
+
+### Сопоставление ключей полей (fieldKeys)
+
+Если во входных данных используются пользовательские имена полей JSON вместо стандартных `id`/`name`/`parentId`/`leftNode`/`rightNode`, используйте `fieldKeys` для указания соответствия:
+
+```typescript
+interface TreeFieldKeys {
+  idField?: string       // по умолчанию 'id'
+  nameField?: string     // по умолчанию 'name'
+  parentIdField?: string // по умолчанию 'parentId'
+  leftNodeField?: string // по умолчанию 'leftNode'
+  rightNodeField?: string // по умолчанию 'rightNode'
+}
+```
+
+**Пример:** данные с полями `key` / `label` / `parent` / `lft` / `rgt`
+
+```vue
+<template>
+  <VueGiantTree
+    :tree="treeData"
+    root="root"
+    :fieldKeys="{
+      idField: 'key',
+      nameField: 'label',
+      parentIdField: 'parent',
+      leftNodeField: 'lft',
+      rightNodeField: 'rgt',
+    }"
+  />
+</template>
+```
+
+> **Примечание:** Поля leftNode/rightNode используются только для автоопределения типа входных данных. Независимо от их наличия, компонент всегда перестраивает дерево MPTT на основе parentId для обеспечения точности значений leftNode/rightNode.
 
 ### Формат данных
 

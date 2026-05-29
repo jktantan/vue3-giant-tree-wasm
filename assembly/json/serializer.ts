@@ -20,6 +20,12 @@ export class JsonEncoder {
     this._parts.push('"' + escapeString(value) + '"')
   }
 
+  /** 嵌入原始 JSON 值（不转义、不加引号），用于 extendData 等场景 */
+  setRawJson(name: string | null, value: string): void {
+    this.writeKey(name)
+    this._parts.push(value)
+  }
+
   setInteger(name: string | null, value: i64): void {
     this.writeKey(name)
     this._parts.push(value.toString())

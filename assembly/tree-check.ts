@@ -1,5 +1,6 @@
-import { CheckType, MpttTree, SelectType } from './models'
-import { serializeMpttArray, serializeMpttNode } from './tree-serializer'
+import { CheckType, CheckedOutputMode, MpttTree, SelectType } from './models'
+import { escapeString } from './json/types'
+import { serializeCheckedArray, serializeCheckedNode, serializeMpttArray, serializeMpttNode } from './tree-serializer'
 
 /**
  * 处理节点选中/取消选中操作，根据 selectType 分派到不同逻辑
@@ -23,33 +24,19 @@ export function checkNodeInTree(
   checked: CheckType,
   selectType: SelectType
 ): void {
-  if (selectType === SelectType.RADIO) {
-    if (idToIndex.has(id) && fullTree[idToIndex.get(id)].disabled) return
-    for (let i = 0; i < fullTree.length; i++) {
-      fullTree[i].checked =
-        fullTree[i].id !== id ? CheckType.UNCHECKED : checked
-    }
-  } else if (selectType === SelectType.SELECT) {
-    if (idToIndex.has(id) && fullTree[idToIndex.get(id)].disabled) return
-    for (let i = 0; i < fullTree.length; i++) {
-      fullTree[i].selected =
-        fullTree[i].id !== id ? CheckType.UNCHECKED : checked
-    }
-  } else {
-    if (idToIndex.has(id)) {
-      const i: i32 = idToIndex.get(id)
-      const node: MpttTree = fullTree[i]
-      if (node.disabled) return
-      node.checked = checked
-      setSubTreeChecked(fullTree, node, checked, i + 1)
-      for (let j = i - 1; j >= 0; j--) {
-        const prevNode: MpttTree = fullTree[j]
-        if (
-          prevNode.leftNode <= node.leftNode &&
-          prevNode.rightNode >= node.rightNode
-        ) {
-          prevNode.checked = getParentNodeCheckType(fullTree, prevNode, j + 1)
-        }
+  if (idToIndex.has(id)) {
+    const i: i32 = idToIndex.get(id)
+    const node: MpttTree = fullTree[i]
+    if (node.disabled) return
+    node.checked = checked
+    setSubTreeChecked(fullTree, node, checked, i + 1)
+    for (let j = i - 1; j >= 0; j--) {
+      const prevNode: MpttTree = fullTree[j]
+      if (
+        prevNode.leftNode <= node.leftNode &&
+        prevNode.rightNode >= node.rightNode
+      ) {
+        prevNode.checked = getParentNodeCheckType(fullTree, prevNode, j + 1)
       }
     }
   }
@@ -289,9 +276,84 @@ export function setCheckedNodeInTree(
 }
 
 /**
- * 获取所有已选中节点的 JSON 字符串
- * Gets JSON string of all checked nodes
- * Получает строку JSON всех выбранных узлов
+ * 获取所有已选中节点的 ID（仅返回 ID，不包含完整数据）
+ * Gets IDs of all checked/selected nodes (ID only, no full data)
+ * Получает ID всех выбранных узлов (только ID, без полных данных)
+ *
+ * CHECKBOX: 返回 JSON 数组 / returns JSON array / возвращает массив JSON
+ * RADIO/SELECT: 返回单个 ID 字符串 / returns single ID string / возвращает строку одного ID
+ *
+ * @param fullTree - 完整树数组 / Full tree array / Полный массив дерева
+ * @param selectType - 选择模式 / Selection mode / Режим выбора
+ * @returns JSON 字符串（数组或单值） / JSON string (array or single value) / Строка JSON (массив или одиночное значение)
+ */
+/**
+ * 判断节点是否为叶子节点（无子节点）
+ * Checks whether a node is a leaf (has no children)
+ * Определяет, является ли узел листовым (не имеет потомков)
+ */
+// @ts-ignore: decorator
+@inline function isLeaf(node: MpttTree): bool {
+  return node.rightNode - node.leftNode === 1
+}
+
+/**
+ * 判断节点是否被祖先覆盖（祖先为 CHECKED 时，该节点无需重复输出）
+ * Checks whether a node is covered by an ancestor (ancestor is CHECKED, so this node is redundant)
+ * Проверяет, покрыт ли узел предком (предок CHECKED, поэтому этот узел избыточен)
+ */
+function isCoveredByCheckedAncestor(fullTree: MpttTree[], idx: i32): bool {
+  const node = fullTree[idx]
+  for (let j: i32 = idx - 1; j >= 0; j--) {
+    const prev = fullTree[j]
+    if (prev.leftNode < node.leftNode && prev.rightNode > node.rightNode) {
+      // 找到最近祖先
+      if (prev.checked === CheckType.CHECKED) return true
+      break
+    }
+  }
+  return false
+}
+
+export function getCheckedIdsFromTree(
+  fullTree: MpttTree[],
+  selectType: SelectType,
+  outputMode: CheckedOutputMode = CheckedOutputMode.All
+): string {
+  if (selectType === SelectType.RADIO) {
+    for (let i = 0; i < fullTree.length; i++) {
+      if (fullTree[i].checked === CheckType.CHECKED) {
+        return '"' + escapeString(fullTree[i].id) + '"'
+      }
+    }
+  } else if (selectType === SelectType.SELECT) {
+    for (let i = 0; i < fullTree.length; i++) {
+      if (fullTree[i].selected === CheckType.CHECKED) {
+        return '"' + escapeString(fullTree[i].id) + '"'
+      }
+    }
+  } else {
+    // CHECKBOX 模式：根据 outputMode 过滤
+    const ids: string[] = []
+    for (let i = 0; i < fullTree.length; i++) {
+      const node = fullTree[i]
+      if (node.checked !== CheckType.CHECKED) continue
+
+      if (outputMode === CheckedOutputMode.LeafOnly && !isLeaf(node)) continue
+      if (outputMode === CheckedOutputMode.RootOnly && isCoveredByCheckedAncestor(fullTree, i)) continue
+
+      ids.push('"' + escapeString(node.id) + '"')
+    }
+    if (ids.length === 0) return '[]'
+    return '[' + ids.join(',') + ']'
+  }
+  return 'null'
+}
+
+/**
+ * 获取所有已选中节点的 JSON 字符串（包含完整节点数据）
+ * Gets JSON string of all checked nodes (full node data)
+ * Получает строку JSON всех выбранных узлов (полные данные)
  *
  * @param fullTree - 完整树数组 / Full tree array / Полный массив дерева
  * @param selectType - 选择模式 / Selection mode / Режим выбора
@@ -299,30 +361,35 @@ export function setCheckedNodeInTree(
  */
 export function getCheckedNodesFromTree(
   fullTree: MpttTree[],
-  selectType: SelectType
+  selectType: SelectType,
+  outputMode: CheckedOutputMode = CheckedOutputMode.All
 ): string {
   if (selectType === SelectType.RADIO) {
     for (let i = 0; i < fullTree.length; i++) {
       if (fullTree[i].checked === CheckType.CHECKED) {
-        return serializeMpttNode(fullTree[i])
+        return serializeCheckedNode(fullTree[i])
       }
     }
+    return 'null'
   } else if (selectType === SelectType.SELECT) {
     for (let i = 0; i < fullTree.length; i++) {
       if (fullTree[i].selected === CheckType.CHECKED) {
-        return serializeMpttNode(fullTree[i])
+        return serializeCheckedNode(fullTree[i])
       }
     }
+    return 'null'
   } else {
+    // CHECKBOX: 按 outputMode 过滤后输出 extendData
     const tree: MpttTree[] = []
     for (let i = 0; i < fullTree.length; i++) {
-      if (fullTree[i].checked === CheckType.CHECKED) {
-        tree.push(fullTree[i])
-      }
+      const node = fullTree[i]
+      if (node.checked !== CheckType.CHECKED) continue
+      if (outputMode === CheckedOutputMode.LeafOnly && !isLeaf(node)) continue
+      if (outputMode === CheckedOutputMode.RootOnly && isCoveredByCheckedAncestor(fullTree, i)) continue
+      tree.push(node)
     }
-    return serializeMpttArray(tree)
+    return serializeCheckedArray(tree)
   }
-  return ''
 }
 
 /**

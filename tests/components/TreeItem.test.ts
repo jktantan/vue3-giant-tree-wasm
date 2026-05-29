@@ -67,7 +67,12 @@ describe('TreeItem: 节点组件', () => {
   it('点击箭头触发 collapse-click 事件', async () => {
     const wrapper = mount(TreeItem, {
       props: {
-        item: makeItem({ id: 'node-x', leftNode: 0, rightNode: 5, collapsed: true }),
+        item: makeItem({
+          id: 'node-x',
+          leftNode: 0,
+          rightNode: 5,
+          collapsed: true,
+        }),
         fontSize: '14px',
         selectType: SelectType.CHECKBOX,
       },
@@ -86,7 +91,9 @@ describe('TreeItem: 节点组件', () => {
         selectType: SelectType.CHECKBOX,
       },
     })
-    expect(wrapper.find('.giant-tree__icon-check-unchecked').exists()).toBe(true)
+    expect(wrapper.find('.giant-tree__icon-check-unchecked').exists()).toBe(
+      true
+    )
   })
 
   it('点击复选框从 UNCHECKED 切换到 CHECKED', async () => {
@@ -125,7 +132,9 @@ describe('TreeItem: 节点组件', () => {
         selectType: SelectType.RADIO,
       },
     })
-    expect(wrapper.find('.giant-tree__icon-radio-unchecked').exists()).toBe(true)
+    expect(wrapper.find('.giant-tree__icon-radio-unchecked').exists()).toBe(
+      true
+    )
   })
 
   it('点击文本触发 item-click 事件', async () => {

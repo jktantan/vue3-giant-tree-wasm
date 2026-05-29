@@ -1,16 +1,18 @@
 <script setup lang="ts">
 import {
   newTree,
+  newTreeWithKeys,
   setBoundary,
   SelectType,
+  CheckedOutputMode,
   clear,
-  pushNeighborNode,
-  popNeighbor,
+  setNeighborTree,
   getShownNodes,
   getShownHeight,
   collapseTree,
   checkNode,
   getCheckedNodes,
+  getCheckedIds,
   CheckType,
   DisplayType,
   fuzzyTree,
@@ -19,15 +21,16 @@ import {
   clearCheckedNodes,
   setCheckedNode,
   setCheckedNodes,
+  setCheckedOutputMode,
 } from '../build/release'
 
 import { throttle, debounce } from 'throttle-debounce'
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import TreeItem from '@lib/TreeItem.vue'
-import type { TreeNodeData, TreeInputItem } from './types'
+import type { TreeNodeData, TreeInputItem, TreeFieldKeys } from './types'
 const props = withDefaults(
   defineProps<{
-    modelValue: TreeNodeData | TreeNodeData[]
+    modelValue: TreeNodeData | TreeNodeData[] | string | string[]
     width?: string
     height?: string
     lineHeight?: number
@@ -36,6 +39,11 @@ const props = withDefaults(
     root?: string
     fontSize?: string
     tree: TreeInputItem[]
+    fieldKeys?: TreeFieldKeys
+    /** 输出模式：true=只传 ID，false=传完整 JSON */
+    outputIdOnly?: boolean
+    /** CHECKBOX 选中 ID 过滤模式 */
+    checkedOutputMode?: CheckedOutputMode
   }>(),
   {
     width: '100%',
@@ -45,6 +53,9 @@ const props = withDefaults(
     root: '',
     fontSize: '14px',
     tree: () => [],
+    fieldKeys: () => ({}),
+    outputIdOnly: true,
+    checkedOutputMode: CheckedOutputMode.All,
   }
 )
 const emit = defineEmits(['update:modelValue'])
@@ -72,22 +83,65 @@ const handleScroll = (event: Event) => {
   setBoundary(tree, scrollTop, scrollHeight)
   refreshTree()
 }
+/**
+ * 根据 outputIdOnly 配置发射选中结果
+ * Emit checked result according to outputIdOnly config
+ */
+const emitCheckedResult = () => {
+  const result = props.outputIdOnly
+    ? JSON.parse(getCheckedIds(tree))
+    : JSON.parse(getCheckedNodes(tree))
+  emit('update:modelValue', result)
+}
+
 const scrollEvent = throttle(16, handleScroll)
 const transformOffset = computed(
   () => `translate3d(0,${startOffset.value}px,0)`
 )
 
-const tree = newTree(props.root, props.lineHeight, props.selectType)
+const fk = props.fieldKeys
+const hasCustomKeys =
+  fk.idField ||
+  fk.nameField ||
+  fk.parentIdField ||
+  fk.leftNodeField ||
+  fk.rightNodeField
+const tree = hasCustomKeys
+  ? newTreeWithKeys(
+      props.root,
+      props.lineHeight,
+      props.selectType,
+      fk.idField ?? 'id',
+      fk.nameField ?? 'name',
+      fk.parentIdField ?? 'parentId',
+      fk.leftNodeField ?? 'leftNode',
+      fk.rightNodeField ?? 'rightNode'
+    )
+  : newTree(props.root, props.lineHeight, props.selectType)
 
-onMounted(async () => {
+// 初始化 CHECKBOX 输出模式
+setCheckedOutputMode(tree, props.checkedOutputMode)
+
+// 输出格式变化（ID ↔ JSON）→ 用新格式重发选中结果
+watch(() => props.outputIdOnly, () => {
+  emitCheckedResult()
+})
+
+// CHECKBOX 过滤模式变化 → 更新 WASM 树 + 重发
+watch(() => props.checkedOutputMode, (newMode) => {
+  setCheckedOutputMode(tree, newMode)
+  emitCheckedResult()
+})
+
+onMounted(() => {
   ro.observe(container.value!)
-  setBoundary(tree, scrollTop, scrollHeight)
   clear(tree)
-  for (let i = 0; i < props.tree.length; i++) {
-    const item = props.tree[i]
-    pushNeighborNode(tree, item.id, item.name, item.parentId, item.disabled ?? false)
-  }
-  popNeighbor(tree)
+  // JSON 串传入保留原始行数据到 extendData
+  setNeighborTree(tree, JSON.stringify(props.tree))
+  // 立即刷新视图（不依赖 ResizeObserver）
+  setBoundary(tree, scrollTop, scrollHeight)
+  listHeight.value = getShownHeight(tree)
+  refreshTree()
 })
 onUnmounted(() => {
   ro.disconnect()
@@ -95,8 +149,7 @@ onUnmounted(() => {
 const itemClick = (id: string) => {
   if (props.selectType === SelectType.SELECT) {
     checkNode(tree, id, CheckType.CHECKED)
-    const checkResult = getCheckedNodes(tree)
-    emit('update:modelValue', JSON.parse(checkResult))
+    emitCheckedResult()
     refreshTree()
   }
 }
@@ -107,8 +160,7 @@ const collapseClick = (id: string, isCollapse: boolean) => {
 }
 const checkClick = (id: string, checkType: CheckType) => {
   checkNode(tree, id, checkType)
-  const checkResult = getCheckedNodes(tree)
-  emit('update:modelValue', JSON.parse(checkResult))
+  emitCheckedResult()
   refreshTree()
 }
 
@@ -126,23 +178,21 @@ const getTreeSize = (): number => {
 
 const setChecked = (id: string) => {
   setCheckedNode(tree, id)
-  const checkResult = getCheckedNodes(tree)
-  emit('update:modelValue', JSON.parse(checkResult))
+  emitCheckedResult()
   listHeight.value = getShownHeight(tree)
   refreshTree()
 }
 
 const setCheckedByIds = (ids: string[]) => {
   setCheckedNodes(tree, ids)
-  const checkResult = getCheckedNodes(tree)
-  emit('update:modelValue', JSON.parse(checkResult))
+  emitCheckedResult()
   listHeight.value = getShownHeight(tree)
   refreshTree()
 }
 
 const clearAllChecked = () => {
   clearCheckedNodes(tree)
-  emit('update:modelValue', [])
+  emitCheckedResult()
   refreshTree()
 }
 
@@ -150,6 +200,11 @@ const switchDisplay = (displayType: DisplayType) => {
   switchDisplayTree(tree, displayType)
   listHeight.value = getShownHeight(tree)
   refreshTree()
+}
+
+/** 重新发射当前选中结果（模式切换后刷新格式用） */
+const refreshCheckedResult = () => {
+  emitCheckedResult()
 }
 
 defineExpose({
@@ -160,6 +215,7 @@ defineExpose({
   setCheckedByIds,
   clearAllChecked,
   switchDisplay,
+  refreshCheckedResult,
 })
 </script>
 
