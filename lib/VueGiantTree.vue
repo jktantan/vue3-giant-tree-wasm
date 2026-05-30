@@ -36,7 +36,7 @@ import {
 import { throttle, debounce } from 'throttle-debounce'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import TreeItem from '@lib/TreeItem.vue'
-import type { TreeNodeData, TreeInputItem, TreeFieldKeys } from './types'
+import type { TreeNodeData, TreeInputItem, TreeFieldKeys, FilterFn } from './types'
 const props = withDefaults(
   defineProps<{
     modelValue: TreeNodeData | TreeNodeData[] | string | string[]
@@ -53,6 +53,8 @@ const props = withDefaults(
     outputIdOnly?: boolean
     /** CHECKBOX 选中 ID 过滤模式 */
     checkedOutputMode?: CheckedOutputMode
+    /** 自定义过滤回调：CHECKBOX 模式 + checkedOutputMode=Custom 时用于过滤输出；RADIO 模式用于判断节点是否可选 */
+    filterFn?: FilterFn
   }>(),
   {
     width: '100%',
@@ -104,10 +106,23 @@ const handleScroll = (event: Event) => {
  */
 /** 按防抖输出选中结果 / Emit checked result with debounce / Выдать результат выбора с антидребезгом */
 const emitCheckedResult = () => {
-  const result = props.outputIdOnly
-    ? JSON.parse(getCheckedIds(tree))
-    : JSON.parse(getCheckedNodes(tree))
-  emit('update:modelValue', result)
+  if (props.checkedOutputMode === CheckedOutputMode.Custom && props.filterFn) {
+    // Custom 模式：获取完整节点数据，用 filterFn 过滤后再决定输出 ID 还是 JSON
+    // Custom mode: get full node data, filter with filterFn, then decide ID or JSON output
+    // Пользовательский режим: получить полные данные узлов, отфильтровать filterFn, затем решить, выводить ID или JSON
+    // getCheckedNodes 返回的是 extendData 原始 JSON（非 TreeNodeData 结构），直接传给 filterFn
+    const nodes = JSON.parse(getCheckedNodes(tree)) as Record<string, unknown>[]
+    const filtered = nodes.filter((item) => props.filterFn!(item))
+    const result = props.outputIdOnly
+      ? filtered.map((item) => item.id)
+      : filtered
+    emit('update:modelValue', result)
+  } else {
+    const result = props.outputIdOnly
+      ? JSON.parse(getCheckedIds(tree))
+      : JSON.parse(getCheckedNodes(tree))
+    emit('update:modelValue', result)
+  }
 }
 
 const scrollEvent = throttle(16, handleScroll)
@@ -267,6 +282,7 @@ defineExpose({
           :fontSize="fontSize"
           @collapse-click="collapseClick"
           :select-type="selectType"
+          :filter-fn="filterFn"
           @check-click="checkClick"
           @item-click="itemClick"
         >

@@ -5,7 +5,7 @@ import { SelectType, DisplayType, CheckedOutputMode } from '../build/release'
 
 import { nanoid } from 'nanoid'
 import { ref, computed, watch } from 'vue'
-import type { TreeNodeData } from '@lib/types'
+import type { TreeNodeData, FilterFn } from '@lib/types'
 
 const TREE_SIZES = {
   small: { l1: 5, l2: 3, l3: 2 },
@@ -29,6 +29,16 @@ const treeRef = ref<InstanceType<typeof VueGiantTree>>()
 const useCustomSlot = ref(false)
 const enableDisabled = ref(true)
 
+const enableFilterFn = ref(false)
+const filterCategory = ref<'A' | 'B'>('A')
+
+const filterFn = computed<FilterFn | undefined>(() => {
+  if (!enableFilterFn.value) return undefined
+  return (extendData: Record<string, unknown>) => {
+    return extendData.category === filterCategory.value
+  }
+})
+
 // 新增：输出模式配置
 const outputIdOnly = ref(true)
 const checkedOutputMode = ref<CheckedOutputMode>(CheckedOutputMode.All)
@@ -48,6 +58,7 @@ const generateTreeData = (size: TreeSize) => {
     parentId: string
     name: string
     disabled?: boolean
+    category?: string
   }[] = []
   for (let i = 0; i < config.l1; i++) {
     const id1 = nanoid()
@@ -55,6 +66,7 @@ const generateTreeData = (size: TreeSize) => {
       id: id1,
       parentId: rootId,
       name: `L1-${i}: ${id1.slice(0, 6)}`,
+      category: i % 2 === 0 ? 'A' : 'B',
     })
     for (let j = 0; j < config.l2; j++) {
       const id2 = nanoid()
@@ -64,6 +76,7 @@ const generateTreeData = (size: TreeSize) => {
         parentId: id1,
         name: `L2-${i}-${j}: ${id2.slice(0, 6)}`,
         disabled: disableL2,
+        category: j % 2 === 0 ? 'A' : 'B',
       })
       for (let z = 0; z < config.l3; z++) {
         const id3 = nanoid()
@@ -73,6 +86,7 @@ const generateTreeData = (size: TreeSize) => {
           parentId: id2,
           name: `L3-${i}-${j}-${z}: ${id3.slice(0, 6)}`,
           disabled: disableL3,
+          category: z % 2 === 0 ? 'A' : 'B',
         })
       }
     }
@@ -353,6 +367,42 @@ const switchDisplay = (type: DisplayType) => {
             >
               LeafOnly
             </button>
+            <button
+              :class="{
+                active: checkedOutputMode === CheckedOutputMode.Custom,
+              }"
+              @click="checkedOutputMode = CheckedOutputMode.Custom"
+            >
+              Custom
+            </button>
+          </div>
+        </section>
+
+        <section class="ctrl-section">
+          <h3>filterFn 自定义过滤</h3>
+          <p style="font-size:11px;color:#888;margin-bottom:8px">
+            CHECKBOX+Custom: 只输出 category 匹配的选中节点<br/>
+            RADIO: 只显示 category 匹配节点的 Radio 框
+          </p>
+          <div class="toggle-group">
+            <label class="toggle-label">
+              <input type="checkbox" v-model="enableFilterFn" />
+              启用 filterFn
+            </label>
+          </div>
+          <div v-if="enableFilterFn" class="btn-group" style="margin-top:8px">
+            <button
+              :class="{ active: filterCategory === 'A' }"
+              @click="filterCategory = 'A'"
+            >
+              仅 category="A"
+            </button>
+            <button
+              :class="{ active: filterCategory === 'B' }"
+              @click="filterCategory = 'B'"
+            >
+              仅 category="B"
+            </button>
           </div>
         </section>
 
@@ -472,6 +522,7 @@ const switchDisplay = (type: DisplayType) => {
             :width="'100%'"
             :output-id-only="outputIdOnly"
             :checked-output-mode="checkedOutputMode"
+            :filter-fn="filterFn"
             v-model="checkedResult"
           >
             <template v-if="useCustomSlot" #node="{ node }">

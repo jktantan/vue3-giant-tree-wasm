@@ -1,6 +1,13 @@
 import type { CheckType } from '../build/release'
 
 /**
+ * 自定义过滤回调：接收节点的 extendData（原始 JSON），返回 true 表示该项可选/可输出
+ * Custom filter callback: receives the node's extendData (raw JSON), returns true if the item is selectable/outputtable
+ * Пользовательский callback фильтрации: получает extendData узла (исходный JSON), возвращает true, если элемент доступен для выбора/вывода
+ */
+export type FilterFn = (extendData: Record<string, unknown>) => boolean
+
+/**
  * JSON 字段键名配置
  * JSON field key configuration
  * Конфигурация имён полей JSON

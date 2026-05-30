@@ -1,14 +1,22 @@
 <script setup lang="ts">
 import { SelectType, CheckType } from '../build/release'
-import type { TreeNodeData } from './types'
+import type { FilterFn, TreeNodeData } from './types'
+import { computed } from 'vue'
 
 const props = defineProps<{
   item: TreeNodeData
   fontSize: string
   selectType: SelectType
+  filterFn?: FilterFn
 }>()
 
 const emit = defineEmits(['collapse-click', 'check-click', 'item-click'])
+
+/** RADIO 模式：filterFn 返回 false 则不显示 Radio 框（节点不可选） / RADIO mode: hide radio if filterFn returns false / RADIO: скрыть radio если filterFn возвращает false */
+const showRadio = computed(() => {
+  if (!props.filterFn) return true
+  return props.filterFn(props.item.extendData || {})
+})
 const collapsedClick = () => {
   emit('collapse-click', props.item.id, !props.item.collapsed)
 }
@@ -70,7 +78,10 @@ const itemClick = () => {
         class="giant-tree__mask-button giant-tree__icon-check-checked checked"
       ></div>
     </div>
-    <div v-else-if="selectType === SelectType.RADIO" @click="checkClick">
+    <div
+      v-else-if="selectType === SelectType.RADIO && showRadio"
+      @click="checkClick"
+    >
       <div
         v-if="item.checked === CheckType.CHECKED"
         :style="{ width: fontSize, height: fontSize }"

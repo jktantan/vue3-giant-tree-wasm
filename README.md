@@ -74,6 +74,73 @@ const selected = ref([])
 | `selectType` | `SelectType` | `CHECKBOX` | 选择模式：`CHECKBOX` / `RADIO` / `SELECT` |
 | `fieldKeys` | `TreeFieldKeys` | `{}` | JSON 字段名映射，见下方说明 |
 | `outputIdOnly` | `boolean` | `true` | `true` 时 v-model 只传选中节点的 ID（默认）；`false` 时传完整 JSON |
+| `checkedOutputMode` | `CheckedOutputMode` | `All` | CHECKBOX 输出 ID 过滤模式：`All` / `RootOnly` / `LeafOnly` / `Custom` |
+| `filterFn` | `FilterFn` | — | 自定义过滤回调。CHECKBOX + Custom 模式下过滤输出；RADIO 模式下判断节点是否显示 Radio 框 |
+
+### CheckedOutputMode
+
+CHECKBOX 模式下控制 `getCheckedIds` 和 `getCheckedNodes` 的输出内容：
+
+| 值 | 说明 |
+|----|------|
+| `All` | 所有选中节点（默认） |
+| `RootOnly` | 仅返回全选子树的根节点（去重） |
+| `LeafOnly` | 仅返回叶子节点 |
+| `Custom` | 自定义模式：由 `filterFn` 回调决定输出哪些选中节点 |
+
+### filterFn 自定义过滤
+
+`filterFn` 是一个回调函数，接收节点的 `extendData`（原始数据对象），返回 `boolean`：
+
+```typescript
+type FilterFn = (extendData: Record<string, unknown>) => boolean
+```
+
+**两种用法：**
+
+| 模式 | 行为 |
+|------|------|
+| `CHECKBOX` + `Custom` | 过滤输出结果，只有 filterFn 返回 `true` 的已选中节点会出现在 v-model 中 |
+| `RADIO` | 过滤可选节点，只有 filterFn 返回 `true` 的节点才显示 Radio 框，其余节点无法被选中 |
+| `SELECT` | 不受影响 |
+
+**示例：** 只输出/选中 `category` 为 `'A'` 的节点
+
+```vue
+<script setup lang="ts">
+import { ref } from 'vue'
+import { VueGiantTree, CheckedOutputMode } from 'vue3-giant-tree-wasm'
+import type { FilterFn } from 'vue3-giant-tree-wasm'
+
+const selected = ref([])
+
+const filterFn: FilterFn = (extendData) => {
+  return extendData.category === 'A'
+}
+</script>
+
+<template>
+  <!-- CHECKBOX 模式：按 filterFn 过滤输出 -->
+  <VueGiantTree
+    :tree="treeData"
+    root="root"
+    :checked-output-mode="CheckedOutputMode.Custom"
+    :filter-fn="filterFn"
+    v-model="selected"
+  />
+
+  <!-- RADIO 模式：只有 category='A' 的节点显示 Radio 框 -->
+  <VueGiantTree
+    :tree="treeData"
+    root="root"
+    :select-type="SelectType.RADIO"
+    :filter-fn="filterFn"
+    v-model="selected"
+  />
+</template>
+```
+
+> **注意：** `filterFn` 接收的是原始行数据（即输入 JSON 中除 id/name/parentId 外的所有字段）。组件解析输入时会自动将每行的完整 JSON 保存为 `extendData`，filterFn 直接拿到这个对象。
 
 ### 字段名映射 (fieldKeys)
 
@@ -237,6 +304,73 @@ const selected = ref([])
 | `selectType` | `SelectType` | `CHECKBOX` | Selection mode: `CHECKBOX` / `RADIO` / `SELECT` |
 | `fieldKeys` | `TreeFieldKeys` | `{}` | JSON field name mapping, see below |
 | `outputIdOnly` | `boolean` | `true` | When `true` (default), v-model emits only selected node IDs; `false` emits full JSON |
+| `checkedOutputMode` | `CheckedOutputMode` | `All` | CHECKBOX output ID filter mode: `All` / `RootOnly` / `LeafOnly` / `Custom` |
+| `filterFn` | `FilterFn` | — | Custom filter callback. CHECKBOX + Custom mode filters output; RADIO mode determines which nodes show Radio |
+
+### CheckedOutputMode
+
+Controls the output of `getCheckedIds` and `getCheckedNodes` in CHECKBOX mode:
+
+| Value | Description |
+|-------|-------------|
+| `All` | All checked nodes (default) |
+| `RootOnly` | Only root nodes of fully-checked subtrees (deduped) |
+| `LeafOnly` | Only leaf nodes |
+| `Custom` | Custom mode: `filterFn` callback determines which checked nodes to output |
+
+### filterFn Custom Filter
+
+`filterFn` is a callback that receives the node's `extendData` (raw data object) and returns `boolean`:
+
+```typescript
+type FilterFn = (extendData: Record<string, unknown>) => boolean
+```
+
+**Two use cases:**
+
+| Mode | Behavior |
+|------|----------|
+| `CHECKBOX` + `Custom` | Filters output — only checked nodes where filterFn returns `true` appear in v-model |
+| `RADIO` | Filters selectable nodes — only nodes where filterFn returns `true` show a Radio button |
+| `SELECT` | Not affected |
+
+**Example:** only output/select nodes with `category === 'A'`
+
+```vue
+<script setup lang="ts">
+import { ref } from 'vue'
+import { VueGiantTree, CheckedOutputMode } from 'vue3-giant-tree-wasm'
+import type { FilterFn } from 'vue3-giant-tree-wasm'
+
+const selected = ref([])
+
+const filterFn: FilterFn = (extendData) => {
+  return extendData.category === 'A'
+}
+</script>
+
+<template>
+  <!-- CHECKBOX mode: filter output via filterFn -->
+  <VueGiantTree
+    :tree="treeData"
+    root="root"
+    :checked-output-mode="CheckedOutputMode.Custom"
+    :filter-fn="filterFn"
+    v-model="selected"
+  />
+
+  <!-- RADIO mode: only nodes with category='A' show Radio -->
+  <VueGiantTree
+    :tree="treeData"
+    root="root"
+    :select-type="SelectType.RADIO"
+    :filter-fn="filterFn"
+    v-model="selected"
+  />
+</template>
+```
+
+> **Note:** `filterFn` receives the raw row data (all fields from input JSON except id/name/parentId). The component automatically saves each row's full JSON as `extendData` during parsing, which is passed directly to filterFn.
 
 ### Field Key Mapping (fieldKeys)
 
@@ -400,6 +534,73 @@ const selected = ref([])
 | `selectType` | `SelectType` | `CHECKBOX` | Режим выбора: `CHECKBOX` / `RADIO` / `SELECT` |
 | `fieldKeys` | `TreeFieldKeys` | `{}` | Сопоставление имён полей JSON, см. ниже |
 | `outputIdOnly` | `boolean` | `true` | Если `true` (по умолч.), v-model передаёт только ID выбранных узлов; `false` — полные данные |
+| `checkedOutputMode` | `CheckedOutputMode` | `All` | Режим фильтрации вывода ID для CHECKBOX: `All` / `RootOnly` / `LeafOnly` / `Custom` |
+| `filterFn` | `FilterFn` | — | Пользовательский callback фильтрации. CHECKBOX + Custom — фильтрует вывод; RADIO — определяет, показывать ли Radio |
+
+### CheckedOutputMode
+
+Управляет выводом `getCheckedIds` и `getCheckedNodes` в режиме CHECKBOX:
+
+| Значение | Описание |
+|----------|----------|
+| `All` | Все выбранные узлы (по умолчанию) |
+| `RootOnly` | Только корни полностью выбранных поддеревьев (без дублей) |
+| `LeafOnly` | Только листовые узлы |
+| `Custom` | Пользовательский режим: callback `filterFn` определяет, какие узлы выводить |
+
+### filterFn — пользовательский фильтр
+
+`filterFn` — callback, получающий `extendData` узла (исходный объект данных) и возвращающий `boolean`:
+
+```typescript
+type FilterFn = (extendData: Record<string, unknown>) => boolean
+```
+
+**Два сценария:**
+
+| Режим | Поведение |
+|-------|-----------|
+| `CHECKBOX` + `Custom` | Фильтрует вывод — только выбранные узлы, где filterFn вернул `true`, попадают в v-model |
+| `RADIO` | Фильтрует выбираемые узлы — только узлы, где filterFn вернул `true`, показывают Radio |
+| `SELECT` | Не затрагивается |
+
+**Пример:** только узлы с `category === 'A'`
+
+```vue
+<script setup lang="ts">
+import { ref } from 'vue'
+import { VueGiantTree, CheckedOutputMode } from 'vue3-giant-tree-wasm'
+import type { FilterFn } from 'vue3-giant-tree-wasm'
+
+const selected = ref([])
+
+const filterFn: FilterFn = (extendData) => {
+  return extendData.category === 'A'
+}
+</script>
+
+<template>
+  <!-- CHECKBOX: фильтрация вывода через filterFn -->
+  <VueGiantTree
+    :tree="treeData"
+    root="root"
+    :checked-output-mode="CheckedOutputMode.Custom"
+    :filter-fn="filterFn"
+    v-model="selected"
+  />
+
+  <!-- RADIO: только узлы с category='A' показывают Radio -->
+  <VueGiantTree
+    :tree="treeData"
+    root="root"
+    :select-type="SelectType.RADIO"
+    :filter-fn="filterFn"
+    v-model="selected"
+  />
+</template>
+```
+
+> **Примечание:** `filterFn` получает исходные данные строки (все поля входного JSON кроме id/name/parentId). При разборе входных данных полный JSON каждой строки сохраняется как `extendData` и передаётся напрямую в filterFn.
 
 ### Сопоставление ключей полей (fieldKeys)
 

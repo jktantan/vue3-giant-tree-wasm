@@ -61,6 +61,8 @@ export enum CheckedOutputMode {
   All,
   RootOnly,
   LeafOnly,
+  /** 自定义过滤模式：由 Vue 侧 filterFn 回调决定输出哪些选中节点 / Custom filter mode: filterFn callback determines which checked nodes to output / Пользовательский режим: callback filterFn определяет, какие выбранные узлы выводить */
+  Custom,
 }
 
 /**
