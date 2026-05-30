@@ -7,15 +7,12 @@ import {
   SelectType,
   TreeFieldKeys,
 } from './models'
-import { JsonArr } from './json'
 import {
   parseTreeFromJson,
-  parseNeighborTreeFromJson,
-  convertNeighborToMptt,
   parseMpttTreeFromJson,
+  convertNeighborToMptt,
   buildIdIndex,
   sortByLeftNode,
-  hasMpttFields,
 } from './tree-builder'
 import {
   rebuildShownNodes,
@@ -159,7 +156,7 @@ export class GiantTree {
    *
    * @param jsonTree - JSON 数组 / JSON array / Массив JSON
    */
-  setTree(jsonTree: JsonArr): void {
+  setTree(jsonTree: string): void {
     this.fullTree.splice(0)
     this.tmpTree.splice(0)
     this.tmpTree = parseTreeFromJson(jsonTree, this.fieldKeys)
@@ -176,7 +173,7 @@ export class GiantTree {
    * Delegates to setTree internally, using configurable field keys
    * Делегирует setTree внутри, используя настраиваемые ключи полей
    */
-  setNeighborTree(jsonTree: JsonArr): void {
+  setNeighborTree(jsonTree: string): void {
     this.setTree(jsonTree)
   }
 
@@ -327,14 +324,18 @@ export class GiantTree {
    * Развернуть все / Свернуть все
    */
   collapseAll(collapsed: boolean): void {
+    this._shownNodes.splice(0)
+    this.shownCount = 0
     for (let i = 0; i < this.fullTree.length; i++) {
       const node: MpttTree = this.fullTree[i]
       node.collapsed = collapsed
+      node.shown = !collapsed || node.parentId === this.root
+      if (node.shown) {
+        this._shownNodes.push(node)
+        this.shownCount++
+      }
     }
-    // 从 collapse 状态重建 shown 标志
-    // Rebuild shown flags from collapse state
-    resetShownFlags(this.fullTree)
-    this._rebuildShownNodes()
+    this._invalidateCache()
   }
 
   // ─── 虚拟滚动 / Virtual Scrolling / Виртуальная прокрутка ───
@@ -531,7 +532,11 @@ export class GiantTree {
    * Получает JSON всех выбранных узлов (полные данные)
    */
   getCheckedNodes(): string {
-    return getCheckedNodesFromTree(this.fullTree, this.selectType, this.checkedOutputMode)
+    return getCheckedNodesFromTree(
+      this.fullTree,
+      this.selectType,
+      this.checkedOutputMode
+    )
   }
 
   /**
@@ -543,7 +548,11 @@ export class GiantTree {
    * RADIO/SELECT: 返回单个 ID "id1"
    */
   getCheckedIds(): string {
-    return getCheckedIdsFromTree(this.fullTree, this.selectType, this.checkedOutputMode)
+    return getCheckedIdsFromTree(
+      this.fullTree,
+      this.selectType,
+      this.checkedOutputMode
+    )
   }
 
   /**

@@ -12,8 +12,8 @@
       "sourceMap": false,
       "optimizeLevel": 3,
       "shrinkLevel": 0,
-      "converge": false,
-      "noAssert": false
+      "converge": true,
+      "noAssert": true
     }
   },
   "options": {

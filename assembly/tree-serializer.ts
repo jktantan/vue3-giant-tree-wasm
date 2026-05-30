@@ -1,39 +1,42 @@
 import { MpttTree } from './models'
 import { JsonEncoder } from './json/index'
+import { escapeString } from './json/types'
 
-/**
- * 将 MpttTree 数组序列化为 JSON 字符串
- * Serializes an array of MpttTree nodes to a JSON string
- * Сериализует массив узлов MpttTree в строку JSON
- *
- * @param tree - 待序列化的节点数组 / Array of nodes to serialize / Массив узлов для сериализации
- * @returns JSON 字符串，格式为 [{id,name,parentId,leftNode,rightNode,deep,checked,selected,collapsed}, ...] / JSON string / Строка JSON
- */
 export function serializeMpttArray(tree: MpttTree[]): string {
-  const encoder = new JsonEncoder()
-  encoder.pushArray(null)
+  if (tree.length === 0) return '[]'
+  const parts = new Array<string>()
+  parts.push('[')
   for (let i = 0; i < tree.length; i++) {
+    if (i > 0) parts.push(',')
     const node: MpttTree = tree[i]
-    encoder.pushObject(null)
-    encoder.setString('id', node.id)
-    encoder.setString('name', node.name)
-    encoder.setString('parentId', node.parentId)
-    encoder.setInteger('leftNode', node.leftNode)
-    encoder.setInteger('rightNode', node.rightNode)
-    encoder.setInteger('deep', node.deep)
-    encoder.setInteger('checked', node.checked)
-    encoder.setInteger('selected', node.selected)
-    encoder.setBoolean('collapsed', node.collapsed)
-    encoder.setBoolean('disabled', node.disabled)
-    // extendData 包含完整的原始行数据（包括 id/name/parentId 及自定义字段），嵌入为原始 JSON 对象
-    // embed original row data as raw JSON object, preserving all custom fields
+    parts.push('{"id":"')
+    parts.push(escapeString(node.id))
+    parts.push('","name":"')
+    parts.push(escapeString(node.name))
+    parts.push('","parentId":"')
+    parts.push(escapeString(node.parentId))
+    parts.push('","leftNode":')
+    parts.push(node.leftNode.toString())
+    parts.push(',"rightNode":')
+    parts.push(node.rightNode.toString())
+    parts.push(',"deep":')
+    parts.push(node.deep.toString())
+    parts.push(',"checked":')
+    parts.push(node.checked.toString())
+    parts.push(',"selected":')
+    parts.push(node.selected.toString())
+    parts.push(',"collapsed":')
+    parts.push(node.collapsed ? 'true' : 'false')
+    parts.push(',"disabled":')
+    parts.push(node.disabled ? 'true' : 'false')
     if (node.extendData.length > 0) {
-      encoder.setRawJson('extendData', node.extendData)
+      parts.push(',"extendData":')
+      parts.push(node.extendData)
     }
-    encoder.popObject()
+    parts.push('}')
   }
-  encoder.popArray()
-  return encoder.toString()
+  parts.push(']')
+  return parts.join('')
 }
 
 /**

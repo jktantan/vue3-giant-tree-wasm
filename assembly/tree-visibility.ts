@@ -238,7 +238,7 @@ export function incrementalUpdateShownNodes(
     const oldLen: i32 = shownNodes.length
     const addCount: i32 = toInsert.length
     for (let k: i32 = 0; k < addCount; k++) {
-      shownNodes.push(toInsert[0])
+      shownNodes.push(toInsert[k])
     }
     for (let k: i32 = oldLen - 1; k >= insertPos; k--) {
       shownNodes[k + addCount] = shownNodes[k]

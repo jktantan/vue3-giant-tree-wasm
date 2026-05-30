@@ -1,6 +1,11 @@
 import { CheckType, CheckedOutputMode, MpttTree, SelectType } from './models'
 import { escapeString } from './json/types'
-import { serializeCheckedArray, serializeCheckedNode, serializeMpttArray, serializeMpttNode } from './tree-serializer'
+import {
+  serializeCheckedArray,
+  serializeCheckedNode,
+  serializeMpttArray,
+  serializeMpttNode,
+} from './tree-serializer'
 
 /**
  * 处理节点选中/取消选中操作，根据 selectType 分派到不同逻辑
@@ -105,18 +110,22 @@ export function getParentNodeCheckType(
         } else {
           unCheckedNum += 1
         }
+        // 提前退出：已有混合状态 → HALF_CHECKED
+        if (
+          (checkedNum > 0 && (unCheckedNum > 0 || halfCheckedNum > 0)) ||
+          (unCheckedNum > 0 && halfCheckedNum > 0)
+        ) {
+          return CheckType.HALF_CHECKED
+        }
       }
     } else {
       break
     }
   }
-  if (unCheckedNum === 0 && halfCheckedNum === 0 && checkedNum > 0) {
+  if (checkedNum > 0) {
     return CheckType.CHECKED
-  } else if ((unCheckedNum > 0 && checkedNum > 0) || halfCheckedNum > 0) {
-    return CheckType.HALF_CHECKED
-  } else {
-    return CheckType.UNCHECKED
   }
+  return CheckType.UNCHECKED
 }
 
 /**
@@ -209,18 +218,11 @@ export function setCheckedNodesInTree(
     }
   }
 
-  // 按 leftNode 降序排序（从最深祖先开始，构建自底向上的更新顺序）
-  // Sort by leftNode descending (deepest first) for bottom-up ancestor update
-  // Сортировка по leftNode по убыванию (сначала самый глубокий) для обновления снизу вверх
-  ancestors.sort((a: MpttTree, b: MpttTree): i32 => {
-    return b.leftNode - a.leftNode
-  })
+  // 按 leftNode 降序（最深祖先先更新），确保自底向上计算
+  ancestors.sort((a: MpttTree, b: MpttTree): i32 => b.leftNode - a.leftNode)
 
-  // 用正确的 fullTree 索引重算每个祖先的选中状态
-  // Recalculate each ancestor using its actual fullTree index
-  // Пересчёт каждого предка с использованием его реального индекса в fullTree
-  for (let i = 0; i < ancestors.length; i++) {
-    const anc: MpttTree = ancestors[i]
+  for (let a: i32 = 0; a < ancestors.length; a++) {
+    const anc: MpttTree = ancestors[a]
     const ancIdx: i32 = idToIndex.get(anc.id)
     anc.checked = getParentNodeCheckType(fullTree, anc, ancIdx + 1)
   }
@@ -340,7 +342,11 @@ export function getCheckedIdsFromTree(
       if (node.checked !== CheckType.CHECKED) continue
 
       if (outputMode === CheckedOutputMode.LeafOnly && !isLeaf(node)) continue
-      if (outputMode === CheckedOutputMode.RootOnly && isCoveredByCheckedAncestor(fullTree, i)) continue
+      if (
+        outputMode === CheckedOutputMode.RootOnly &&
+        isCoveredByCheckedAncestor(fullTree, i)
+      )
+        continue
 
       ids.push('"' + escapeString(node.id) + '"')
     }
@@ -385,7 +391,11 @@ export function getCheckedNodesFromTree(
       const node = fullTree[i]
       if (node.checked !== CheckType.CHECKED) continue
       if (outputMode === CheckedOutputMode.LeafOnly && !isLeaf(node)) continue
-      if (outputMode === CheckedOutputMode.RootOnly && isCoveredByCheckedAncestor(fullTree, i)) continue
+      if (
+        outputMode === CheckedOutputMode.RootOnly &&
+        isCoveredByCheckedAncestor(fullTree, i)
+      )
+        continue
       tree.push(node)
     }
     return serializeCheckedArray(tree)
