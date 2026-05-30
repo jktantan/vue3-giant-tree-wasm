@@ -13,7 +13,11 @@ function skipWs(src: string, pos: i32, len: i32): i32 {
   return pos
 }
 
-// Read a JSON string value, returns the unescaped content. pos must be at opening "
+/**
+ * 读取 JSON 字符串内容（跳过转义），pos 必须在开引号 " 处
+ * Read a JSON string value (skips escapes), pos must be at opening quote "
+ * Чтение значения строки JSON (пропуск экранирования), pos должен быть на открывающей кавычке "
+ */
 // @ts-ignore: decorator
 @inline
 function readStringContent(src: string, pos: i32, len: i32): string {
@@ -31,7 +35,11 @@ function readStringContent(src: string, pos: i32, len: i32): string {
   return ''
 }
 
-// Advance pos past a string value (including quotes). pos must be at opening "
+/**
+ * 跳过 JSON 字符串值（含引号），pos 必须在开引号 " 处
+ * Skip past a JSON string value (including quotes), pos must be at opening quote "
+ * Пропуск значения строки JSON (включая кавычки), pos должен быть на открывающей кавычке "
+ */
 // @ts-ignore: decorator
 @inline
 function skipString(src: string, pos: i32, len: i32): i32 {
@@ -45,7 +53,11 @@ function skipString(src: string, pos: i32, len: i32): i32 {
   return pos
 }
 
-// Advance pos past a JSON value of any type
+/**
+ * 跳过任意 JSON 值（字符串/数字/布尔/null/对象/数组）
+ * Skip past any JSON value (string/number/boolean/null/object/array)
+ * Пропуск любого значения JSON (строка/число/булево/null/объект/массив)
+ */
 function skipValue(src: string, pos: i32, len: i32): i32 {
   pos = skipWs(src, pos, len)
   if (pos >= len) return pos
@@ -71,6 +83,11 @@ function skipValue(src: string, pos: i32, len: i32): i32 {
   return pos
 }
 
+/**
+ * 跳过整个 JSON 对象 { ... }
+ * Skip past an entire JSON object { ... }
+ * Пропуск целого JSON-объекта { ... }
+ */
 function skipObject(src: string, pos: i32, len: i32): i32 {
   pos++ // skip '{'
   while (pos < len) {
@@ -89,6 +106,11 @@ function skipObject(src: string, pos: i32, len: i32): i32 {
   return pos
 }
 
+/**
+ * 跳过整个 JSON 数组 [ ... ]
+ * Skip past an entire JSON array [ ... ]
+ * Пропуск целого JSON-массива [ ... ]
+ */
 function skipArray(src: string, pos: i32, len: i32): i32 {
   pos++ // skip '['
   while (pos < len) {
@@ -104,7 +126,23 @@ function skipArray(src: string, pos: i32, len: i32): i32 {
 }
 
 // ─── Core parser: JSON string → NeighborTree[] with dynamic field keys ───
+// ─── 核心解析器：JSON 字符串 → NeighborTree[]，支持动态字段键名 ───
+// ─── Основной парсер: строка JSON → NeighborTree[] с динамическими ключами полей ───
 
+/**
+ * 解析单个 JSON 对象为 NeighborTree 节点
+ * Parse a single JSON object into a NeighborTree node
+ * Разбор одного JSON-объекта в узел NeighborTree
+ *
+ * 使用 fk (TreeFieldKeys) 动态匹配字段名，支持用户自定义字段映射。
+ * 自动保存原始 JSON 子串到 extendData 字段。
+ *
+ * Uses fk (TreeFieldKeys) to dynamically match field names, supporting custom field mapping.
+ * Automatically saves the raw JSON substring to the extendData field.
+ *
+ * Использует fk (TreeFieldKeys) для динамического сопоставления имён полей.
+ * Автоматически сохраняет исходную подстроку JSON в поле extendData.
+ */
 function parseOneObject(
   src: string,
   pos: i32,
@@ -159,6 +197,15 @@ function parseOneObject(
   return pos
 }
 
+/**
+ * 解析 JSON 数组为 NeighborTree 数组（邻接表）
+ * Parse JSON array into NeighborTree array (adjacency list)
+ * Разбор JSON-массива в массив NeighborTree (список смежности)
+ *
+ * @param src - JSON 字符串 / JSON string / Строка JSON
+ * @param fk - 字段键名配置 / Field key configuration / Конфигурация имён полей
+ * @returns 邻接表节点数组 / Adjacency list node array / Массив узлов списка смежности
+ */
 export function parseNeighborArray(
   src: string,
   fk: TreeFieldKeys
@@ -190,6 +237,15 @@ export function parseNeighborArray(
 
 // ─── Public API ───
 
+/**
+ * 检测 JSON 是否包含 MPTT 字段（leftNode 和 rightNode）
+ * Detect if JSON contains MPTT fields (leftNode and rightNode)
+ * Проверка наличия полей MPTT в JSON (leftNode и rightNode)
+ *
+ * @param src - JSON 字符串 / JSON string / Строка JSON
+ * @param fk - 字段键名配置 / Field key configuration / Конфигурация имён полей
+ * @returns true 表示输入已包含 MPTT 字段 / true if input already contains MPTT fields / true, если ввод уже содержит поля MPTT
+ */
 export function hasMpttFields(src: string, fk: TreeFieldKeys): bool {
   return (
     src.indexOf(fk.leftNodeField) !== -1 &&
@@ -197,6 +253,11 @@ export function hasMpttFields(src: string, fk: TreeFieldKeys): bool {
   )
 }
 
+/**
+ * 从 JSON 字符串解析为 NeighborTree 数组（使用自定义字段键名）
+ * Parse JSON string to NeighborTree array (using custom field keys)
+ * Разбор строки JSON в массив NeighborTree (с пользовательскими ключами полей)
+ */
 export function parseTreeFromJson(
   jsonStr: string,
   fieldKeys: TreeFieldKeys
@@ -204,10 +265,34 @@ export function parseTreeFromJson(
   return parseNeighborArray(jsonStr, fieldKeys)
 }
 
+/**
+ * 从 JSON 字符串解析为 NeighborTree 数组（使用默认字段键名）
+ * Parse JSON string to NeighborTree array (using default field keys)
+ * Разбор строки JSON в массив NeighborTree (с ключами полей по умолчанию)
+ */
 export function parseNeighborTreeFromJson(jsonStr: string): NeighborTree[] {
   return parseNeighborArray(jsonStr, new TreeFieldKeys())
 }
 
+/**
+ * 将邻接表树转换为 MPTT 结构（非递归深度优先遍历）
+ * Convert adjacency list tree to MPTT structure (non-recursive depth-first traversal)
+ * Преобразование дерева списка смежности в структуру MPTT (нерекурсивный обход в глубину)
+ *
+ * 使用 Map 按 parentId 分组，从 root 开始递归构建 MPTT 节点，
+ * 为每个节点分配 leftNode/rightNode/deep 值。
+ *
+ * Uses a Map grouped by parentId, recursively builds MPTT nodes from root,
+ * assigning leftNode/rightNode/deep values to each node.
+ *
+ * Использует Map, сгруппированную по parentId, рекурсивно строит узлы MPTT от корня,
+ * назначая значения leftNode/rightNode/deep каждому узлу.
+ *
+ * @param neighborTrees - 邻接表节点数组 / Adjacency list node array / Массив узлов списка смежности
+ * @param root - 根节点标识 / Root identifier / Идентификатор корня
+ * @param fullTree - 输出的 MPTT 树数组（就地填充） / Output MPTT tree array (filled in-place) / Выходной массив дерева MPTT (заполняется на месте)
+ * @returns 可见节点数 / Visible node count / Количество видимых узлов
+ */
 export function convertNeighborToMptt(
   neighborTrees: NeighborTree[],
   root: string,
@@ -228,6 +313,21 @@ export function convertNeighborToMptt(
   return shownCountRef[0]
 }
 
+/**
+ * 递归构建 MPTT 节点的内部函数
+ * Internal recursive MPTT node builder
+ * Внутренняя функция рекурсивного построения узлов MPTT
+ *
+ * @param treeMap - 按 parentId 分组的子节点映射 / Children grouped by parentId / Дети, сгруппированные по parentId
+ * @param parentId - 当前父节点 ID / Current parent node ID / ID текущего родительского узла
+ * @param lNode - 当前 leftNode 值（返回时更新为子树最后的 rightNode+1） / Current leftNode value (returned as last subtree rightNode+1) / Текущее значение leftNode (возвращается как последний rightNode+1 поддерева)
+ * @param deep - 当前深度 / Current depth / Текущая глубина
+ * @param root - 树根标识 / Root identifier / Идентификатор корня
+ * @param fullTree - 输出的 MPTT 节点数组 / Output MPTT node array / Выходной массив узлов MPTT
+ * @param shownCountRef - 可见节点计数器引用 / Visible node counter reference / Ссылка на счётчик видимых узлов
+ * @param parentDisabled - 父节点是否禁用 / Whether parent is disabled / Отключён ли родительский узел
+ * @returns 最后一个子节点的 rightNode 值 / rightNode value of last child / Значение rightNode последнего дочернего узла
+ */
 function _recursiveAssembly(
   treeMap: Map<string, NeighborTree[]>,
   parentId: string,
@@ -277,6 +377,21 @@ function _recursiveAssembly(
   return lNode
 }
 
+/**
+ * 从 JSON 字符串解析并构建 MPTT 树（始终基于 parentId 重建）
+ * Parse JSON string and build MPTT tree (always rebuilds based on parentId)
+ * Разбор строки JSON и построение дерева MPTT (всегда перестраивается на основе parentId)
+ *
+ * 先解析为邻接表，再转换为 MPTT 结构。
+ * Parses to adjacency list first, then converts to MPTT structure.
+ * Сначала разбирается в список смежности, затем преобразуется в структуру MPTT.
+ *
+ * @param tree - JSON 字符串 / JSON string / Строка JSON
+ * @param root - 根标识 / Root identifier / Идентификатор корня
+ * @param fullTree - 输出的 MPTT 树数组 / Output MPTT tree array / Выходной массив дерева MPTT
+ * @param fieldKeys - 字段键名配置（可选，默认使用 TreeFieldKeys 默认值） / Field key configuration (optional, defaults to TreeFieldKeys defaults) / Конфигурация имён полей (опционально, по умолчанию значения TreeFieldKeys)
+ * @returns 可见节点数 / Visible node count / Количество видимых узлов
+ */
 export function parseMpttTreeFromJson(
   tree: string,
   root: string,
@@ -288,6 +403,14 @@ export function parseMpttTreeFromJson(
   return convertNeighborToMptt(neighborTrees, root, fullTree)
 }
 
+/**
+ * 构建 id → fullTree 索引的 HashMap，实现 O(1) 节点查找
+ * Build id → fullTree index HashMap for O(1) node lookup
+ * Построение HashMap id → индекс в fullTree для поиска узлов за O(1)
+ *
+ * @param fullTree - MPTT 树数组 / MPTT tree array / Массив дерева MPTT
+ * @returns id 到索引的映射 / id to index map / Отображение id в индекс
+ */
 export function buildIdIndex(fullTree: MpttTree[]): Map<string, i32> {
   const idToIndex: Map<string, i32> = new Map()
   for (let i: i32 = 0; i < fullTree.length; i++) {
@@ -296,6 +419,13 @@ export function buildIdIndex(fullTree: MpttTree[]): Map<string, i32> {
   return idToIndex
 }
 
+/**
+ * 按 leftNode 升序排序 MPTT 树（原地排序）
+ * Sort MPTT tree by leftNode ascending (in-place)
+ * Сортировка дерева MPTT по возрастанию leftNode (на месте)
+ *
+ * @param tree - MPTT 树数组（将被原地排序） / MPTT tree array (will be sorted in-place) / Массив дерева MPTT (будет отсортирован на месте)
+ */
 export function sortByLeftNode(tree: MpttTree[]): void {
   tree.sort((a: MpttTree, b: MpttTree): i32 => {
     return a.leftNode - b.leftNode

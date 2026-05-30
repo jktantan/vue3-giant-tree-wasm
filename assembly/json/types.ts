@@ -1,3 +1,17 @@
+/**
+ * JSON 字符串转义：将控制字符、引号和反斜杠转为 JSON 转义序列
+ * JSON string escaping: converts control characters, quotes, and backslashes to JSON escape sequences
+ * Экранирование строки JSON: преобразует управляющие символы, кавычки и обратные слэши в escape-последовательности JSON
+ *
+ * 处理: \b \f \n \r \t \\ \" 和 \uXXXX（其他控制字符）
+ * 仅在遇到需转义字符时才分配新字符串，否则直接返回原字符串（零拷贝快速路径）
+ *
+ * Handles: \b \f \n \r \t \\ \" and \uXXXX (other control chars)
+ * Only allocates when an escapable char is found; returns original string otherwise (zero-copy fast path)
+ *
+ * Обрабатывает: \b \f \n \r \t \\ \" и \uXXXX (прочие управляющие символы)
+ * Выделяет новую строку только при обнаружении экранируемого символа; иначе возвращает исходную (быстрый путь без копирования)
+ */
 export function escapeString(s: string): string {
   for (let i = 0; i < s.length; i++) {
     const c = s.charCodeAt(i)

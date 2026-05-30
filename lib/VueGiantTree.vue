@@ -1,4 +1,13 @@
 <script setup lang="ts">
+/**
+ * VueGiantTree 主组件：高性能虚拟滚动树，基于 WASM (AssemblyScript) 实现核心算法
+ * VueGiantTree main component: high-performance virtual scroll tree, core algorithms implemented in WASM (AssemblyScript)
+ * Главный компонент VueGiantTree: высокопроизводительное дерево с виртуальной прокруткой, основные алгоритмы реализованы в WASM (AssemblyScript)
+ *
+ * 特性: MPTT 树结构 · 虚拟滚动 · 增量可见性维护 · 模糊搜索 · 多选/单选/点击模式 · JSON/ID 双输出
+ * Features: MPTT tree structure · virtual scrolling · incremental visibility · fuzzy search · multi/single/click select · JSON/ID dual output
+ * Особенности: структура MPTT · виртуальная прокрутка · инкрементное обновление видимости · нечёткий поиск · множественный/одиночный/кликовый выбор · двойной вывод JSON/ID
+ */
 import {
   newTree,
   newTreeWithKeys,
@@ -59,12 +68,16 @@ const props = withDefaults(
   }
 )
 const emit = defineEmits(['update:modelValue'])
+/** 组件引用: 滚动容器 DOM / Component ref: scroll container DOM / Ссылка на компонент: DOM контейнера прокрутки */
 const container = ref<HTMLDivElement>()
+/** 可见节点总数，由 WASM 侧 shownCount 驱动 / Total visible node count, driven by WASM shownCount / Общее количество видимых узлов */
 const listHeight = ref<number>(0)
+/** 当前树列表（可视区域内节点） / Current tree list (nodes within viewport) / Текущий список дерева (узлы в области просмотра) */
 const currentTreeList = ref<TreeNodeData[]>([])
 let scrollTop = 0,
   scrollHeight = 0
 const startOffset = ref<number>(0)
+/** ResizeObserver: 监听容器高度变化，同步 WASM 边界 + 刷新视图 / ResizeObserver: watches container height changes, syncs WASM boundary + refreshes view / ResizeObserver: отслеживает изменение высоты контейнера, синхронизирует границы WASM + обновляет вид */
 const ro = new ResizeObserver((entries: ResizeObserverEntry[]) => {
   const { blockSize: height } = entries[0].contentBoxSize[0]
   scrollHeight = height
@@ -72,10 +85,12 @@ const ro = new ResizeObserver((entries: ResizeObserverEntry[]) => {
   listHeight.value = getShownHeight(tree)
   refreshTree()
 })
+/** 从 WASM 获取当前可视区域 JSON 并解析为 Vue 响应式数据 / Fetch current viewport JSON from WASM and parse into Vue reactive data / Получить текущий JSON viewport из WASM и разобрать в реактивные данные Vue */
 const refreshTree = () => {
   const nodesStr = getShownNodes(tree)
   currentTreeList.value = JSON.parse(nodesStr) as TreeNodeData[]
 }
+/** 滚动事件: 更新 WASM 边界 + 刷新可视区域 / Scroll event: update WASM boundary + refresh viewport / Событие прокрутки: обновить границы WASM + обновить viewport */
 const handleScroll = (event: Event) => {
   const target = event.target as HTMLElement
   scrollTop = target.scrollTop
@@ -87,6 +102,7 @@ const handleScroll = (event: Event) => {
  * 根据 outputIdOnly 配置发射选中结果
  * Emit checked result according to outputIdOnly config
  */
+/** 按防抖输出选中结果 / Emit checked result with debounce / Выдать результат выбора с антидребезгом */
 const emitCheckedResult = () => {
   const result = props.outputIdOnly
     ? JSON.parse(getCheckedIds(tree))
@@ -95,6 +111,7 @@ const emitCheckedResult = () => {
 }
 
 const scrollEvent = throttle(16, handleScroll)
+/** CSS transform 偏移量：虚拟滚动定位 / CSS transform offset: virtual scroll positioning / Смещение CSS transform: позиционирование виртуальной прокрутки */
 const transformOffset = computed(
   () => `translate3d(0,${startOffset.value}px,0)`
 )
@@ -133,12 +150,13 @@ watch(() => props.checkedOutputMode, (newMode) => {
   emitCheckedResult()
 })
 
+/** 挂载时初始化: 观察容器大小、加载树数据、立即渲染首屏 / On mount: observe container, load tree data, render initial viewport immediately / При монтировании: наблюдать за контейнером, загрузить данные дерева, сразу отрендерить начальный viewport */
 onMounted(() => {
   ro.observe(container.value!)
   clear(tree)
-  // JSON 串传入保留原始行数据到 extendData
+  // JSON 串传入保留原始行数据到 extendData / JSON string input preserves raw row data in extendData / Строка JSON сохраняет исходные данные в extendData
   setNeighborTree(tree, JSON.stringify(props.tree))
-  // 立即刷新视图（不依赖 ResizeObserver）
+  // 立即刷新视图（不依赖 ResizeObserver）/ Refresh view immediately (not dependent on ResizeObserver) / Немедленное обновление вида (не зависит от ResizeObserver)
   setBoundary(tree, scrollTop, scrollHeight)
   listHeight.value = getShownHeight(tree)
   refreshTree()
@@ -146,6 +164,7 @@ onMounted(() => {
 onUnmounted(() => {
   ro.disconnect()
 })
+/** 行点击（SELECT 模式选中节点） / Row click (selects node in SELECT mode) / Клик по строке (выбирает узел в режиме SELECT) */
 const itemClick = (id: string) => {
   if (props.selectType === SelectType.SELECT) {
     checkNode(tree, id, CheckType.CHECKED)
@@ -153,29 +172,34 @@ const itemClick = (id: string) => {
     refreshTree()
   }
 }
+/** 展开/折叠节点 / Expand/collapse node / Развернуть/свернуть узел */
 const collapseClick = (id: string, isCollapse: boolean) => {
   collapseTree(tree, id, isCollapse)
   listHeight.value = getShownHeight(tree)
   refreshTree()
 }
+/** 复选框/单选框点击 / Checkbox/radio click / Клик по чекбоксу/радио */
 const checkClick = (id: string, checkType: CheckType) => {
   checkNode(tree, id, checkType)
   emitCheckedResult()
   refreshTree()
 }
 
+/** 模糊搜索（无防抖，立即执行）/ Fuzzy search (no debounce, immediate) / Нечёткий поиск (без антидребезга, немедленно) */
 const rawFuzzySearch = (keyword: string) => {
   fuzzyTree(tree, keyword)
   listHeight.value = getShownHeight(tree)
   refreshTree()
 }
-/** 带 300ms 防抖的模糊搜索（适合 input 实时输入） */
+/** 带 300ms 防抖的模糊搜索（适合 input 实时输入）/ Fuzzy search with 300ms debounce (suitable for real-time input) / Нечёткий поиск с антидребезгом 300мс (подходит для ввода в реальном времени) */
 const fuzzySearch = debounce(300, rawFuzzySearch)
 
+/** 获取树节点总数 / Get total tree node count / Получить общее количество узлов дерева */
 const getTreeSize = (): number => {
   return getSize(tree)
 }
 
+/** 单选设置选中节点 / Set checked node (single-select) / Установить выбранный узел (одиночный выбор) */
 const setChecked = (id: string) => {
   setCheckedNode(tree, id)
   emitCheckedResult()
@@ -183,6 +207,7 @@ const setChecked = (id: string) => {
   refreshTree()
 }
 
+/** 批量设置选中节点 / Batch set checked nodes / Пакетная установка выбранных узлов */
 const setCheckedByIds = (ids: string[]) => {
   setCheckedNodes(tree, ids)
   emitCheckedResult()
@@ -190,23 +215,26 @@ const setCheckedByIds = (ids: string[]) => {
   refreshTree()
 }
 
+/** 清除所有选中状态 / Clear all check states / Очистить все состояния выбора */
 const clearAllChecked = () => {
   clearCheckedNodes(tree)
   emitCheckedResult()
   refreshTree()
 }
 
+/** 切换显示模式（完整树↔搜索树） / Switch display mode (full tree ↔ search tree) / Переключение режима отображения (полное дерево ↔ дерево поиска) */
 const switchDisplay = (displayType: DisplayType) => {
   switchDisplayTree(tree, displayType)
   listHeight.value = getShownHeight(tree)
   refreshTree()
 }
 
-/** 重新发射当前选中结果（模式切换后刷新格式用） */
+/** 重新发射当前选中结果（模式切换后刷新格式用）/ Re-emit current checked result (for format refresh after mode switch) / Повторно выдать текущий результат выбора (для обновления формата после переключения режима) */
 const refreshCheckedResult = () => {
   emitCheckedResult()
 }
 
+/** 暴露给父组件的方法 / Methods exposed to parent component / Методы, доступные родительскому компоненту */
 defineExpose({
   fuzzySearch,
   fuzzySearchRaw: rawFuzzySearch,
@@ -219,6 +247,7 @@ defineExpose({
 })
 </script>
 
+<!-- 虚拟滚动模板：phantom div 撑开总高度 → translate3d 定位可视节点 / Virtual scroll template: phantom div for total height + translate3d positions visible nodes / Шаблон виртуальной прокрутки: phantom div для общей высоты + translate3d позиционирует видимые узлы -->
 <template>
   <div
     ref="container"

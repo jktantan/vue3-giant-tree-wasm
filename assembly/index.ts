@@ -12,13 +12,7 @@ import {
 } from './models'
 import { GiantTree } from './giant-tree'
 
-export {
-  CheckType,
-  SelectType,
-  DisplayType,
-  TreeFieldKeys,
-  CheckedOutputMode,
-} from './models'
+export { CheckType, SelectType, DisplayType, CheckedOutputMode } from './models'
 
 export function newTree(
   root: string,

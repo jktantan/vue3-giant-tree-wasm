@@ -2,6 +2,15 @@ import { MpttTree } from './models'
 import { JsonEncoder } from './json/index'
 import { escapeString } from './json/types'
 
+/**
+ * 将 MPTT 树数组序列化为 JSON 字符串（完整字段）
+ * Serializes MPTT tree array to JSON string (full fields)
+ * Сериализует массив дерева MPTT в строку JSON (полные поля)
+ *
+ * 使用字符串拼接而非 JsonEncoder，减少函数调用开销，适合可视区域高频序列化
+ * Uses string concatenation instead of JsonEncoder, reducing function call overhead, ideal for high-frequency viewport serialization
+ * Использует конкатенацию строк вместо JsonEncoder, уменьшая накладные расходы на вызовы функций, идеально для высокочастотной сериализации viewport
+ */
 export function serializeMpttArray(tree: MpttTree[]): string {
   if (tree.length === 0) return '[]'
   const parts = new Array<string>()
@@ -111,6 +120,14 @@ export function serializeCheckedNode(node: MpttTree): string {
   return encoder.toString()
 }
 
+/**
+ * 将单个 MpttTree 节点序列化为 JSON 字符串（使用 JsonEncoder）
+ * Serializes a single MpttTree node to a JSON string (using JsonEncoder)
+ * Сериализует один узел MpttTree в строку JSON (используя JsonEncoder)
+ *
+ * @param node - 待序列化的节点 / Node to serialize / Узел для сериализации
+ * @returns JSON 字符串 / JSON string / Строка JSON
+ */
 export function serializeMpttNode(node: MpttTree): string {
   const encoder = new JsonEncoder()
   encoder.pushObject(null)

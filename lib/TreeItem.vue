@@ -13,6 +13,7 @@ const collapsedClick = () => {
   emit('collapse-click', props.item.id, !props.item.collapsed)
 }
 
+/** 复选框/单选框点击（toggle 逻辑在 WASM 侧） / Checkbox/radio click (toggle logic is in WASM) / Клик по чекбоксу/радио (логика переключения в WASM) */
 const checkClick = () => {
   if (props.item.disabled) return
   emit(
@@ -23,6 +24,8 @@ const checkClick = () => {
       : CheckType.CHECKED
   )
 }
+
+/** 行点击（SELECT 模式下选中节点） / Row click (selects node in SELECT mode) / Клик по строке (выбирает узел в режиме SELECT) */
 const itemClick = () => {
   if (props.item.disabled) return
   emit('item-click', props.item.id)
