@@ -33,7 +33,7 @@ import {
   setCheckedOutputMode,
 } from '../build/release'
 
-import { throttle, debounce } from 'throttle-debounce'
+import { debounce } from 'throttle-debounce'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import TreeItem from '@lib/TreeItem.vue'
 import type { TreeNodeData, TreeInputItem, TreeFieldKeys, FilterFn } from './types'
@@ -87,12 +87,16 @@ const ro = new ResizeObserver((entries: ResizeObserverEntry[]) => {
   listHeight.value = getShownHeight(tree)
   refreshTree()
 })
-/** 从 WASM 获取当前可视区域 JSON 并解析为 Vue 响应式数据 / Fetch current viewport JSON from WASM and parse into Vue reactive data / Получить текущий JSON viewport из WASM и разобрать в реактивные данные Vue */
+/** 记录上次 WASM 返回的 JSON 字符串，相同则跳过 parse+Vue 响应式更新 */
+let lastNodesStr = ''
 const refreshTree = () => {
   const nodesStr = getShownNodes(tree)
+  if (nodesStr === lastNodesStr) return
+  lastNodesStr = nodesStr
   currentTreeList.value = JSON.parse(nodesStr) as TreeNodeData[]
 }
-/** 滚动事件: 更新 WASM 边界 + 刷新可视区域 / Scroll event: update WASM boundary + refresh viewport / Событие прокрутки: обновить границы WASM + обновить viewport */
+/** 滚动 rAF 标记：合并同一帧内的多次滚动事件 */
+let scrollRafId = 0
 const handleScroll = (event: Event) => {
   const target = event.target as HTMLElement
   scrollTop = target.scrollTop
@@ -125,7 +129,14 @@ const emitCheckedResult = () => {
   }
 }
 
-const scrollEvent = throttle(16, handleScroll)
+/** rAF 包裹的滚动处理：跟随浏览器渲染帧，减少无效回调 */
+const scrollEvent = (event: Event) => {
+  if (scrollRafId) return
+  scrollRafId = requestAnimationFrame(() => {
+    scrollRafId = 0
+    handleScroll(event)
+  })
+}
 /** CSS transform 偏移量：虚拟滚动定位 / CSS transform offset: virtual scroll positioning / Смещение CSS transform: позиционирование виртуальной прокрутки */
 const transformOffset = computed(
   () => `translate3d(0,${startOffset.value}px,0)`
@@ -178,6 +189,11 @@ onMounted(() => {
 })
 onUnmounted(() => {
   ro.disconnect()
+  if (scrollRafId) {
+    cancelAnimationFrame(scrollRafId)
+    scrollRafId = 0
+  }
+  lastNodesStr = ''
 })
 /** 行点击（SELECT 模式选中节点） / Row click (selects node in SELECT mode) / Клик по строке (выбирает узел в режиме SELECT) */
 const itemClick = (id: string) => {

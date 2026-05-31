@@ -18,7 +18,6 @@ import {
   rebuildShownNodes,
   setCollapsedShown,
   incrementalUpdateShownNodes,
-  getVisibleSlice,
   resetShownFlags,
 } from './tree-visibility'
 import {
@@ -30,7 +29,7 @@ import {
   clearAllChecked,
 } from './tree-check'
 import { fuzzySearchTree } from './tree-search'
-import { serializeMpttArray } from './tree-serializer'
+import { serializeShownSlice } from './tree-serializer'
 
 /**
  * 巨树主类：组合所有模块，持有全部状态，提供完整的树操作 API
@@ -351,20 +350,6 @@ export class GiantTree {
   }
 
   /**
-   * 获取当前可视区域内的节点切片，复杂度 O(k)
-   * Gets visible slice of nodes in current viewport, complexity O(k)
-   * Получает срез видимых узлов в текущем viewport, сложность O(k)
-   */
-  getTmpShown(): MpttTree[] {
-    return getVisibleSlice(
-      this._shownNodes,
-      this.scrollTop,
-      this.scrollHeight,
-      this.lineHeight
-    )
-  }
-
-  /**
    * 获取可见区域总像素高度，O(1)
    * Gets total pixel height of visible area, O(1)
    * Получает общую высоту видимой области в пикселях, O(1)
@@ -395,8 +380,12 @@ export class GiantTree {
       return this._cachedJson
     }
 
-    const result: MpttTree[] = this.getTmpShown()
-    const json: string = serializeMpttArray(result)
+    const json: string = serializeShownSlice(
+      this._shownNodes,
+      this.scrollTop,
+      this.scrollHeight,
+      this.lineHeight
+    )
 
     this._cachedStartIdx = startIdx
     this._cachedEndIdx = endIdx
@@ -420,30 +409,37 @@ export class GiantTree {
   checkNode(id: string, checked: CheckType): string {
     this._invalidateCache()
 
-    // RADIO/SELECT: 用缓存索引 O(1) 替代全树 O(N) 扫描
-    // RADIO/SELECT: use cached index O(1) instead of full tree O(N) scan
-    // RADIO/SELECT: используем кэшированный индекс O(1) вместо полного сканирования O(N)
+    // RADIO: 用缓存索引 O(1) 替代全树 O(N) 扫描
+    // RADIO: use cached index O(1) instead of full tree O(N) scan
     if (this.selectType === SelectType.RADIO) {
-      if (
-        this.idToIndex.has(id) &&
-        this.fullTree[this.idToIndex.get(id)].disabled
-      ) {
-        return serializeMpttArray(this.getTmpShown())
+      const targetIdx: i32 = this.idToIndex.has(id)
+        ? this.idToIndex.get(id)
+        : -1
+      if (targetIdx >= 0 && this.fullTree[targetIdx].disabled) {
+        return serializeShownSlice(
+          this._shownNodes,
+          this.scrollTop,
+          this.scrollHeight,
+          this.lineHeight
+        )
       }
-      const targetIdx: i32 = this.idToIndex.get(id)
       if (this._radioCheckedIdx >= 0 && this._radioCheckedIdx !== targetIdx) {
         this.fullTree[this._radioCheckedIdx].checked = CheckType.UNCHECKED
       }
       this.fullTree[targetIdx].checked = checked
       this._radioCheckedIdx = targetIdx
     } else if (this.selectType === SelectType.SELECT) {
-      if (
-        this.idToIndex.has(id) &&
-        this.fullTree[this.idToIndex.get(id)].disabled
-      ) {
-        return serializeMpttArray(this.getTmpShown())
+      const targetIdx: i32 = this.idToIndex.has(id)
+        ? this.idToIndex.get(id)
+        : -1
+      if (targetIdx >= 0 && this.fullTree[targetIdx].disabled) {
+        return serializeShownSlice(
+          this._shownNodes,
+          this.scrollTop,
+          this.scrollHeight,
+          this.lineHeight
+        )
       }
-      const targetIdx: i32 = this.idToIndex.get(id)
       if (
         this._selectSelectedIdx >= 0 &&
         this._selectSelectedIdx !== targetIdx
@@ -455,7 +451,6 @@ export class GiantTree {
     } else {
       // CHECKBOX: 使用原有函数
       // CHECKBOX: use existing function
-      // CHECKBOX: используем существующую функцию
       checkNodeInTree(
         this.fullTree,
         this.idToIndex,
@@ -465,8 +460,12 @@ export class GiantTree {
       )
     }
 
-    const result: MpttTree[] = this.getTmpShown()
-    return serializeMpttArray(result)
+    return serializeShownSlice(
+      this._shownNodes,
+      this.scrollTop,
+      this.scrollHeight,
+      this.lineHeight
+    )
   }
 
   /**
@@ -590,23 +589,27 @@ export class GiantTree {
       // Rebuild shown flags from collapse state, fixing search pollution
       // Восстановление флагов shown из состояния свёртки, исправление загрязнения поиском
       resetShownFlags(this.fullTree)
-      // _rebuildShownNodes 会自动更新 shownCount
-      // _rebuildShownNodes updates shownCount automatically
-      // _rebuildShownNodes обновляет shownCount автоматически
       this._rebuildShownNodes()
-      return serializeMpttArray(this.getTmpShown())
+      return serializeShownSlice(
+        this._shownNodes,
+        this.scrollTop,
+        this.scrollHeight,
+        this.lineHeight
+      )
     } else {
       this.shownCount = fuzzySearchTree(this.fullTree, this.searchTree, keyword)
       this.tree = this.searchTree
-      // 搜索结果所有节点都可见，直接赋给 _shownNodes（不修改 fullTree 的 shown 标志）
-      // All search results are visible, assign directly to _shownNodes (no modification of fullTree's shown flag)
-      // Все результаты поиска видимы, присваиваем напрямую _shownNodes (без модификации флагов fullTree)
       this._shownNodes.splice(0)
       for (let i: i32 = 0; i < this.searchTree.length; i++) {
         this._shownNodes.push(this.searchTree[i])
       }
       this._invalidateCache()
-      return serializeMpttArray(this.getTmpShown())
+      return serializeShownSlice(
+        this._shownNodes,
+        this.scrollTop,
+        this.scrollHeight,
+        this.lineHeight
+      )
     }
   }
 

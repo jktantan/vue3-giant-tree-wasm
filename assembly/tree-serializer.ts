@@ -2,47 +2,105 @@ import { MpttTree } from './models'
 import { JsonEncoder } from './json/index'
 import { escapeString } from './json/types'
 
+// ITOA 查表：预计算 0..ITOA_MAX-1 的字符串，避免小整数 .toString() 堆分配
+// 虚拟滚动中 leftNode/rightNode/deep/checked/selected 通常在此范围内
+const ITOA_MAX: i32 = 4096
+const _it: StaticArray<string> = new StaticArray<string>(ITOA_MAX)
+{
+  for (let i: i32 = 0; i < ITOA_MAX; i++) {
+    _it[i] = i.toString()
+  }
+}
+
+// @ts-ignore: decorator
+@inline
+function itoa(n: i32): string {
+  if (n >= 0 && n < ITOA_MAX) return _it[n]
+  return n.toString()
+}
+
+// @ts-ignore: decorator
+@inline
+function pushNodeJson(parts: string[], node: MpttTree, comma: bool): void {
+  if (comma) parts.push(',')
+  parts.push('{"id":"')
+  parts.push(escapeString(node.id))
+  parts.push('","name":"')
+  parts.push(escapeString(node.name))
+  parts.push('","parentId":"')
+  parts.push(escapeString(node.parentId))
+  parts.push('","leftNode":')
+  parts.push(itoa(node.leftNode))
+  parts.push(',"rightNode":')
+  parts.push(itoa(node.rightNode))
+  parts.push(',"deep":')
+  parts.push(itoa(node.deep))
+  parts.push(',"checked":')
+  parts.push(itoa(node.checked))
+  parts.push(',"selected":')
+  parts.push(itoa(node.selected))
+  parts.push(',"collapsed":')
+  parts.push(node.collapsed ? 'true' : 'false')
+  parts.push(',"disabled":')
+  parts.push(node.disabled ? 'true' : 'false')
+  if (node.extendData.length > 0) {
+    parts.push(',"extendData":')
+    parts.push(node.extendData)
+  }
+  parts.push('}')
+}
+
+/**
+ * 从 shownNodes 直接按索引范围序列化，合并 getVisibleSlice + serializeMpttArray，
+ * 消除中间 MpttTree[] 分配。每帧省 1 次数组分配 + 1 次遍历。
+ * 使用 ITOA 查表避免小整数 .toString() 堆分配。
+ *
+ * Serializes directly from shownNodes by index range, merging getVisibleSlice + serializeMpttArray.
+ * Eliminates one intermediate MpttTree[] allocation per frame + one traversal.
+ * Uses ITOA lookup table to avoid small-integer .toString() heap allocations.
+ */
+export function serializeShownSlice(
+  shownNodes: MpttTree[],
+  scrollTop: f32,
+  scrollHeight: f32,
+  lineHeight: f32
+): string {
+  const startIdx: i32 = <i32>Math.floor(scrollTop / lineHeight)
+  const endIdx: i32 =
+    <i32>Math.ceil((scrollTop + scrollHeight) / lineHeight) + 1
+
+  const clampedStart: i32 =
+    startIdx < 0
+      ? 0
+      : startIdx >= shownNodes.length
+        ? shownNodes.length
+        : startIdx
+  const clampedEnd: i32 =
+    endIdx < 0 ? 0 : endIdx > shownNodes.length ? shownNodes.length : endIdx
+
+  if (clampedStart >= clampedEnd) return '[]'
+
+  const count: i32 = clampedEnd - clampedStart
+  // 每节点约 22 片段 + 首尾 2，预分配容量避免动态扩容
+  const parts: string[] = new Array<string>(count * 22 + 2)
+  parts.push('[')
+  for (let i: i32 = clampedStart; i < clampedEnd; i++) {
+    pushNodeJson(parts, shownNodes[i], i > clampedStart)
+  }
+  parts.push(']')
+  return parts.join('')
+}
+
 /**
  * 将 MPTT 树数组序列化为 JSON 字符串（完整字段）
- * Serializes MPTT tree array to JSON string (full fields)
- * Сериализует массив дерева MPTT в строку JSON (полные поля)
- *
- * 使用字符串拼接而非 JsonEncoder，减少函数调用开销，适合可视区域高频序列化
- * Uses string concatenation instead of JsonEncoder, reducing function call overhead, ideal for high-frequency viewport serialization
- * Использует конкатенацию строк вместо JsonEncoder, уменьшая накладные расходы на вызовы функций, идеально для высокочастотной сериализации viewport
+ * 主要用于非热路径（搜索结果等），滚动热路径请用 serializeShownSlice
  */
 export function serializeMpttArray(tree: MpttTree[]): string {
   if (tree.length === 0) return '[]'
-  const parts = new Array<string>()
+  const parts: string[] = new Array<string>(tree.length * 22 + 2)
   parts.push('[')
   for (let i = 0; i < tree.length; i++) {
-    if (i > 0) parts.push(',')
-    const node: MpttTree = tree[i]
-    parts.push('{"id":"')
-    parts.push(escapeString(node.id))
-    parts.push('","name":"')
-    parts.push(escapeString(node.name))
-    parts.push('","parentId":"')
-    parts.push(escapeString(node.parentId))
-    parts.push('","leftNode":')
-    parts.push(node.leftNode.toString())
-    parts.push(',"rightNode":')
-    parts.push(node.rightNode.toString())
-    parts.push(',"deep":')
-    parts.push(node.deep.toString())
-    parts.push(',"checked":')
-    parts.push(node.checked.toString())
-    parts.push(',"selected":')
-    parts.push(node.selected.toString())
-    parts.push(',"collapsed":')
-    parts.push(node.collapsed ? 'true' : 'false')
-    parts.push(',"disabled":')
-    parts.push(node.disabled ? 'true' : 'false')
-    if (node.extendData.length > 0) {
-      parts.push(',"extendData":')
-      parts.push(node.extendData)
-    }
-    parts.push('}')
+    pushNodeJson(parts, tree[i], i > 0)
   }
   parts.push(']')
   return parts.join('')

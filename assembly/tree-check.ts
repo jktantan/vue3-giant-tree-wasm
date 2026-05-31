@@ -1,11 +1,6 @@
 import { CheckType, CheckedOutputMode, MpttTree, SelectType } from './models'
 import { escapeString } from './json/types'
-import {
-  serializeCheckedArray,
-  serializeCheckedNode,
-  serializeMpttArray,
-  serializeMpttNode,
-} from './tree-serializer'
+import { serializeCheckedArray, serializeCheckedNode } from './tree-serializer'
 
 /**
  * 处理节点选中/取消选中操作，根据 selectType 分派到不同逻辑
