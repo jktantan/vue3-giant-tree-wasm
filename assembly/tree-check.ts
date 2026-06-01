@@ -241,8 +241,30 @@ export function setCheckedNodesInTree(
 export function setCheckedNodeInTree(
   fullTree: MpttTree[],
   id: string,
-  selectType: SelectType
-): void {
+  selectType: SelectType,
+  idToIndex: Map<string, i32> | null = null,
+  prevRadioIdx: i32 = -1,
+  prevSelectIdx: i32 = -1
+): i32 {
+  if (idToIndex !== null && (idToIndex as Map<string, i32>).has(id)) {
+    const idx: i32 = (idToIndex as Map<string, i32>).get(id)
+    if (fullTree[idx].disabled) return -1
+    if (selectType === SelectType.RADIO) {
+      if (prevRadioIdx >= 0 && prevRadioIdx !== idx) {
+        fullTree[prevRadioIdx].checked = CheckType.UNCHECKED
+      }
+      fullTree[idx].checked = CheckType.CHECKED
+      return idx
+    } else if (selectType === SelectType.SELECT) {
+      if (prevSelectIdx >= 0 && prevSelectIdx !== idx) {
+        fullTree[prevSelectIdx].selected = CheckType.UNCHECKED
+      }
+      fullTree[idx].selected = CheckType.CHECKED
+      return idx
+    }
+    return -1
+  }
+  // fallback: O(N) 扫描（无 idToIndex 时）
   if (selectType === SelectType.RADIO) {
     let targetDisabled = false
     for (let i = 0; i < fullTree.length; i++) {
@@ -251,7 +273,7 @@ export function setCheckedNodeInTree(
         break
       }
     }
-    if (targetDisabled) return
+    if (targetDisabled) return -1
     for (let i = 0; i < fullTree.length; i++) {
       fullTree[i].checked =
         fullTree[i].id !== id ? CheckType.UNCHECKED : CheckType.CHECKED
@@ -264,12 +286,13 @@ export function setCheckedNodeInTree(
         break
       }
     }
-    if (targetDisabled) return
+    if (targetDisabled) return -1
     for (let i = 0; i < fullTree.length; i++) {
       fullTree[i].selected =
         fullTree[i].id !== id ? CheckType.UNCHECKED : CheckType.CHECKED
     }
   }
+  return -1
 }
 
 /**
@@ -315,15 +338,31 @@ function isCoveredByCheckedAncestor(fullTree: MpttTree[], idx: i32): bool {
 export function getCheckedIdsFromTree(
   fullTree: MpttTree[],
   selectType: SelectType,
-  outputMode: CheckedOutputMode = CheckedOutputMode.All
+  outputMode: CheckedOutputMode = CheckedOutputMode.All,
+  radioIdx: i32 = -1,
+  selectIdx: i32 = -1
 ): string {
   if (selectType === SelectType.RADIO) {
+    if (
+      radioIdx >= 0 &&
+      radioIdx < fullTree.length &&
+      fullTree[radioIdx].checked === CheckType.CHECKED
+    ) {
+      return '"' + escapeString(fullTree[radioIdx].id) + '"'
+    }
     for (let i = 0; i < fullTree.length; i++) {
       if (fullTree[i].checked === CheckType.CHECKED) {
         return '"' + escapeString(fullTree[i].id) + '"'
       }
     }
   } else if (selectType === SelectType.SELECT) {
+    if (
+      selectIdx >= 0 &&
+      selectIdx < fullTree.length &&
+      fullTree[selectIdx].selected === CheckType.CHECKED
+    ) {
+      return '"' + escapeString(fullTree[selectIdx].id) + '"'
+    }
     for (let i = 0; i < fullTree.length; i++) {
       if (fullTree[i].selected === CheckType.CHECKED) {
         return '"' + escapeString(fullTree[i].id) + '"'
@@ -332,18 +371,29 @@ export function getCheckedIdsFromTree(
   } else {
     // CHECKBOX 模式：根据 outputMode 过滤
     const ids: string[] = []
-    for (let i = 0; i < fullTree.length; i++) {
-      const node = fullTree[i]
-      if (node.checked !== CheckType.CHECKED) continue
-
-      if (outputMode === CheckedOutputMode.LeafOnly && !isLeaf(node)) continue
-      if (
-        outputMode === CheckedOutputMode.RootOnly &&
-        isCoveredByCheckedAncestor(fullTree, i)
-      )
-        continue
-
-      ids.push('"' + escapeString(node.id) + '"')
+    if (outputMode === CheckedOutputMode.RootOnly) {
+      // 覆盖栈：维护 CHECKED 祖先的 rightNode 边界，单次 O(N) 过滤
+      const coverStack: i32[] = []
+      for (let i = 0; i < fullTree.length; i++) {
+        const node = fullTree[i]
+        while (
+          coverStack.length > 0 &&
+          node.leftNode >= coverStack[coverStack.length - 1]
+        ) {
+          coverStack.pop()
+        }
+        if (node.checked !== CheckType.CHECKED) continue
+        if (coverStack.length > 0) continue
+        ids.push('"' + escapeString(node.id) + '"')
+        coverStack.push(node.rightNode)
+      }
+    } else {
+      for (let i = 0; i < fullTree.length; i++) {
+        const node = fullTree[i]
+        if (node.checked !== CheckType.CHECKED) continue
+        if (outputMode === CheckedOutputMode.LeafOnly && !isLeaf(node)) continue
+        ids.push('"' + escapeString(node.id) + '"')
+      }
     }
     if (ids.length === 0) return '[]'
     return '[' + ids.join(',') + ']'
@@ -363,9 +413,18 @@ export function getCheckedIdsFromTree(
 export function getCheckedNodesFromTree(
   fullTree: MpttTree[],
   selectType: SelectType,
-  outputMode: CheckedOutputMode = CheckedOutputMode.All
+  outputMode: CheckedOutputMode = CheckedOutputMode.All,
+  radioIdx: i32 = -1,
+  selectIdx: i32 = -1
 ): string {
   if (selectType === SelectType.RADIO) {
+    if (
+      radioIdx >= 0 &&
+      radioIdx < fullTree.length &&
+      fullTree[radioIdx].checked === CheckType.CHECKED
+    ) {
+      return serializeCheckedNode(fullTree[radioIdx])
+    }
     for (let i = 0; i < fullTree.length; i++) {
       if (fullTree[i].checked === CheckType.CHECKED) {
         return serializeCheckedNode(fullTree[i])
@@ -373,6 +432,13 @@ export function getCheckedNodesFromTree(
     }
     return 'null'
   } else if (selectType === SelectType.SELECT) {
+    if (
+      selectIdx >= 0 &&
+      selectIdx < fullTree.length &&
+      fullTree[selectIdx].selected === CheckType.CHECKED
+    ) {
+      return serializeCheckedNode(fullTree[selectIdx])
+    }
     for (let i = 0; i < fullTree.length; i++) {
       if (fullTree[i].selected === CheckType.CHECKED) {
         return serializeCheckedNode(fullTree[i])
@@ -382,16 +448,28 @@ export function getCheckedNodesFromTree(
   } else {
     // CHECKBOX: 按 outputMode 过滤后输出 extendData
     const tree: MpttTree[] = []
-    for (let i = 0; i < fullTree.length; i++) {
-      const node = fullTree[i]
-      if (node.checked !== CheckType.CHECKED) continue
-      if (outputMode === CheckedOutputMode.LeafOnly && !isLeaf(node)) continue
-      if (
-        outputMode === CheckedOutputMode.RootOnly &&
-        isCoveredByCheckedAncestor(fullTree, i)
-      )
-        continue
-      tree.push(node)
+    if (outputMode === CheckedOutputMode.RootOnly) {
+      const coverStack: i32[] = []
+      for (let i = 0; i < fullTree.length; i++) {
+        const node = fullTree[i]
+        while (
+          coverStack.length > 0 &&
+          node.leftNode >= coverStack[coverStack.length - 1]
+        ) {
+          coverStack.pop()
+        }
+        if (node.checked !== CheckType.CHECKED) continue
+        if (coverStack.length > 0) continue
+        tree.push(node)
+        coverStack.push(node.rightNode)
+      }
+    } else {
+      for (let i = 0; i < fullTree.length; i++) {
+        const node = fullTree[i]
+        if (node.checked !== CheckType.CHECKED) continue
+        if (outputMode === CheckedOutputMode.LeafOnly && !isLeaf(node)) continue
+        tree.push(node)
+      }
     }
     return serializeCheckedArray(tree)
   }

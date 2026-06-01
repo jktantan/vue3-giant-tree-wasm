@@ -1,5 +1,27 @@
 import { escapeString } from './types'
 
+// @ts-ignore: decorator
+@inline
+function isValidRawJson(value: string): bool {
+  const len = value.length
+  if (len === 0) return false
+  const first = value.charCodeAt(0)
+  const last = value.charCodeAt(len - 1)
+  if (first === 0x7b) return last === 0x7d // { … }
+  if (first === 0x5b) return last === 0x5d // [ … ]
+  if (first === 0x22) return last === 0x22 && len >= 2 // "…"
+  // true / false / null / number
+  if (
+    first === 0x74 || // t
+    first === 0x66 || // f
+    first === 0x6e || // n
+    (first >= 0x30 && first <= 0x39) || // 0-9
+    first === 0x2d // -
+  )
+    return true
+  return false
+}
+
 /**
  * 轻量级 JSON 字符串构建器：通过字符串拼接直接构建 JSON，避免创建中间对象和 AST
  * Lightweight JSON string builder: constructs JSON directly via string concatenation, avoiding intermediate objects and AST
@@ -57,7 +79,11 @@ export class JsonEncoder {
    */
   setRawJson(name: string | null, value: string): void {
     this.writeKey(name)
-    this._parts.push(value)
+    if (isValidRawJson(value)) {
+      this._parts.push(value)
+    } else {
+      this._parts.push('null')
+    }
   }
 
   /**

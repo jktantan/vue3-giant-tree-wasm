@@ -180,8 +180,9 @@ watch(() => props.checkedOutputMode, (newMode) => {
 onMounted(() => {
   ro.observe(container.value!)
   clear(tree)
-  // JSON 串传入保留原始行数据到 extendData / JSON string input preserves raw row data in extendData / Строка JSON сохраняет исходные данные в extendData
-  setNeighborTree(tree, JSON.stringify(props.tree))
+  if (props.tree.length > 0) {
+    setNeighborTree(tree, JSON.stringify(props.tree))
+  }
   // 立即刷新视图（不依赖 ResizeObserver）/ Refresh view immediately (not dependent on ResizeObserver) / Немедленное обновление вида (не зависит от ResizeObserver)
   setBoundary(tree, scrollTop, scrollHeight)
   listHeight.value = getShownHeight(tree)
