@@ -299,21 +299,50 @@ export class GiantTree {
     const i: i32 = this.idToIndex.get(id)
     const node: MpttTree = this.fullTree[i]
     node.collapsed = collapsed
-    const delta: i32 = setCollapsedShown(
-      this.fullTree,
-      i + 1,
-      node.rightNode,
-      !collapsed
-    )
-    this.shownCount += delta
-    incrementalUpdateShownNodes(
-      this._shownNodes,
-      this.fullTree,
-      i,
-      node.leftNode,
-      node.rightNode,
-      !collapsed
-    )
+
+    if (this.tree === this.searchTree) {
+      // 搜索模式：从 searchTree 重建 _shownNodes，尊重折叠状态
+      // 不修改 fullTree 的 shown 标志（搜索模式下 _shownNodes 与 shown 标志无关）
+      // Search mode: rebuild _shownNodes from searchTree, respecting collapse state
+      this._shownNodes.splice(0)
+      this.shownCount = 0
+      const boundaries: i32[] = []
+      for (let j: i32 = 0; j < this.searchTree.length; j++) {
+        const n: MpttTree = this.searchTree[j]
+        while (
+          boundaries.length > 0 &&
+          n.leftNode >= boundaries[boundaries.length - 1]
+        ) {
+          boundaries.pop()
+        }
+        if (boundaries.length === 0) {
+          this._shownNodes.push(n)
+          this.shownCount++
+          if (n.collapsed && n.rightNode - n.leftNode > 1) {
+            boundaries.push(n.rightNode)
+          }
+        }
+      }
+      boundaries.splice(0)
+    } else {
+      // 正常模式：增量更新 fullTree 子树的 shown 标志和 _shownNodes
+      // Normal mode: incrementally update fullTree subtree shown flags and _shownNodes
+      const delta: i32 = setCollapsedShown(
+        this.fullTree,
+        i + 1,
+        node.rightNode,
+        !collapsed
+      )
+      this.shownCount += delta
+      incrementalUpdateShownNodes(
+        this._shownNodes,
+        this.fullTree,
+        i,
+        node.leftNode,
+        node.rightNode,
+        !collapsed
+      )
+    }
     this._invalidateCache()
   }
 
