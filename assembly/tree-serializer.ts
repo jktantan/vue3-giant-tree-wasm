@@ -21,33 +21,33 @@ function itoa(n: i32): string {
 
 // @ts-ignore: decorator
 @inline
-function pushNodeJson(parts: string[], node: MpttTree, comma: bool): void {
-  if (comma) parts.push(',')
-  parts.push('{"id":"')
-  parts.push(escapeString(node.id))
-  parts.push('","name":"')
-  parts.push(escapeString(node.name))
-  parts.push('","parentId":"')
-  parts.push(escapeString(node.parentId))
-  parts.push('","leftNode":')
-  parts.push(itoa(node.leftNode))
-  parts.push(',"rightNode":')
-  parts.push(itoa(node.rightNode))
-  parts.push(',"deep":')
-  parts.push(itoa(node.deep))
-  parts.push(',"checked":')
-  parts.push(itoa(node.checked))
-  parts.push(',"selected":')
-  parts.push(itoa(node.selected))
-  parts.push(',"collapsed":')
-  parts.push(node.collapsed ? 'true' : 'false')
-  parts.push(',"disabled":')
-  parts.push(node.disabled ? 'true' : 'false')
+function nodeToJson(node: MpttTree, comma: bool): string {
+  let s: string = comma ? ',{"id":"' : '{"id":"'
+  s += escapeString(node.id)
+  s += '","name":"'
+  s += escapeString(node.name)
+  s += '","parentId":"'
+  s += escapeString(node.parentId)
+  s += '","leftNode":'
+  s += itoa(node.leftNode)
+  s += ',"rightNode":'
+  s += itoa(node.rightNode)
+  s += ',"deep":'
+  s += itoa(node.deep)
+  s += ',"checked":'
+  s += itoa(node.checked)
+  s += ',"selected":'
+  s += itoa(node.selected)
+  s += ',"collapsed":'
+  s += node.collapsed ? 'true' : 'false'
+  s += ',"disabled":'
+  s += node.disabled ? 'true' : 'false'
   if (node.extendData.length > 0) {
-    parts.push(',"extendData":')
-    parts.push(node.extendData)
+    s += ',"extendData":'
+    s += node.extendData
   }
-  parts.push('}')
+  s += '}'
+  return s
 }
 
 /**
@@ -80,15 +80,12 @@ export function serializeShownSlice(
 
   if (clampedStart >= clampedEnd) return '[]'
 
-  const count: i32 = clampedEnd - clampedStart
-  // 每节点约 22 片段 + 首尾 2，预分配容量避免动态扩容
-  const parts: string[] = new Array<string>(count * 22 + 2)
-  parts.push('[')
+  let result: string = '['
   for (let i: i32 = clampedStart; i < clampedEnd; i++) {
-    pushNodeJson(parts, shownNodes[i], i > clampedStart)
+    result += nodeToJson(shownNodes[i], i > clampedStart)
   }
-  parts.push(']')
-  return parts.join('')
+  result += ']'
+  return result
 }
 
 /**
@@ -97,13 +94,12 @@ export function serializeShownSlice(
  */
 export function serializeMpttArray(tree: MpttTree[]): string {
   if (tree.length === 0) return '[]'
-  const parts: string[] = new Array<string>(tree.length * 22 + 2)
-  parts.push('[')
+  let result: string = '['
   for (let i = 0; i < tree.length; i++) {
-    pushNodeJson(parts, tree[i], i > 0)
+    result += nodeToJson(tree[i], i > 0)
   }
-  parts.push(']')
-  return parts.join('')
+  result += ']'
+  return result
 }
 
 /**

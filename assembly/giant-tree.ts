@@ -75,7 +75,7 @@ export class GiantTree {
     rightNodeField: string = 'rightNode'
   ) {
     this.root = root
-    this.lineHeight = lineHeight
+    this.lineHeight = lineHeight > 0 ? lineHeight : 20
     this.selectType = selectType
     this.fieldKeys = new TreeFieldKeys(
       idField,
@@ -117,6 +117,11 @@ export class GiantTree {
 
   /** id→fullTree 索引映射 / id→fullTree index map / Маппинг id→индекс в fullTree */
   idToIndex: Map<string, i32> = new Map()
+
+  /** 搜索复用：临时 ID 集合 / Reusable search temp: ID set / Переиспользуемый набор ID для поиска */
+  _searchIdSet: Set<string> = new Set<string>()
+  /** 搜索复用：临时祖先数组 / Reusable search temp: parent nodes / Переиспользуемый массив предков для поиска */
+  _searchParents: MpttTree[] = []
 
   /** RADIO 模式下当前选中节点的 fullTree 索引（-1=无），避免全树 O(N) 扫描 / RADIO mode: current checked node index in fullTree (-1=none), avoids O(N) full scan / RADIO: индекс текущего выбранного узла в fullTree (-1=нет), избегает полного O(N) сканирования */
   _radioCheckedIdx: i32 = -1
@@ -412,10 +417,16 @@ export class GiantTree {
     // RADIO: 用缓存索引 O(1) 替代全树 O(N) 扫描
     // RADIO: use cached index O(1) instead of full tree O(N) scan
     if (this.selectType === SelectType.RADIO) {
-      const targetIdx: i32 = this.idToIndex.has(id)
-        ? this.idToIndex.get(id)
-        : -1
-      if (targetIdx >= 0 && this.fullTree[targetIdx].disabled) {
+      if (!this.idToIndex.has(id)) {
+        return serializeShownSlice(
+          this._shownNodes,
+          this.scrollTop,
+          this.scrollHeight,
+          this.lineHeight
+        )
+      }
+      const targetIdx: i32 = this.idToIndex.get(id)
+      if (this.fullTree[targetIdx].disabled) {
         return serializeShownSlice(
           this._shownNodes,
           this.scrollTop,
@@ -429,10 +440,16 @@ export class GiantTree {
       this.fullTree[targetIdx].checked = checked
       this._radioCheckedIdx = targetIdx
     } else if (this.selectType === SelectType.SELECT) {
-      const targetIdx: i32 = this.idToIndex.has(id)
-        ? this.idToIndex.get(id)
-        : -1
-      if (targetIdx >= 0 && this.fullTree[targetIdx].disabled) {
+      if (!this.idToIndex.has(id)) {
+        return serializeShownSlice(
+          this._shownNodes,
+          this.scrollTop,
+          this.scrollHeight,
+          this.lineHeight
+        )
+      }
+      const targetIdx: i32 = this.idToIndex.get(id)
+      if (this.fullTree[targetIdx].disabled) {
         return serializeShownSlice(
           this._shownNodes,
           this.scrollTop,
@@ -494,24 +511,18 @@ export class GiantTree {
     // RADIO/SELECT: cached index O(1) path
     // RADIO/SELECT: путь с кэшированным индексом O(1)
     if (this.selectType === SelectType.RADIO) {
-      if (
-        this.idToIndex.has(id) &&
-        this.fullTree[this.idToIndex.get(id)].disabled
-      )
-        return
+      if (!this.idToIndex.has(id)) return
       const targetIdx: i32 = this.idToIndex.get(id)
+      if (this.fullTree[targetIdx].disabled) return
       if (this._radioCheckedIdx >= 0 && this._radioCheckedIdx !== targetIdx) {
         this.fullTree[this._radioCheckedIdx].checked = CheckType.UNCHECKED
       }
       this.fullTree[targetIdx].checked = CheckType.CHECKED
       this._radioCheckedIdx = targetIdx
     } else if (this.selectType === SelectType.SELECT) {
-      if (
-        this.idToIndex.has(id) &&
-        this.fullTree[this.idToIndex.get(id)].disabled
-      )
-        return
+      if (!this.idToIndex.has(id)) return
       const targetIdx: i32 = this.idToIndex.get(id)
+      if (this.fullTree[targetIdx].disabled) return
       if (
         this._selectSelectedIdx >= 0 &&
         this._selectSelectedIdx !== targetIdx
@@ -521,7 +532,19 @@ export class GiantTree {
       this.fullTree[targetIdx].selected = CheckType.CHECKED
       this._selectSelectedIdx = targetIdx
     } else {
-      setCheckedNodeInTree(this.fullTree, id, this.selectType)
+      const resultIdx = setCheckedNodeInTree(
+        this.fullTree,
+        id,
+        this.selectType,
+        this.idToIndex,
+        this._radioCheckedIdx,
+        this._selectSelectedIdx
+      )
+      if (this.selectType === SelectType.RADIO) {
+        this._radioCheckedIdx = resultIdx
+      } else if (this.selectType === SelectType.SELECT) {
+        this._selectSelectedIdx = resultIdx
+      }
     }
   }
 
@@ -534,7 +557,9 @@ export class GiantTree {
     return getCheckedNodesFromTree(
       this.fullTree,
       this.selectType,
-      this.checkedOutputMode
+      this.checkedOutputMode,
+      this._radioCheckedIdx,
+      this._selectSelectedIdx
     )
   }
 
@@ -550,7 +575,9 @@ export class GiantTree {
     return getCheckedIdsFromTree(
       this.fullTree,
       this.selectType,
-      this.checkedOutputMode
+      this.checkedOutputMode,
+      this._radioCheckedIdx,
+      this._selectSelectedIdx
     )
   }
 
@@ -597,7 +624,13 @@ export class GiantTree {
         this.lineHeight
       )
     } else {
-      this.shownCount = fuzzySearchTree(this.fullTree, this.searchTree, keyword)
+      this.shownCount = fuzzySearchTree(
+        this.fullTree,
+        this.searchTree,
+        keyword,
+        this._searchIdSet,
+        this._searchParents
+      )
       this.tree = this.searchTree
       this._shownNodes.splice(0)
       for (let i: i32 = 0; i < this.searchTree.length; i++) {

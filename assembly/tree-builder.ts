@@ -53,74 +53,118 @@ function skipString(src: string, pos: i32, len: i32): i32 {
   return pos
 }
 
+const MAX_NESTING_DEPTH: i32 = 512
+
 /**
- * 跳过任意 JSON 值（字符串/数字/布尔/null/对象/数组）
- * Skip past any JSON value (string/number/boolean/null/object/array)
- * Пропуск любого значения JSON (строка/число/булево/null/объект/массив)
+ * 跳过任意 JSON 值（迭代式，防止深层嵌套导致 WASM 栈溢出）
+ * Skip past any JSON value (iterative, prevents WASM stack overflow from deep nesting)
  */
 function skipValue(src: string, pos: i32, len: i32): i32 {
-  pos = skipWs(src, pos, len)
-  if (pos >= len) return pos
-  const c = src.charCodeAt(pos)
-  if (c === 0x22) return skipString(src, pos, len)
-  if (c === 0x7b) return skipObject(src, pos, len) // '{'
-  if (c === 0x5b) return skipArray(src, pos, len) // '['
-  // number / true / false / null
+  let depth: i32 = 0
+  let needValue: bool = true
+
   while (pos < len) {
-    const ch = src.charCodeAt(pos)
-    if (
-      ch === 0x2c ||
-      ch === 0x7d ||
-      ch === 0x5d || // , } ]
-      ch === 0x20 ||
-      ch === 0x09 ||
-      ch === 0x0a ||
-      ch === 0x0d
-    )
-      break
+    if (needValue) {
+      pos = skipWs(src, pos, len)
+      if (pos >= len) return pos
+      const c = src.charCodeAt(pos)
+
+      if (c === 0x22) {
+        pos = skipString(src, pos, len)
+        needValue = false
+        if (depth === 0) return pos
+        continue
+      }
+
+      if (c === 0x7b || c === 0x5b) {
+        depth++
+        if (depth > MAX_NESTING_DEPTH) return len
+        pos++
+        if (c === 0x7b) {
+          // object: expect key or '}'
+          pos = skipWs(src, pos, len)
+          if (pos < len && src.charCodeAt(pos) === 0x7d) {
+            pos++
+            depth--
+            needValue = false
+            if (depth === 0) return pos
+            continue
+          }
+          // skip key string, then ':', then set needValue for the value
+          pos = skipString(src, pos, len)
+          pos = skipWs(src, pos, len)
+          if (pos < len && src.charCodeAt(pos) === 0x3a) pos++
+        } else {
+          // array: check for empty ']'
+          pos = skipWs(src, pos, len)
+          if (pos < len && src.charCodeAt(pos) === 0x5d) {
+            pos++
+            depth--
+            needValue = false
+            if (depth === 0) return pos
+            continue
+          }
+        }
+        needValue = true
+        continue
+      }
+
+      // number / true / false / null
+      while (pos < len) {
+        const ch = src.charCodeAt(pos)
+        if (
+          ch === 0x2c ||
+          ch === 0x7d ||
+          ch === 0x5d ||
+          ch === 0x20 ||
+          ch === 0x09 ||
+          ch === 0x0a ||
+          ch === 0x0d
+        )
+          break
+        pos++
+      }
+      needValue = false
+      if (depth === 0) return pos
+      continue
+    }
+
+    // after a value: look for separator or closing bracket
+    pos = skipWs(src, pos, len)
+    if (pos >= len) return pos
+    const cc = src.charCodeAt(pos)
+
+    if (cc === 0x7d || cc === 0x5d) {
+      pos++
+      depth--
+      if (depth === 0) return pos
+      needValue = false
+      continue
+    }
+
+    if (cc === 0x2c) {
+      pos++
+      // peek back to determine if inside object or array — not needed,
+      // just check if next non-ws token is a string followed by ':'
+      const savePos = pos
+      pos = skipWs(src, pos, len)
+      if (pos < len && src.charCodeAt(pos) === 0x22) {
+        const afterStr = skipString(src, pos, len)
+        const checkPos = skipWs(src, afterStr, len)
+        if (checkPos < len && src.charCodeAt(checkPos) === 0x3a) {
+          // object context: skip key and colon
+          pos = checkPos + 1
+          needValue = true
+          continue
+        }
+      }
+      // array context or not an object key
+      pos = savePos
+      needValue = true
+      continue
+    }
+
     pos++
-  }
-  return pos
-}
-
-/**
- * 跳过整个 JSON 对象 { ... }
- * Skip past an entire JSON object { ... }
- * Пропуск целого JSON-объекта { ... }
- */
-function skipObject(src: string, pos: i32, len: i32): i32 {
-  pos++ // skip '{'
-  while (pos < len) {
-    pos = skipWs(src, pos, len)
-    if (pos >= len) break
-    if (src.charCodeAt(pos) === 0x7d) return pos + 1 // '}'
-    pos = skipString(src, pos, len) // key
-    pos = skipWs(src, pos, len)
-    if (src.charCodeAt(pos) === 0x3a) pos++ // ':'
-    pos = skipWs(src, pos, len)
-    pos = skipValue(src, pos, len) // value
-    pos = skipWs(src, pos, len)
-    if (src.charCodeAt(pos) === 0x7d) return pos + 1 // '}'
-    if (src.charCodeAt(pos) === 0x2c) pos++ // ','
-  }
-  return pos
-}
-
-/**
- * 跳过整个 JSON 数组 [ ... ]
- * Skip past an entire JSON array [ ... ]
- * Пропуск целого JSON-массива [ ... ]
- */
-function skipArray(src: string, pos: i32, len: i32): i32 {
-  pos++ // skip '['
-  while (pos < len) {
-    pos = skipWs(src, pos, len)
-    if (pos >= len) break
-    if (src.charCodeAt(pos) === 0x5d) return pos + 1 // ']'
-    pos = skipValue(src, pos, len)
-    pos = skipWs(src, pos, len)
-    if (src.charCodeAt(pos) === 0x5d) return pos + 1 // ']'
-    if (src.charCodeAt(pos) === 0x2c) pos++ // ','
   }
   return pos
 }
@@ -238,22 +282,6 @@ export function parseNeighborArray(
 // ─── Public API ───
 
 /**
- * 检测 JSON 是否包含 MPTT 字段（leftNode 和 rightNode）
- * Detect if JSON contains MPTT fields (leftNode and rightNode)
- * Проверка наличия полей MPTT в JSON (leftNode и rightNode)
- *
- * @param src - JSON 字符串 / JSON string / Строка JSON
- * @param fk - 字段键名配置 / Field key configuration / Конфигурация имён полей
- * @returns true 表示输入已包含 MPTT 字段 / true if input already contains MPTT fields / true, если ввод уже содержит поля MPTT
- */
-export function hasMpttFields(src: string, fk: TreeFieldKeys): bool {
-  return (
-    src.indexOf(fk.leftNodeField) !== -1 &&
-    src.indexOf(fk.rightNodeField) !== -1
-  )
-}
-
-/**
  * 从 JSON 字符串解析为 NeighborTree 数组（使用自定义字段键名）
  * Parse JSON string to NeighborTree array (using custom field keys)
  * Разбор строки JSON в массив NeighborTree (с пользовательскими ключами полей)
@@ -307,74 +335,110 @@ export function convertNeighborToMptt(
     treeMap.get(nt.parentId).push(nt)
   }
 
-  const shownCountRef: i32[] = [0]
-  _recursiveAssembly(treeMap, root, 0, 0, root, fullTree, shownCountRef)
+  const shownCount = _iterativeAssembly(treeMap, root, fullTree)
   treeMap.clear()
-  return shownCountRef[0]
+  return shownCount
 }
 
 /**
- * 递归构建 MPTT 节点的内部函数
- * Internal recursive MPTT node builder
- * Внутренняя функция рекурсивного построения узлов MPTT
+ * 栈帧：迭代 DFS 中每层的状态
+ * Stack frame: per-level state in iterative DFS
  *
- * @param treeMap - 按 parentId 分组的子节点映射 / Children grouped by parentId / Дети, сгруппированные по parentId
- * @param parentId - 当前父节点 ID / Current parent node ID / ID текущего родительского узла
- * @param lNode - 当前 leftNode 值（返回时更新为子树最后的 rightNode+1） / Current leftNode value (returned as last subtree rightNode+1) / Текущее значение leftNode (возвращается как последний rightNode+1 поддерева)
- * @param deep - 当前深度 / Current depth / Текущая глубина
- * @param root - 树根标识 / Root identifier / Идентификатор корня
- * @param fullTree - 输出的 MPTT 节点数组 / Output MPTT node array / Выходной массив узлов MPTT
- * @param shownCountRef - 可见节点计数器引用 / Visible node counter reference / Ссылка на счётчик видимых узлов
- * @param parentDisabled - 父节点是否禁用 / Whether parent is disabled / Отключён ли родительский узел
- * @returns 最后一个子节点的 rightNode 值 / rightNode value of last child / Значение rightNode последнего дочернего узла
+ * owner: 该层对应的待回填 rightNode 的父节点（root 层为 null）
  */
-function _recursiveAssembly(
+class _StackFrame {
+  children: NeighborTree[]
+  childIdx: i32
+  deep: i32
+  parentDisabled: bool
+  owner: MpttTree | null
+  constructor(
+    children: NeighborTree[],
+    deep: i32,
+    parentDisabled: bool,
+    owner: MpttTree | null
+  ) {
+    this.children = children
+    this.childIdx = 0
+    this.deep = deep
+    this.parentDisabled = parentDisabled
+    this.owner = owner
+  }
+}
+
+/**
+ * 迭代式 DFS 构建 MPTT 节点（替代递归版本，无栈溢出风险）
+ * Iterative DFS MPTT builder (replaces recursive version, no stack overflow risk)
+ *
+ * 与递归版完全等价的前序遍历 + 后序回填 rightNode。
+ * 每个栈帧通过 owner 字段直接关联待回填的父节点，避免额外的 pendingParents 栈。
+ */
+function _iterativeAssembly(
   treeMap: Map<string, NeighborTree[]>,
-  parentId: string,
-  lNode: i32,
-  deep: i32,
   root: string,
-  fullTree: MpttTree[],
-  shownCountRef: i32[],
-  parentDisabled: bool = false
+  fullTree: MpttTree[]
 ): i32 {
-  if (treeMap.has(parentId)) {
-    const children = treeMap.get(parentId)
-    const currentDeep: i32 = deep
-    for (let i = 0; i < children.length; i++) {
-      const nt: NeighborTree = children[i]
-      const mptt: MpttTree = new MpttTree()
-      mptt.id = nt.id
-      mptt.name = nt.name
-      mptt.parentId = nt.parentId
-      mptt.disabled = nt.disabled || parentDisabled
-      mptt.extendData = nt.extendData
-      mptt.leftNode = lNode
-      mptt.deep = currentDeep
+  if (!treeMap.has(root)) return 0
 
-      fullTree.push(mptt)
+  let lNode: i32 = 0
+  let shownCount: i32 = 0
 
-      const rightNode: i32 = _recursiveAssembly(
-        treeMap,
-        mptt.id,
-        lNode + 1,
-        currentDeep + 1,
-        root,
-        fullTree,
-        shownCountRef,
-        mptt.disabled
+  const stack: _StackFrame[] = [
+    new _StackFrame(treeMap.get(root), 0, false, null),
+  ]
+
+  while (stack.length > 0) {
+    const frame = stack[stack.length - 1]
+
+    if (frame.childIdx >= frame.children.length) {
+      stack.pop()
+      // 回填 owner 的 rightNode
+      if (frame.owner !== null) {
+        const parent = frame.owner as MpttTree
+        parent.rightNode = lNode
+        if (parent.parentId === root) {
+          parent.shown = true
+          shownCount++
+        }
+        lNode = parent.rightNode + 1
+      }
+      continue
+    }
+
+    const nt: NeighborTree = frame.children[frame.childIdx]
+    frame.childIdx++
+
+    const mptt: MpttTree = new MpttTree()
+    mptt.id = nt.id
+    mptt.name = nt.name
+    mptt.parentId = nt.parentId
+    mptt.disabled = nt.disabled || frame.parentDisabled
+    mptt.extendData = nt.extendData
+    mptt.leftNode = lNode
+    mptt.deep = frame.deep
+    fullTree.push(mptt)
+
+    if (treeMap.has(mptt.id)) {
+      lNode = mptt.leftNode + 1
+      stack.push(
+        new _StackFrame(
+          treeMap.get(mptt.id),
+          frame.deep + 1,
+          mptt.disabled,
+          mptt
+        )
       )
-
-      mptt.rightNode = rightNode
-
+    } else {
+      mptt.rightNode = mptt.leftNode + 1
       if (mptt.parentId === root) {
         mptt.shown = true
-        shownCountRef[0]++
+        shownCount++
       }
-      lNode = rightNode + 1
+      lNode = mptt.rightNode + 1
     }
   }
-  return lNode
+
+  return shownCount
 }
 
 /**
