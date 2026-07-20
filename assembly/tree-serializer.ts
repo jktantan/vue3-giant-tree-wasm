@@ -80,12 +80,13 @@ export function serializeShownSlice(
 
   if (clampedStart >= clampedEnd) return '[]'
 
-  let result: string = '['
+  const parts: string[] = new Array<string>(clampedEnd - clampedStart + 2)
+  parts[0] = '['
   for (let i: i32 = clampedStart; i < clampedEnd; i++) {
-    result += nodeToJson(shownNodes[i], i > clampedStart)
+    parts[i - clampedStart + 1] = nodeToJson(shownNodes[i], i > clampedStart)
   }
-  result += ']'
-  return result
+  parts[clampedEnd - clampedStart + 1] = ']'
+  return parts.join('')
 }
 
 /**
@@ -94,12 +95,13 @@ export function serializeShownSlice(
  */
 export function serializeMpttArray(tree: MpttTree[]): string {
   if (tree.length === 0) return '[]'
-  let result: string = '['
+  const parts: string[] = new Array<string>(tree.length + 2)
+  parts[0] = '['
   for (let i = 0; i < tree.length; i++) {
-    result += nodeToJson(tree[i], i > 0)
+    parts[i + 1] = nodeToJson(tree[i], i > 0)
   }
-  result += ']'
-  return result
+  parts[tree.length + 1] = ']'
+  return parts.join('')
 }
 
 /**

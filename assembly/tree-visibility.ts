@@ -23,22 +23,6 @@ export function rebuildShownNodes(tree: MpttTree[]): MpttTree[] {
 }
 
 /**
- * 重新计算可见节点总数
- * Recalculates total visible node count
- * Пересчитывает общее количество видимых узлов
- *
- * @param tree - 当前显示树 / Current display tree / Текущее дерево отображения
- * @returns 可见节点数 / Visible node count / Количество видимых узлов
- */
-export function recalcShownCount(tree: MpttTree[]): i32 {
-  let count: i32 = 0
-  for (let i: i32 = 0; i < tree.length; i++) {
-    if (tree[i].shown) count++
-  }
-  return count
-}
-
-/**
  * 从折叠状态重建整棵树的 shown 标志（不依赖已有 shown 值）。
  * 用于搜索结果清空后恢复正确可见性，修复搜索时 shown 标志被污染的问题。
  *
@@ -301,45 +285,4 @@ export function binarySearchShownNodes(
     }
   }
   return -1
-}
-
-/**
- * 获取虚拟滚动可视区域内的节点切片
- * Gets the visible slice of nodes within the virtual scroll viewport
- * Получает срез видимых узлов в области виртуальной прокрутки
- *
- * 通过 scrollTop / lineHeight 直接计算索引，复杂度 O(k)
- * Calculates index directly via scrollTop / lineHeight, complexity O(k)
- * Вычисляет индекс напрямую через scrollTop / lineHeight, сложность O(k)
- *
- * @param shownNodes - 可见节点数组 / Visible nodes array / Массив видимых узлов
- * @param scrollTop - 当前滚动位置（像素） / Current scroll position (pixels) / Текущая позиция прокрутки (пиксели)
- * @param scrollHeight - 可视区域高度（像素） / Viewport height (pixels) / Высота области просмотра (пиксели)
- * @param lineHeight - 每行高度（像素） / Line height (pixels) / Высота строки (пиксели)
- * @returns 可视区域内的节点数组 / Array of nodes within viewport / Массив узлов в области просмотра
- */
-export function getVisibleSlice(
-  shownNodes: MpttTree[],
-  scrollTop: f32,
-  scrollHeight: f32,
-  lineHeight: f32
-): MpttTree[] {
-  const startIdx: i32 = <i32>Math.floor(scrollTop / lineHeight)
-  const endIdx: i32 =
-    <i32>Math.ceil((scrollTop + scrollHeight) / lineHeight) + 1
-
-  const clampedStart: i32 =
-    startIdx < 0
-      ? 0
-      : startIdx >= shownNodes.length
-        ? shownNodes.length
-        : startIdx
-  const clampedEnd: i32 =
-    endIdx < 0 ? 0 : endIdx > shownNodes.length ? shownNodes.length : endIdx
-
-  const result: MpttTree[] = []
-  for (let i: i32 = clampedStart; i < clampedEnd; i++) {
-    result.push(shownNodes[i])
-  }
-  return result
 }

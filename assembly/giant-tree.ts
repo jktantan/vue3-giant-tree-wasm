@@ -23,7 +23,6 @@ import {
 import {
   checkNodeInTree,
   setCheckedNodesInTree,
-  setCheckedNodeInTree,
   getCheckedNodesFromTree,
   getCheckedIdsFromTree,
   clearAllChecked,
@@ -467,7 +466,7 @@ export class GiantTree {
         this.fullTree[this._radioCheckedIdx].checked = CheckType.UNCHECKED
       }
       this.fullTree[targetIdx].checked = checked
-      this._radioCheckedIdx = targetIdx
+      this._radioCheckedIdx = checked === CheckType.CHECKED ? targetIdx : -1
     } else if (this.selectType === SelectType.SELECT) {
       if (!this.idToIndex.has(id)) {
         return serializeShownSlice(
@@ -493,7 +492,7 @@ export class GiantTree {
         this.fullTree[this._selectSelectedIdx].selected = CheckType.UNCHECKED
       }
       this.fullTree[targetIdx].selected = checked
-      this._selectSelectedIdx = targetIdx
+      this._selectSelectedIdx = checked === CheckType.CHECKED ? targetIdx : -1
     } else {
       // CHECKBOX: 使用原有函数
       // CHECKBOX: use existing function
@@ -536,22 +535,17 @@ export class GiantTree {
    */
   setCheckedNode(id: string): void {
     this._invalidateCache()
-    // RADIO/SELECT: 缓存索引 O(1) 路径
-    // RADIO/SELECT: cached index O(1) path
-    // RADIO/SELECT: путь с кэшированным индексом O(1)
+    if (!this.idToIndex.has(id)) return
+    const targetIdx: i32 = this.idToIndex.get(id)
+    if (this.fullTree[targetIdx].disabled) return
+
     if (this.selectType === SelectType.RADIO) {
-      if (!this.idToIndex.has(id)) return
-      const targetIdx: i32 = this.idToIndex.get(id)
-      if (this.fullTree[targetIdx].disabled) return
       if (this._radioCheckedIdx >= 0 && this._radioCheckedIdx !== targetIdx) {
         this.fullTree[this._radioCheckedIdx].checked = CheckType.UNCHECKED
       }
       this.fullTree[targetIdx].checked = CheckType.CHECKED
       this._radioCheckedIdx = targetIdx
     } else if (this.selectType === SelectType.SELECT) {
-      if (!this.idToIndex.has(id)) return
-      const targetIdx: i32 = this.idToIndex.get(id)
-      if (this.fullTree[targetIdx].disabled) return
       if (
         this._selectSelectedIdx >= 0 &&
         this._selectSelectedIdx !== targetIdx
@@ -561,19 +555,13 @@ export class GiantTree {
       this.fullTree[targetIdx].selected = CheckType.CHECKED
       this._selectSelectedIdx = targetIdx
     } else {
-      const resultIdx = setCheckedNodeInTree(
+      checkNodeInTree(
         this.fullTree,
-        id,
-        this.selectType,
         this.idToIndex,
-        this._radioCheckedIdx,
-        this._selectSelectedIdx
+        id,
+        CheckType.CHECKED,
+        this.selectType
       )
-      if (this.selectType === SelectType.RADIO) {
-        this._radioCheckedIdx = resultIdx
-      } else if (this.selectType === SelectType.SELECT) {
-        this._selectSelectedIdx = resultIdx
-      }
     }
   }
 
@@ -663,6 +651,7 @@ export class GiantTree {
       this.tree = this.searchTree
       this._shownNodes.splice(0)
       for (let i: i32 = 0; i < this.searchTree.length; i++) {
+        this.searchTree[i].shown = true
         this._shownNodes.push(this.searchTree[i])
       }
       this._invalidateCache()

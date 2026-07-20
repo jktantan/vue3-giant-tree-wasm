@@ -36,6 +36,37 @@ function readStringContent(src: string, pos: i32, len: i32): string {
 }
 
 /**
+ * 读取 JSON 值为字符串：支持字符串和非字符串（数字、布尔、null）
+ * Read a JSON value as string: supports both string and non-string (number, boolean, null)
+ * Чтение значения JSON как строки: поддерживает строки и не-строки (число, boolean, null)
+ */
+// @ts-ignore: decorator
+@inline
+function readValueAsString(src: string, pos: i32, len: i32): string {
+  if (pos < len && src.charCodeAt(pos) === 0x22) {
+    return readStringContent(src, pos, len)
+  }
+  const start = pos
+  while (pos < len) {
+    const c = src.charCodeAt(pos)
+    if (
+      c === 0x2c ||
+      c === 0x7d ||
+      c === 0x5d ||
+      c === 0x20 ||
+      c === 0x09 ||
+      c === 0x0a ||
+      c === 0x0d
+    )
+      break
+    pos++
+  }
+  const raw = src.substring(start, pos)
+  if (raw === 'null') return ''
+  return raw
+}
+
+/**
  * 跳过 JSON 字符串值（含引号），pos 必须在开引号 " 处
  * Skip past a JSON string value (including quotes), pos must be at opening quote "
  * Пропуск значения строки JSON (включая кавычки), pos должен быть на открывающей кавычке "
@@ -220,16 +251,19 @@ function parseOneObject(
 
     // Match key and read value
     if (key === fk.idField) {
-      nt.id = readStringContent(src, pos, len)
+      nt.id = readValueAsString(src, pos, len)
     } else if (key === fk.nameField) {
-      nt.name = readStringContent(src, pos, len)
+      nt.name = readValueAsString(src, pos, len)
     } else if (key === fk.parentIdField) {
-      nt.parentId = readStringContent(src, pos, len)
+      nt.parentId = readValueAsString(src, pos, len)
     } else if (key === 'disabled') {
-      // check for "true" keyword
       pos = skipWs(src, pos, len)
-      if (pos + 4 <= len) {
-        nt.disabled = src.charCodeAt(pos) === 0x74 // 't'
+      if (pos + 3 < len) {
+        nt.disabled =
+          src.charCodeAt(pos) === 0x74 &&
+          src.charCodeAt(pos + 1) === 0x72 &&
+          src.charCodeAt(pos + 2) === 0x75 &&
+          src.charCodeAt(pos + 3) === 0x65
       }
     }
     pos = skipValue(src, pos, len)

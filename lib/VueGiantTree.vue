@@ -176,6 +176,17 @@ watch(() => props.checkedOutputMode, (newMode) => {
   emitCheckedResult()
 })
 
+// tree prop 变化 → 重新加载 WASM 树数据
+watch(() => props.tree, (newTree) => {
+  clear(tree)
+  if (newTree.length > 0) {
+    setNeighborTree(tree, JSON.stringify(newTree))
+  }
+  setBoundary(tree, scrollTop, scrollHeight)
+  listHeight.value = getShownHeight(tree)
+  refreshTree()
+}, { deep: true })
+
 /** 挂载时初始化: 观察容器大小、加载树数据、立即渲染首屏 / On mount: observe container, load tree data, render initial viewport immediately / При монтировании: наблюдать за контейнером, загрузить данные дерева, сразу отрендерить начальный viewport */
 onMounted(() => {
   ro.observe(container.value!)
@@ -194,6 +205,7 @@ onUnmounted(() => {
     cancelAnimationFrame(scrollRafId)
     scrollRafId = 0
   }
+  clear(tree)
   lastNodesStr = ''
 })
 /** 行点击（SELECT 模式选中节点） / Row click (selects node in SELECT mode) / Клик по строке (выбирает узел в режиме SELECT) */
