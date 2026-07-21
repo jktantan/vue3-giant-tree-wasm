@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { SelectType, CheckType } from '../build/release'
-import type { FilterFn, TreeNodeData } from './types'
+import { CheckType, SelectType } from './giant-tree'
+import type { MpttNode } from './giant-tree'
+import type { FilterFn } from './types'
 import { computed } from 'vue'
 
 const props = defineProps<{
-  item: TreeNodeData
+  item: MpttNode
   fontSize: string
   selectType: SelectType
   filterFn?: FilterFn
@@ -12,16 +13,15 @@ const props = defineProps<{
 
 const emit = defineEmits(['collapse-click', 'check-click', 'item-click'])
 
-/** RADIO 模式：filterFn 返回 false 则不显示 Radio 框（节点不可选） / RADIO mode: hide radio if filterFn returns false / RADIO: скрыть radio если filterFn возвращает false */
 const showRadio = computed(() => {
   if (!props.filterFn) return true
   return props.filterFn(props.item.extendData || {})
 })
+
 const collapsedClick = () => {
   emit('collapse-click', props.item.id, !props.item.collapsed)
 }
 
-/** 复选框/单选框点击（toggle 逻辑在 WASM 侧） / Checkbox/radio click (toggle logic is in WASM) / Клик по чекбоксу/радио (логика переключения в WASM) */
 const checkClick = () => {
   if (props.item.disabled) return
   emit(
@@ -33,7 +33,6 @@ const checkClick = () => {
   )
 }
 
-/** 行点击（SELECT 模式下选中节点） / Row click (selects node in SELECT mode) / Клик по строке (выбирает узел в режиме SELECT) */
 const itemClick = () => {
   if (props.item.disabled) return
   emit('item-click', props.item.id)
