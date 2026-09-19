@@ -124,39 +124,6 @@ export function getParentNodeCheckType(
 }
 
 /**
- * 收集指定节点的所有祖先节点
- * Collects all ancestor nodes of a given node
- * Собирает все узлы-предки указанного узла
- *
- * @param fullTree - 完整树数组 / Full tree array / Полный массив дерева
- * @param node - 目标节点 / Target node / Целевой узел
- * @param startIndex - 向前搜索起始索引 / Backward search start index / Начальный индекс обратного поиска
- * @param parentNodes - 输出祖先数组 / Output ancestor array / Массив предков для вывода
- * @param parentIdSet - 去重集合 / Dedup set / Набор для дедупликации
- */
-export function collectParentNodes(
-  fullTree: MpttTree[],
-  node: MpttTree,
-  startIndex: i32,
-  parentNodes: MpttTree[],
-  parentIdSet: Set<string>
-): void {
-  for (let i = startIndex; i >= 0; i--) {
-    const currentNode: MpttTree = fullTree[i]
-    if (
-      currentNode.leftNode <= node.leftNode &&
-      currentNode.rightNode >= node.rightNode
-    ) {
-      if (parentIdSet.has(currentNode.id)) {
-        break
-      }
-      parentNodes.push(currentNode)
-      parentIdSet.delete(currentNode.id)
-    }
-  }
-}
-
-/**
  * 批量设置多个节点选中（CHECKBOX 模式），并更新祖先
  * Batch-sets check state for multiple nodes (CHECKBOX mode), updating ancestors
  * Пакетная установка выбора для нескольких узлов (CHECKBOX), обновление предков
@@ -315,24 +282,6 @@ export function setCheckedNodeInTree(
 // @ts-ignore: decorator
 @inline function isLeaf(node: MpttTree): bool {
   return node.rightNode - node.leftNode === 1
-}
-
-/**
- * 判断节点是否被祖先覆盖（祖先为 CHECKED 时，该节点无需重复输出）
- * Checks whether a node is covered by an ancestor (ancestor is CHECKED, so this node is redundant)
- * Проверяет, покрыт ли узел предком (предок CHECKED, поэтому этот узел избыточен)
- */
-function isCoveredByCheckedAncestor(fullTree: MpttTree[], idx: i32): bool {
-  const node = fullTree[idx]
-  for (let j: i32 = idx - 1; j >= 0; j--) {
-    const prev = fullTree[j]
-    if (prev.leftNode < node.leftNode && prev.rightNode > node.rightNode) {
-      // 找到最近祖先
-      if (prev.checked === CheckType.CHECKED) return true
-      break
-    }
-  }
-  return false
 }
 
 export function getCheckedIdsFromTree(
