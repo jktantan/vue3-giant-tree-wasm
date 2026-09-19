@@ -16,7 +16,8 @@
 - **虚拟滚动** — 仅渲染可视区域内的节点，DOM 占用极低
 - **MPTT 算法** — O(1) 子树判定，O(k) 视口切片，O(subtree + log N) 展开/折叠
 - **三种选择模式** — 多选 (Checkbox)、单选 (Radio)、点击选中 (Select)
-- **模糊搜索** — 关键词过滤并自动补全祖先链
+- **模糊搜索** — 关键词过滤并自动补全祖先链；搜索视图支持独立展开/收起，不影响主树状态
+- **批量展开/收起** — 通过组件实例 API 一键展开或收起当前视图
 - **可配置字段名** — 支持自定义输入 JSON 的字段映射（id / name / parentId / leftNode / rightNode）
 - **统一树构建** — 无论输入是邻接表还是 MPTT 格式，始终自动重建 MPTT，避免 stale leftNode/rightNode
 - **JSON 缓存** — 滚动位置不变时直接返回缓存，避免重复序列化
@@ -51,42 +52,73 @@ const selected = ref([])
 
 <template>
   <div style="width: 400px; height: 600px">
-    <VueGiantTree
-      :tree="treeData"
-      root="root"
-      v-model="selected"
-    />
+    <VueGiantTree :tree="treeData" root="root" v-model="selected" />
   </div>
 </template>
 ```
 
+### 组件实例方法
+
+为组件设置 `ref` 后，可以调用以下方法。`expandAll()` 和 `collapseAll()` 会作用于当前视图：普通树视图操作完整树，搜索视图只操作当前搜索结果；搜索视图中的操作不会改变主树的收起状态。
+
+```vue
+<script setup lang="ts">
+import { ref } from 'vue'
+import { VueGiantTree } from 'vue3-giant-tree-wasm'
+
+const treeRef = ref<InstanceType<typeof VueGiantTree>>()
+
+const expandAll = () => treeRef.value?.expandAll()
+const collapseAll = () => treeRef.value?.collapseAll()
+const search = (keyword: string) => treeRef.value?.fuzzySearch(keyword)
+</script>
+
+<template>
+  <button @click="expandAll">全部展开</button>
+  <button @click="collapseAll">全部收起</button>
+  <VueGiantTree ref="treeRef" :tree="treeData" root="root" v-model="selected" />
+</template>
+```
+
+| 方法                                      | 说明                                       |
+| ----------------------------------------- | ------------------------------------------ |
+| `expandAll()`                             | 展开当前视图中的所有可展开节点             |
+| `collapseAll()`                           | 收起当前视图中的所有可展开节点             |
+| `fuzzySearch(keyword)`                    | 300ms 防抖的模糊搜索；传入空字符串清除搜索 |
+| `fuzzySearchRaw(keyword)`                 | 立即执行模糊搜索；传入空字符串清除搜索     |
+| `getTreeSize()`                           | 返回树节点总数                             |
+| `setChecked(id)` / `setCheckedByIds(ids)` | 以编程方式设置选中节点                     |
+| `clearAllChecked()`                       | 清除所有选中状态                           |
+| `switchDisplay(displayType)`              | 切换 `TREE` 或 `SEARCH` 视图               |
+| `refreshCheckedResult()`                  | 按当前输出配置重新触发 `v-model` 结果      |
+
 ### Props
 
-| 属性 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `tree` | `TreeInputItem[]` | `[]` | 树数据，邻接表格式 |
-| `root` | `string` | `''` | 根节点标识，顶层节点的 `parentId` 应等于此值 |
-| `modelValue` | `TreeNodeData \| TreeNodeData[]` | — | 选中结果 (v-model) |
-| `width` | `string` | `'100%'` | 容器宽度 |
-| `height` | `string` | `'100%'` | 容器高度 |
-| `lineHeight` | `number` | `26` | 每行高度（像素） |
-| `fontSize` | `string` | `'14px'` | 字体大小 |
-| `selectType` | `SelectType` | `CHECKBOX` | 选择模式：`CHECKBOX` / `RADIO` / `SELECT` |
-| `fieldKeys` | `TreeFieldKeys` | `{}` | JSON 字段名映射，见下方说明 |
-| `outputIdOnly` | `boolean` | `true` | `true` 时 v-model 只传选中节点的 ID（默认）；`false` 时传完整 JSON |
-| `checkedOutputMode` | `CheckedOutputMode` | `All` | CHECKBOX 输出 ID 过滤模式：`All` / `RootOnly` / `LeafOnly` / `Custom` |
-| `filterFn` | `FilterFn` | — | 自定义过滤回调。CHECKBOX + Custom 模式下过滤输出；RADIO 模式下判断节点是否显示 Radio 框 |
+| 属性                | 类型                             | 默认值     | 说明                                                                                    |
+| ------------------- | -------------------------------- | ---------- | --------------------------------------------------------------------------------------- |
+| `tree`              | `TreeInputItem[]`                | `[]`       | 树数据，邻接表格式                                                                      |
+| `root`              | `string`                         | `''`       | 根节点标识，顶层节点的 `parentId` 应等于此值                                            |
+| `modelValue`        | `TreeNodeData \| TreeNodeData[]` | —          | 选中结果 (v-model)                                                                      |
+| `width`             | `string`                         | `'100%'`   | 容器宽度                                                                                |
+| `height`            | `string`                         | `'100%'`   | 容器高度                                                                                |
+| `lineHeight`        | `number`                         | `26`       | 每行高度（像素）                                                                        |
+| `fontSize`          | `string`                         | `'14px'`   | 字体大小                                                                                |
+| `selectType`        | `SelectType`                     | `CHECKBOX` | 选择模式：`CHECKBOX` / `RADIO` / `SELECT`                                               |
+| `fieldKeys`         | `TreeFieldKeys`                  | `{}`       | JSON 字段名映射，见下方说明                                                             |
+| `outputIdOnly`      | `boolean`                        | `true`     | `true` 时 v-model 只传选中节点的 ID（默认）；`false` 时传完整 JSON                      |
+| `checkedOutputMode` | `CheckedOutputMode`              | `All`      | CHECKBOX 输出 ID 过滤模式：`All` / `RootOnly` / `LeafOnly` / `Custom`                   |
+| `filterFn`          | `FilterFn`                       | —          | 自定义过滤回调。CHECKBOX + Custom 模式下过滤输出；RADIO 模式下判断节点是否显示 Radio 框 |
 
 ### CheckedOutputMode
 
 CHECKBOX 模式下控制 `getCheckedIds` 和 `getCheckedNodes` 的输出内容：
 
-| 值 | 说明 |
-|----|------|
-| `All` | 所有选中节点（默认） |
-| `RootOnly` | 仅返回全选子树的根节点（去重） |
-| `LeafOnly` | 仅返回叶子节点 |
-| `Custom` | 自定义模式：由 `filterFn` 回调决定输出哪些选中节点 |
+| 值         | 说明                                               |
+| ---------- | -------------------------------------------------- |
+| `All`      | 所有选中节点（默认）                               |
+| `RootOnly` | 仅返回全选子树的根节点（去重）                     |
+| `LeafOnly` | 仅返回叶子节点                                     |
+| `Custom`   | 自定义模式：由 `filterFn` 回调决定输出哪些选中节点 |
 
 ### filterFn 自定义过滤
 
@@ -98,11 +130,11 @@ type FilterFn = (extendData: Record<string, unknown>) => boolean
 
 **两种用法：**
 
-| 模式 | 行为 |
-|------|------|
-| `CHECKBOX` + `Custom` | 过滤输出结果，只有 filterFn 返回 `true` 的已选中节点会出现在 v-model 中 |
-| `RADIO` | 过滤可选节点，只有 filterFn 返回 `true` 的节点才显示 Radio 框，其余节点无法被选中 |
-| `SELECT` | 不受影响 |
+| 模式                  | 行为                                                                              |
+| --------------------- | --------------------------------------------------------------------------------- |
+| `CHECKBOX` + `Custom` | 过滤输出结果，只有 filterFn 返回 `true` 的已选中节点会出现在 v-model 中           |
+| `RADIO`               | 过滤可选节点，只有 filterFn 返回 `true` 的节点才显示 Radio 框，其余节点无法被选中 |
+| `SELECT`              | 不受影响                                                                          |
 
 **示例：** 只输出/选中 `category` 为 `'A'` 的节点
 
@@ -114,7 +146,7 @@ import type { FilterFn } from 'vue3-giant-tree-wasm'
 
 const selected = ref([])
 
-const filterFn: FilterFn = (extendData) => {
+const filterFn: FilterFn = extendData => {
   return extendData.category === 'A'
 }
 </script>
@@ -144,12 +176,12 @@ const filterFn: FilterFn = (extendData) => {
 
 ### 字段名映射 (fieldKeys)
 
-当输入数据的 JSON 字段名不是默认的 `id`/`name`/`parentId`/`leftNode`/`rightNode` 时，可通过 `fieldKeys` 指定映射关系：
+当输入数据的 JSON 字段名不是默认的 `id`/`name`/`parentId`/`leftNode`/`rightNode`时，可通过`fieldKeys` 指定映射关系：
 
 ```typescript
 interface TreeFieldKeys {
-  idField?: string       // 默认 'id'
-  nameField?: string     // 默认 'name'
+  idField?: string // 默认 'id'
+  nameField?: string // 默认 'name'
   parentIdField?: string // 默认 'parentId'
   leftNodeField?: string // 默认 'leftNode'
   rightNodeField?: string // 默认 'rightNode'
@@ -182,8 +214,8 @@ interface TreeFieldKeys {
 
 ```typescript
 interface TreeInputItem {
-  id: string       // 节点唯一 ID
-  name: string     // 节点显示名称
+  id: string // 节点唯一 ID
+  name: string // 节点显示名称
   parentId: string // 父节点 ID
 }
 ```
@@ -195,9 +227,9 @@ interface TreeNodeData {
   id: string
   name: string
   parentId: string
-  leftNode: number   // MPTT 左边界
-  rightNode: number  // MPTT 右边界
-  deep: number       // 节点深度
+  leftNode: number // MPTT 左边界
+  rightNode: number // MPTT 右边界
+  deep: number // 节点深度
   checked: CheckType // 选中状态
   selected: CheckType
   collapsed: boolean // 是否折叠
@@ -206,11 +238,11 @@ interface TreeNodeData {
 
 ### 选择模式
 
-| 模式 | 说明 |
-|------|------|
+| 模式       | 说明                                                        |
+| ---------- | ----------------------------------------------------------- |
 | `CHECKBOX` | 多选复选框，支持半选状态，选中/取消自动传播至子节点和父节点 |
-| `RADIO` | 单选模式，同一时刻只能选中一个节点 |
-| `SELECT` | 点击选中模式，点击节点行即选中 |
+| `RADIO`    | 单选模式，同一时刻只能选中一个节点                          |
+| `SELECT`   | 点击选中模式，点击节点行即选中                              |
 
 ### 开发
 
@@ -246,7 +278,8 @@ A high-performance virtual-scrolling tree component built with Vue 3 + WebAssemb
 - **Virtual Scrolling** — Only renders nodes within the visible viewport, minimal DOM footprint
 - **MPTT Algorithm** — O(1) subtree checks, O(k) viewport slicing, O(subtree + log N) expand/collapse
 - **Three Selection Modes** — Checkbox (multi-select), Radio (single-select), Click-to-Select
-- **Fuzzy Search** — Keyword filtering with automatic ancestor chain completion
+- **Fuzzy Search** — Keyword filtering with automatic ancestor chain completion; search-view expand/collapse state is independent from the main tree
+- **Expand/Collapse All** — Component instance APIs expand or collapse the current view in one operation
 - **Configurable Field Keys** — Custom JSON field name mapping for id / name / parentId / leftNode / rightNode
 - **Unified Tree Building** — Always rebuilds MPTT from parentId regardless of input format, avoiding stale leftNode/rightNode
 - **JSON Caching** — Returns cached results when scroll position is unchanged
@@ -281,42 +314,71 @@ const selected = ref([])
 
 <template>
   <div style="width: 400px; height: 600px">
-    <VueGiantTree
-      :tree="treeData"
-      root="root"
-      v-model="selected"
-    />
+    <VueGiantTree :tree="treeData" root="root" v-model="selected" />
   </div>
 </template>
 ```
 
+### Component Instance Methods
+
+Set a component `ref` to call these methods. `expandAll()` and `collapseAll()` apply to the current view: they operate on the full tree normally, or only the current results while searching. Search-view expansion state never changes the main tree's collapse state.
+
+```vue
+<script setup lang="ts">
+import { ref } from 'vue'
+import { VueGiantTree } from 'vue3-giant-tree-wasm'
+
+const treeRef = ref<InstanceType<typeof VueGiantTree>>()
+const expandAll = () => treeRef.value?.expandAll()
+const collapseAll = () => treeRef.value?.collapseAll()
+</script>
+
+<template>
+  <button @click="expandAll">Expand all</button>
+  <button @click="collapseAll">Collapse all</button>
+  <VueGiantTree ref="treeRef" :tree="treeData" root="root" v-model="selected" />
+</template>
+```
+
+| Method                                    | Description                                                          |
+| ----------------------------------------- | -------------------------------------------------------------------- |
+| `expandAll()`                             | Expands every expandable node in the current view                    |
+| `collapseAll()`                           | Collapses every expandable node in the current view                  |
+| `fuzzySearch(keyword)`                    | Debounced (300ms) fuzzy search; pass an empty string to clear it     |
+| `fuzzySearchRaw(keyword)`                 | Immediate fuzzy search; pass an empty string to clear it             |
+| `getTreeSize()`                           | Returns the total node count                                         |
+| `setChecked(id)` / `setCheckedByIds(ids)` | Sets checked nodes programmatically                                  |
+| `clearAllChecked()`                       | Clears all checked state                                             |
+| `switchDisplay(displayType)`              | Switches to `TREE` or `SEARCH` view                                  |
+| `refreshCheckedResult()`                  | Re-emits the current v-model result using the active output settings |
+
 ### Props
 
-| Prop | Type | Default | Description |
-|------|------|---------|-------------|
-| `tree` | `TreeInputItem[]` | `[]` | Tree data in adjacency list format |
-| `root` | `string` | `''` | Root identifier; top-level nodes' `parentId` should equal this |
-| `modelValue` | `TreeNodeData \| TreeNodeData[]` | — | Selected result (v-model) |
-| `width` | `string` | `'100%'` | Container width |
-| `height` | `string` | `'100%'` | Container height |
-| `lineHeight` | `number` | `26` | Row height in pixels |
-| `fontSize` | `string` | `'14px'` | Font size |
-| `selectType` | `SelectType` | `CHECKBOX` | Selection mode: `CHECKBOX` / `RADIO` / `SELECT` |
-| `fieldKeys` | `TreeFieldKeys` | `{}` | JSON field name mapping, see below |
-| `outputIdOnly` | `boolean` | `true` | When `true` (default), v-model emits only selected node IDs; `false` emits full JSON |
-| `checkedOutputMode` | `CheckedOutputMode` | `All` | CHECKBOX output ID filter mode: `All` / `RootOnly` / `LeafOnly` / `Custom` |
-| `filterFn` | `FilterFn` | — | Custom filter callback. CHECKBOX + Custom mode filters output; RADIO mode determines which nodes show Radio |
+| Prop                | Type                             | Default    | Description                                                                                                 |
+| ------------------- | -------------------------------- | ---------- | ----------------------------------------------------------------------------------------------------------- |
+| `tree`              | `TreeInputItem[]`                | `[]`       | Tree data in adjacency list format                                                                          |
+| `root`              | `string`                         | `''`       | Root identifier; top-level nodes' `parentId` should equal this                                              |
+| `modelValue`        | `TreeNodeData \| TreeNodeData[]` | —          | Selected result (v-model)                                                                                   |
+| `width`             | `string`                         | `'100%'`   | Container width                                                                                             |
+| `height`            | `string`                         | `'100%'`   | Container height                                                                                            |
+| `lineHeight`        | `number`                         | `26`       | Row height in pixels                                                                                        |
+| `fontSize`          | `string`                         | `'14px'`   | Font size                                                                                                   |
+| `selectType`        | `SelectType`                     | `CHECKBOX` | Selection mode: `CHECKBOX` / `RADIO` / `SELECT`                                                             |
+| `fieldKeys`         | `TreeFieldKeys`                  | `{}`       | JSON field name mapping, see below                                                                          |
+| `outputIdOnly`      | `boolean`                        | `true`     | When `true` (default), v-model emits only selected node IDs; `false` emits full JSON                        |
+| `checkedOutputMode` | `CheckedOutputMode`              | `All`      | CHECKBOX output ID filter mode: `All` / `RootOnly` / `LeafOnly` / `Custom`                                  |
+| `filterFn`          | `FilterFn`                       | —          | Custom filter callback. CHECKBOX + Custom mode filters output; RADIO mode determines which nodes show Radio |
 
 ### CheckedOutputMode
 
 Controls the output of `getCheckedIds` and `getCheckedNodes` in CHECKBOX mode:
 
-| Value | Description |
-|-------|-------------|
-| `All` | All checked nodes (default) |
-| `RootOnly` | Only root nodes of fully-checked subtrees (deduped) |
-| `LeafOnly` | Only leaf nodes |
-| `Custom` | Custom mode: `filterFn` callback determines which checked nodes to output |
+| Value      | Description                                                               |
+| ---------- | ------------------------------------------------------------------------- |
+| `All`      | All checked nodes (default)                                               |
+| `RootOnly` | Only root nodes of fully-checked subtrees (deduped)                       |
+| `LeafOnly` | Only leaf nodes                                                           |
+| `Custom`   | Custom mode: `filterFn` callback determines which checked nodes to output |
 
 ### filterFn Custom Filter
 
@@ -328,11 +390,11 @@ type FilterFn = (extendData: Record<string, unknown>) => boolean
 
 **Two use cases:**
 
-| Mode | Behavior |
-|------|----------|
-| `CHECKBOX` + `Custom` | Filters output — only checked nodes where filterFn returns `true` appear in v-model |
-| `RADIO` | Filters selectable nodes — only nodes where filterFn returns `true` show a Radio button |
-| `SELECT` | Not affected |
+| Mode                  | Behavior                                                                                |
+| --------------------- | --------------------------------------------------------------------------------------- |
+| `CHECKBOX` + `Custom` | Filters output — only checked nodes where filterFn returns `true` appear in v-model     |
+| `RADIO`               | Filters selectable nodes — only nodes where filterFn returns `true` show a Radio button |
+| `SELECT`              | Not affected                                                                            |
 
 **Example:** only output/select nodes with `category === 'A'`
 
@@ -344,7 +406,7 @@ import type { FilterFn } from 'vue3-giant-tree-wasm'
 
 const selected = ref([])
 
-const filterFn: FilterFn = (extendData) => {
+const filterFn: FilterFn = extendData => {
   return extendData.category === 'A'
 }
 </script>
@@ -378,8 +440,8 @@ When your input data uses custom JSON field names instead of the default `id`/`n
 
 ```typescript
 interface TreeFieldKeys {
-  idField?: string       // default 'id'
-  nameField?: string     // default 'name'
+  idField?: string // default 'id'
+  nameField?: string // default 'name'
   parentIdField?: string // default 'parentId'
   leftNodeField?: string // default 'leftNode'
   rightNodeField?: string // default 'rightNode'
@@ -412,8 +474,8 @@ interface TreeFieldKeys {
 
 ```typescript
 interface TreeInputItem {
-  id: string       // Unique node ID
-  name: string     // Display name
+  id: string // Unique node ID
+  name: string // Display name
   parentId: string // Parent node ID
 }
 ```
@@ -425,9 +487,9 @@ interface TreeNodeData {
   id: string
   name: string
   parentId: string
-  leftNode: number   // MPTT left boundary
-  rightNode: number  // MPTT right boundary
-  deep: number       // Node depth
+  leftNode: number // MPTT left boundary
+  rightNode: number // MPTT right boundary
+  deep: number // Node depth
   checked: CheckType // Check state
   selected: CheckType
   collapsed: boolean // Whether collapsed
@@ -436,11 +498,11 @@ interface TreeNodeData {
 
 ### Selection Modes
 
-| Mode | Description |
-|------|-------------|
+| Mode       | Description                                                                            |
+| ---------- | -------------------------------------------------------------------------------------- |
 | `CHECKBOX` | Multi-select with half-check support; check/uncheck propagates to children and parents |
-| `RADIO` | Single-select; only one node can be selected at a time |
-| `SELECT` | Click-to-select; clicking a node row selects it |
+| `RADIO`    | Single-select; only one node can be selected at a time                                 |
+| `SELECT`   | Click-to-select; clicking a node row selects it                                        |
 
 ### Development
 
@@ -511,42 +573,38 @@ const selected = ref([])
 
 <template>
   <div style="width: 400px; height: 600px">
-    <VueGiantTree
-      :tree="treeData"
-      root="root"
-      v-model="selected"
-    />
+    <VueGiantTree :tree="treeData" root="root" v-model="selected" />
   </div>
 </template>
 ```
 
 ### Свойства (Props)
 
-| Свойство | Тип | По умолчанию | Описание |
-|----------|-----|--------------|----------|
-| `tree` | `TreeInputItem[]` | `[]` | Данные дерева в формате списка смежности |
-| `root` | `string` | `''` | Идентификатор корня; `parentId` узлов верхнего уровня должен быть равен этому значению |
-| `modelValue` | `TreeNodeData \| TreeNodeData[]` | — | Результат выбора (v-model) |
-| `width` | `string` | `'100%'` | Ширина контейнера |
-| `height` | `string` | `'100%'` | Высота контейнера |
-| `lineHeight` | `number` | `26` | Высота строки в пикселях |
-| `fontSize` | `string` | `'14px'` | Размер шрифта |
-| `selectType` | `SelectType` | `CHECKBOX` | Режим выбора: `CHECKBOX` / `RADIO` / `SELECT` |
-| `fieldKeys` | `TreeFieldKeys` | `{}` | Сопоставление имён полей JSON, см. ниже |
-| `outputIdOnly` | `boolean` | `true` | Если `true` (по умолч.), v-model передаёт только ID выбранных узлов; `false` — полные данные |
-| `checkedOutputMode` | `CheckedOutputMode` | `All` | Режим фильтрации вывода ID для CHECKBOX: `All` / `RootOnly` / `LeafOnly` / `Custom` |
-| `filterFn` | `FilterFn` | — | Пользовательский callback фильтрации. CHECKBOX + Custom — фильтрует вывод; RADIO — определяет, показывать ли Radio |
+| Свойство            | Тип                              | По умолчанию | Описание                                                                                                           |
+| ------------------- | -------------------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------ |
+| `tree`              | `TreeInputItem[]`                | `[]`         | Данные дерева в формате списка смежности                                                                           |
+| `root`              | `string`                         | `''`         | Идентификатор корня; `parentId` узлов верхнего уровня должен быть равен этому значению                             |
+| `modelValue`        | `TreeNodeData \| TreeNodeData[]` | —            | Результат выбора (v-model)                                                                                         |
+| `width`             | `string`                         | `'100%'`     | Ширина контейнера                                                                                                  |
+| `height`            | `string`                         | `'100%'`     | Высота контейнера                                                                                                  |
+| `lineHeight`        | `number`                         | `26`         | Высота строки в пикселях                                                                                           |
+| `fontSize`          | `string`                         | `'14px'`     | Размер шрифта                                                                                                      |
+| `selectType`        | `SelectType`                     | `CHECKBOX`   | Режим выбора: `CHECKBOX` / `RADIO` / `SELECT`                                                                      |
+| `fieldKeys`         | `TreeFieldKeys`                  | `{}`         | Сопоставление имён полей JSON, см. ниже                                                                            |
+| `outputIdOnly`      | `boolean`                        | `true`       | Если `true` (по умолч.), v-model передаёт только ID выбранных узлов; `false` — полные данные                       |
+| `checkedOutputMode` | `CheckedOutputMode`              | `All`        | Режим фильтрации вывода ID для CHECKBOX: `All` / `RootOnly` / `LeafOnly` / `Custom`                                |
+| `filterFn`          | `FilterFn`                       | —            | Пользовательский callback фильтрации. CHECKBOX + Custom — фильтрует вывод; RADIO — определяет, показывать ли Radio |
 
 ### CheckedOutputMode
 
 Управляет выводом `getCheckedIds` и `getCheckedNodes` в режиме CHECKBOX:
 
-| Значение | Описание |
-|----------|----------|
-| `All` | Все выбранные узлы (по умолчанию) |
-| `RootOnly` | Только корни полностью выбранных поддеревьев (без дублей) |
-| `LeafOnly` | Только листовые узлы |
-| `Custom` | Пользовательский режим: callback `filterFn` определяет, какие узлы выводить |
+| Значение   | Описание                                                                    |
+| ---------- | --------------------------------------------------------------------------- |
+| `All`      | Все выбранные узлы (по умолчанию)                                           |
+| `RootOnly` | Только корни полностью выбранных поддеревьев (без дублей)                   |
+| `LeafOnly` | Только листовые узлы                                                        |
+| `Custom`   | Пользовательский режим: callback `filterFn` определяет, какие узлы выводить |
 
 ### filterFn — пользовательский фильтр
 
@@ -558,11 +616,11 @@ type FilterFn = (extendData: Record<string, unknown>) => boolean
 
 **Два сценария:**
 
-| Режим | Поведение |
-|-------|-----------|
+| Режим                 | Поведение                                                                               |
+| --------------------- | --------------------------------------------------------------------------------------- |
 | `CHECKBOX` + `Custom` | Фильтрует вывод — только выбранные узлы, где filterFn вернул `true`, попадают в v-model |
-| `RADIO` | Фильтрует выбираемые узлы — только узлы, где filterFn вернул `true`, показывают Radio |
-| `SELECT` | Не затрагивается |
+| `RADIO`               | Фильтрует выбираемые узлы — только узлы, где filterFn вернул `true`, показывают Radio   |
+| `SELECT`              | Не затрагивается                                                                        |
 
 **Пример:** только узлы с `category === 'A'`
 
@@ -574,7 +632,7 @@ import type { FilterFn } from 'vue3-giant-tree-wasm'
 
 const selected = ref([])
 
-const filterFn: FilterFn = (extendData) => {
+const filterFn: FilterFn = extendData => {
   return extendData.category === 'A'
 }
 </script>
@@ -608,8 +666,8 @@ const filterFn: FilterFn = (extendData) => {
 
 ```typescript
 interface TreeFieldKeys {
-  idField?: string       // по умолчанию 'id'
-  nameField?: string     // по умолчанию 'name'
+  idField?: string // по умолчанию 'id'
+  nameField?: string // по умолчанию 'name'
   parentIdField?: string // по умолчанию 'parentId'
   leftNodeField?: string // по умолчанию 'leftNode'
   rightNodeField?: string // по умолчанию 'rightNode'
@@ -642,8 +700,8 @@ interface TreeFieldKeys {
 
 ```typescript
 interface TreeInputItem {
-  id: string       // Уникальный ID узла
-  name: string     // Отображаемое имя
+  id: string // Уникальный ID узла
+  name: string // Отображаемое имя
   parentId: string // ID родительского узла
 }
 ```
@@ -655,9 +713,9 @@ interface TreeNodeData {
   id: string
   name: string
   parentId: string
-  leftNode: number   // Левая граница MPTT
-  rightNode: number  // Правая граница MPTT
-  deep: number       // Глубина узла
+  leftNode: number // Левая граница MPTT
+  rightNode: number // Правая граница MPTT
+  deep: number // Глубина узла
   checked: CheckType // Состояние выбора
   selected: CheckType
   collapsed: boolean // Свёрнут ли узел
@@ -666,11 +724,11 @@ interface TreeNodeData {
 
 ### Режимы выбора
 
-| Режим | Описание |
-|-------|----------|
+| Режим      | Описание                                                                                                   |
+| ---------- | ---------------------------------------------------------------------------------------------------------- |
 | `CHECKBOX` | Множественный выбор с поддержкой полувыбора; выбор/отмена распространяется на дочерние и родительские узлы |
-| `RADIO` | Одиночный выбор; одновременно может быть выбран только один узел |
-| `SELECT` | Выбор по клику; клик по строке узла выбирает его |
+| `RADIO`    | Одиночный выбор; одновременно может быть выбран только один узел                                           |
+| `SELECT`   | Выбор по клику; клик по строке узла выбирает его                                                           |
 
 ### Разработка
 
