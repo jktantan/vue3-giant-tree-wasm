@@ -18,11 +18,9 @@ import {
   setNeighborTree,
   pushNeighborNodesUtf8,
   popNeighbor,
-  setPreserveExtendData,
   getShownHeight,
   collapseTree,
   checkNode,
-  getCheckedNodes,
   getCheckedIds,
   getCheckedIdList,
   CheckType,
@@ -35,6 +33,8 @@ import {
   setCheckedNodes,
   setCheckedOutputMode,
   getAllNodes,
+  getAllNodeIds,
+  getAllNodeLayouts,
   getShownIndices,
   getNodeSelectionStates,
   getInputNodeLayouts,
@@ -189,6 +189,41 @@ const refreshTree = () => {
     .filter((node): node is TreeNodeData => node !== undefined)
 }
 const refreshAllNodesCache = () => {
+  // ID-only trees do not need the full JSON serializer just to render rows.
+  // Read the compact MPTT layout directly and rebuild the presentation cache
+  // from the original input data. This avoids a large synchronous
+  // serialize/parse round-trip when switching to a large tree.
+  {
+    const ids = getAllNodeIds(tree) as string[]
+    const layouts = getAllNodeLayouts(tree) as number[]
+    const idField = props.fieldKeys.idField ?? 'id'
+    const nameField = props.fieldKeys.nameField ?? 'name'
+    const parentIdField = props.fieldKeys.parentIdField ?? 'parentId'
+    const inputById = new Map<string, TreeInputItem & Record<string, unknown>>()
+    for (const item of props.tree as Array<TreeInputItem & Record<string, unknown>>) {
+      inputById.set(String(item[idField] ?? ''), item)
+    }
+    allNodesCache = ids.map((id, index) => {
+      const item = inputById.get(id)
+      const offset = index * 4
+      return {
+        id,
+        name: String(item?.[nameField] ?? id),
+        parentId: String(item?.[parentIdField] ?? ''),
+        leftNode: layouts[offset],
+        rightNode: layouts[offset + 1],
+        deep: layouts[offset + 2],
+        checked: CheckType.UNCHECKED,
+        selected: CheckType.UNCHECKED,
+        collapsed: true,
+        disabled: layouts[offset + 3] !== 0,
+        extendData: item,
+      }
+    })
+    nodeIndexById = new Map(allNodesCache.map((node, index) => [node.id, index]))
+    refreshTree()
+    return
+  }
   allNodesCache = JSON.parse(getAllNodes(tree)) as TreeNodeData[]
   nodeIndexById = new Map(allNodesCache.map((node, index) => [node.id, index]))
   refreshTree()
@@ -305,10 +340,11 @@ const refreshChunkedNodesCache = async () => {
         rightNode: layouts[offset + 2],
         deep: layouts[offset + 3],
         checked: CheckType.UNCHECKED,
-        selected: CheckType.UNCHECKED,
-        collapsed: true,
-        disabled: layouts[offset + 4] !== 0,
-      }
+         selected: CheckType.UNCHECKED,
+         collapsed: true,
+         disabled: layouts[offset + 4] !== 0,
+         extendData: node,
+       }
     }
     buildMetrics.cacheAssemblyMs += now() - assemblyStarted
     if (start + size < input.length) {
@@ -351,22 +387,30 @@ const handleScroll = (event: Event) => {
  */
 /** 按防抖输出选中结果 / Emit checked result with debounce / Выдать результат выбора с антидребезгом */
 const emitCheckedResult = () => {
+  const ids = getCheckedIdList(tree) as string[]
+  const records = ids
+    .map(id => inputNodeById.get(id))
+    .filter((item): item is Record<string, unknown> => item !== undefined)
   if (props.checkedOutputMode === CheckedOutputMode.Custom && props.filterFn) {
     // Custom 模式：获取完整节点数据，用 filterFn 过滤后再决定输出 ID 还是 JSON
     // Custom mode: get full node data, filter with filterFn, then decide ID or JSON output
     // Пользовательский режим: получить полные данные узлов, отфильтровать filterFn, затем решить, выводить ID или JSON
     // getCheckedNodes 返回的是 extendData 原始 JSON（非 TreeNodeData 结构），直接传给 filterFn
-    const nodes = JSON.parse(getCheckedNodes(tree)) as Record<string, unknown>[]
-    const filtered = nodes.filter(item => props.filterFn!(item))
+    const filtered = records.filter(item => props.filterFn!(item))
     const result = props.outputIdOnly ? filtered.map(item => item.id) : filtered
     emit('update:modelValue', result)
+  } else if (!props.outputIdOnly) {
+    emit(
+      'update:modelValue',
+      props.selectType === SelectType.CHECKBOX ? records : (records[0] ?? null)
+    )
   } else {
     const result =
       props.outputIdOnly && props.selectType === SelectType.CHECKBOX
-        ? getCheckedIdList(tree)
+        ? ids
         : props.outputIdOnly
           ? JSON.parse(getCheckedIds(tree))
-          : JSON.parse(getCheckedNodes(tree))
+          : records
     emit('update:modelValue', result)
   }
 }
@@ -401,34 +445,31 @@ const tree = hasCustomKeys
       fk.parentIdField ?? 'parentId',
       fk.leftNodeField ?? 'leftNode',
       fk.rightNodeField ?? 'rightNode',
-      props.outputIdOnly === false || !!props.filterFn
+       false
     )
   : newTree(
       props.root,
       props.lineHeight,
       props.selectType,
-      props.outputIdOnly === false || !!props.filterFn
+       false
     )
 
 // 初始化 CHECKBOX 输出模式
+const inputNodeById = new Map<string, Record<string, unknown>>()
+const inputIdField = props.fieldKeys.idField ?? 'id'
+for (const item of props.tree as Array<TreeInputItem & Record<string, unknown>>) {
+  inputNodeById.set(String(item[inputIdField] ?? ''), item)
+}
+
 setCheckedOutputMode(tree, props.checkedOutputMode)
 
 // 输出格式变化（ID ↔ JSON）→ 用新格式重发选中结果
 watch(
   () => props.outputIdOnly,
-  outputIdOnly => {
-    setPreserveExtendData(tree, outputIdOnly === false || !!props.filterFn)
-    clear(tree)
-    isTreeReady = false
-    resetBuildMetrics()
-    buildStartedAt = now()
-    void loadTree().then(() => {
-      return refreshNodesCache()
-    }).then(() => {
-      buildMetrics.totalMs = now() - buildStartedAt
-      isTreeReady = true
-      emitCheckedResult()
-    })
+  () => {
+    // Output representation is derived from existing WASM selection state.
+    // Changing it must not rebuild the tree or serialize the full dataset.
+    emitCheckedResult()
   }
 )
 

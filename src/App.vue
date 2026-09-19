@@ -4,7 +4,7 @@ import VueGiantTree from '@lib/VueGiantTree.vue'
 import { SelectType, DisplayType, CheckedOutputMode } from '../build/release'
 
 import { nanoid } from 'nanoid'
-import { ref, computed, watch } from 'vue'
+import { ref, shallowRef, computed, watch } from 'vue'
 import type { TreeNodeData, FilterFn } from '@lib/types'
 
 const TREE_SIZES = {
@@ -94,7 +94,10 @@ const generateTreeData = (size: TreeSize) => {
   return data
 }
 
-const testData = ref(generateTreeData(currentSize.value))
+// The tree is replaced as a whole when switching data sizes; none of its
+// individual nodes are mutated by the dev page.  Keeping the array shallow
+// avoids creating thousands of Vue proxies before the WASM tree is built.
+const testData = shallowRef(generateTreeData(currentSize.value))
 
 const totalNodes = computed(() => testData.value.length)
 
