@@ -169,6 +169,49 @@ describe('VueGiantTree: 主组件', () => {
     expect(wrapper.find('.giant-tree__icon-check-checked').exists()).toBe(true)
   })
 
+  it('公开全部展开和全部收起方法', async () => {
+    const wrapper = mount(VueGiantTree, {
+      props: { modelValue: [], tree: makeTreeData(), root: 'root' },
+    })
+    await flushPromises()
+
+    ;(wrapper.vm as any).expandAll()
+    await wrapper.vm.$nextTick()
+    expect(wrapper.findAll('.tree-item')).toHaveLength(3)
+
+    ;(wrapper.vm as any).collapseAll()
+    await wrapper.vm.$nextTick()
+    expect(wrapper.findAll('.tree-item')).toHaveLength(2)
+  })
+  it('搜索结果首次收缩只影响被点击的节点', async () => {
+    const wrapper = mount(VueGiantTree, {
+      props: {
+        modelValue: [],
+        root: 'root',
+        tree: [
+          { id: 'parent', name: 'Parent', parentId: 'root' },
+          { id: 'first', name: 'First match', parentId: 'parent' },
+          { id: 'second', name: 'Second match', parentId: 'parent' },
+          { id: 'other', name: 'Other match', parentId: 'root' },
+        ],
+      },
+    })
+    await flushPromises()
+    ;(wrapper.vm as any).fuzzySearchRaw('match')
+    await wrapper.vm.$nextTick()
+
+    const parent = wrapper
+      .findAll('.tree-item')
+      .find(item => item.text().includes('Parent'))
+    expect(parent?.find('.giant-tree__icon-arrow-down').exists()).toBe(true)
+    await parent?.find('.giant-tree__icon-arrow-down').trigger('click')
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.text()).toContain('Parent')
+    expect(wrapper.text()).toContain('Other match')
+    expect(wrapper.text()).not.toContain('First match')
+    expect(wrapper.text()).not.toContain('Second match')
+  })
   it('搜索中选中父节点后清空搜索会刷新隐藏子节点状态', async () => {
     const wrapper = mount(VueGiantTree, {
       props: {

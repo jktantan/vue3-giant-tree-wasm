@@ -5,6 +5,10 @@
 
     /* Linting */
     "strict": true,
+    "baseUrl": ".",
+    "paths": {
+      "@lib/*": ["./lib/*"]
+    },
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "erasableSyntaxOnly": true,

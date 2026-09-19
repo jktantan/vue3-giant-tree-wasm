@@ -20,6 +20,7 @@ import {
   popNeighbor,
   getShownHeight,
   collapseTree,
+  collapseAll,
   checkNode,
   getCheckedIds,
   getCheckedIdList,
@@ -37,6 +38,7 @@ import {
   getAllNodeLayouts,
   getShownIndices,
   getNodeSelectionStates,
+  getNodeCollapsedStates,
   getInputNodeLayouts,
   clearInputNodeLayouts,
 } from '../build/release'
@@ -96,8 +98,6 @@ const listHeight = ref<number>(0)
 /** 当前树列表（可视区域内节点） / Current tree list (nodes within viewport) / Текущий список дерева (узлы в области просмотра) */
 const currentTreeList = ref<TreeNodeData[]>([])
 let allNodesCache: TreeNodeData[] = []
-let nodeIndexById = new Map<string, number>()
-let hasActiveSearch = false
 let isTreeReady = false
 let isBuilding = false
 let buildStartedAt = 0
@@ -170,18 +170,29 @@ const refreshTree = () => {
   buildMetrics.shownIndicesMs += now() - shownStarted
   const selectionStarted = now()
   const selectionStates = getNodeSelectionStates(tree, indices) as number[]
+  const collapsedStates = getNodeCollapsedStates(tree, indices) as number[]
   buildMetrics.selectionStatesMs += now() - selectionStarted
   currentTreeList.value = indices
     .map((index, position) => {
       const node = allNodesCache[index]
       if (node) {
         const state = selectionStates[position]
+        const collapsed = collapsedStates[position] !== 0
         const checked = state >> 8
         const selected = state & 0xff
-        if (node.checked !== checked || node.selected !== selected) {
+        if (
+          node.checked !== checked ||
+          node.selected !== selected ||
+          node.collapsed !== collapsed
+        ) {
           // Cache entries may already be Vue proxies in a reused virtual row.
           // Replace the changed entry so the child receives a new prop value.
-          allNodesCache[index] = { ...node, checked, selected }
+          allNodesCache[index] = {
+            ...node,
+            checked,
+            selected,
+            collapsed,
+          }
         }
       }
       return allNodesCache[index]
@@ -200,7 +211,9 @@ const refreshAllNodesCache = () => {
     const nameField = props.fieldKeys.nameField ?? 'name'
     const parentIdField = props.fieldKeys.parentIdField ?? 'parentId'
     const inputById = new Map<string, TreeInputItem & Record<string, unknown>>()
-    for (const item of props.tree as Array<TreeInputItem & Record<string, unknown>>) {
+    for (const item of props.tree as Array<
+      TreeInputItem & Record<string, unknown>
+    >) {
       inputById.set(String(item[idField] ?? ''), item)
     }
     allNodesCache = ids.map((id, index) => {
@@ -220,12 +233,10 @@ const refreshAllNodesCache = () => {
         extendData: item,
       }
     })
-    nodeIndexById = new Map(allNodesCache.map((node, index) => [node.id, index]))
     refreshTree()
     return
   }
   allNodesCache = JSON.parse(getAllNodes(tree)) as TreeNodeData[]
-  nodeIndexById = new Map(allNodesCache.map((node, index) => [node.id, index]))
   refreshTree()
 }
 // A macrotask yields the main thread for rendering without relying on rAF.
@@ -340,11 +351,11 @@ const refreshChunkedNodesCache = async () => {
         rightNode: layouts[offset + 2],
         deep: layouts[offset + 3],
         checked: CheckType.UNCHECKED,
-         selected: CheckType.UNCHECKED,
-         collapsed: true,
-         disabled: layouts[offset + 4] !== 0,
-         extendData: node,
-       }
+        selected: CheckType.UNCHECKED,
+        collapsed: true,
+        disabled: layouts[offset + 4] !== 0,
+        extendData: node,
+      }
     }
     buildMetrics.cacheAssemblyMs += now() - assemblyStarted
     if (start + size < input.length) {
@@ -357,9 +368,6 @@ const refreshChunkedNodesCache = async () => {
   clearInputNodeLayouts(tree)
   buildMetrics.layoutReleaseMs += now() - layoutReleaseStarted
   allNodesCache = cache
-  const cacheIndexStarted = now()
-  nodeIndexById = new Map(cache.map((node, index) => [node.id, index]))
-  buildMetrics.cacheIndexMs += now() - cacheIndexStarted
   const refreshStarted = now()
   refreshTree()
   buildMetrics.cacheRefreshMs += now() - refreshStarted
@@ -445,19 +453,16 @@ const tree = hasCustomKeys
       fk.parentIdField ?? 'parentId',
       fk.leftNodeField ?? 'leftNode',
       fk.rightNodeField ?? 'rightNode',
-       false
+      false
     )
-  : newTree(
-      props.root,
-      props.lineHeight,
-      props.selectType,
-       false
-    )
+  : newTree(props.root, props.lineHeight, props.selectType, false)
 
 // 初始化 CHECKBOX 输出模式
 const inputNodeById = new Map<string, Record<string, unknown>>()
 const inputIdField = props.fieldKeys.idField ?? 'id'
-for (const item of props.tree as Array<TreeInputItem & Record<string, unknown>>) {
+for (const item of props.tree as Array<
+  TreeInputItem & Record<string, unknown>
+>) {
   inputNodeById.set(String(item[inputIdField] ?? ''), item)
 }
 
@@ -521,6 +526,12 @@ const itemClick = (id: string) => {
   }
 }
 /** 展开/折叠节点 / Expand/collapse node / Развернуть/свернуть узел */
+const setAllCollapsed = (collapsed: boolean) => {
+  collapseAll(tree, collapsed)
+  listHeight.value = getShownHeight(tree)
+  refreshTree()
+}
+
 const collapseClick = (id: string, isCollapse: boolean) => {
   collapseTree(tree, id, isCollapse)
   listHeight.value = getShownHeight(tree)
@@ -543,7 +554,6 @@ const rawFuzzySearch = (keyword: string) => {
   // nodes that reappear after search. Avoid serializing the full tree solely
   // to rebuild the JS cache when clearing a search.
   refreshTree()
-  hasActiveSearch = keyword.length > 0
 }
 /** 带 300ms 防抖的模糊搜索（适合 input 实时输入）/ Fuzzy search with 300ms debounce (suitable for real-time input) / Нечёткий поиск с антидребезгом 300мс (подходит для ввода в реальном времени) */
 const fuzzySearch = debounce(300, rawFuzzySearch)
@@ -601,6 +611,8 @@ defineExpose({
   setChecked,
   setCheckedByIds,
   clearAllChecked,
+  expandAll: () => setAllCollapsed(false),
+  collapseAll: () => setAllCollapsed(true),
   switchDisplay,
   refreshCheckedResult,
 })

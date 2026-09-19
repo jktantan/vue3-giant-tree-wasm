@@ -20,7 +20,9 @@ export class LazyCheckRangeStore {
       const l = this.left[i]
       const r = this.right[i]
       if (r <= rangeLeft) {
-        nextLeft.push(l); nextRight.push(r); nextValue.push(this.value[i])
+        nextLeft.push(l)
+        nextRight.push(r)
+        nextValue.push(this.value[i])
       } else if (l >= rangeRight) {
         if (!inserted) {
           nextLeft.push(rangeLeft)
@@ -28,10 +30,14 @@ export class LazyCheckRangeStore {
           nextValue.push(rangeValue)
           inserted = true
         }
-        nextLeft.push(l); nextRight.push(r); nextValue.push(this.value[i])
+        nextLeft.push(l)
+        nextRight.push(r)
+        nextValue.push(this.value[i])
       } else {
         if (l < rangeLeft) {
-          nextLeft.push(l); nextRight.push(rangeLeft); nextValue.push(this.value[i])
+          nextLeft.push(l)
+          nextRight.push(rangeLeft)
+          nextValue.push(this.value[i])
         }
         if (!inserted) {
           nextLeft.push(rangeLeft)
@@ -40,7 +46,9 @@ export class LazyCheckRangeStore {
           inserted = true
         }
         if (r > rangeRight) {
-          nextLeft.push(rangeRight); nextRight.push(r); nextValue.push(this.value[i])
+          nextLeft.push(rangeRight)
+          nextRight.push(r)
+          nextValue.push(this.value[i])
         }
       }
     }
@@ -59,7 +67,8 @@ export class LazyCheckRangeStore {
     if (indexRight <= indexLeft) return -1
     for (let i: i32 = 0; i < this.left.length; i++) {
       if (indexLeft < this.left[i]) break
-      if (indexLeft >= this.left[i] && indexRight <= this.right[i]) return this.value[i]
+      if (indexLeft >= this.left[i] && indexRight <= this.right[i])
+        return this.value[i]
     }
     return -1
   }
@@ -78,7 +87,10 @@ export class LazyCheckRangeStore {
 
   private mergeAdjacent(): void {
     for (let i: i32 = this.left.length - 2; i >= 0; i--) {
-      if (this.right[i] === this.left[i + 1] && this.value[i] === this.value[i + 1]) {
+      if (
+        this.right[i] === this.left[i + 1] &&
+        this.value[i] === this.value[i + 1]
+      ) {
         this.right[i] = this.right[i + 1]
         this.left.splice(i + 1, 1)
         this.right.splice(i + 1, 1)

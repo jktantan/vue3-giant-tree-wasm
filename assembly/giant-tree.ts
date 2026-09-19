@@ -173,6 +173,8 @@ export class GiantTree {
   useSearchCandidateIndex: bool = false
   _lastSearchKeyword: string = ''
   _hasSearchCache: bool = false
+  /** Collapse state is local to the search view, which initially exposes every matching path. */
+  _searchCollapsedIds: Set<string> = new Set<string>()
 
   /** RADIO 模式下当前选中节点的 fullTree 索引（-1=无），避免全树 O(N) 扫描 / RADIO mode: current checked node index in fullTree (-1=none), avoids O(N) full scan / RADIO: индекс текущего выбранного узла в fullTree (-1=нет), избегает полного O(N) сканирования */
   _radioCheckedIdx: i32 = -1
@@ -365,10 +367,10 @@ export class GiantTree {
 
   private _readLittleEndianI32(payload: Uint8Array, offset: i32): i32 {
     return <i32>(
-      payload[offset] |
-      (payload[offset + 1] << 8) |
-      (payload[offset + 2] << 16) |
-      (payload[offset + 3] << 24)
+      (payload[offset] |
+        (payload[offset + 1] << 8) |
+        (payload[offset + 2] << 16) |
+        (payload[offset + 3] << 24))
     )
   }
 
@@ -480,19 +482,24 @@ export class GiantTree {
     const boundaries: i32[] = []
     for (let i: i32 = 0; i < this.fullTree.length; i++) {
       const left = this.compactStore.left[i]
-      while (boundaries.length > 0 && left >= boundaries[boundaries.length - 1]) boundaries.pop()
+      while (boundaries.length > 0 && left >= boundaries[boundaries.length - 1])
+        boundaries.pop()
       const visible = boundaries.length === 0
       this.compactStore.shown[i] = visible ? 1 : 0
       this.fullTree[i].shown = visible
       if (!visible) continue
       indices.push(i)
-      if (this.compactStore.collapsed[i] !== 0 && this.compactStore.right[i] - left > 1)
+      if (
+        this.compactStore.collapsed[i] !== 0 &&
+        this.compactStore.right[i] - left > 1
+      )
         boundaries.push(this.compactStore.right[i])
     }
     boundaries.splice(0)
     this.compactStore.setShownIndices(indices)
     this._shownNodes.splice(0)
-    for (let i: i32 = 0; i < indices.length; i++) this._shownNodes.push(this.fullTree[indices[i]])
+    for (let i: i32 = 0; i < indices.length; i++)
+      this._shownNodes.push(this.fullTree[indices[i]])
   }
 
   private _clearLazyCheckboxRanges(): void {
@@ -604,16 +611,13 @@ export class GiantTree {
   }
 
   collapseTree(id: string, collapsed: boolean): void {
-    this._hasSearchCache = false
     if (!this.idToIndex.has(id)) return
     const i: i32 = this.idToIndex.get(id)
     const node: MpttTree = this.fullTree[i]
-    node.collapsed = collapsed
-    if (this.useCompactSelection && i < this.compactStore.collapsed.length) {
-      this.compactStore.collapsed[i] = collapsed ? 1 : 0
-    }
 
     if (this.tree === this.searchTree) {
+      if (collapsed) this._searchCollapsedIds.add(id)
+      else this._searchCollapsedIds.delete(id)
       // 搜索模式：从 searchTree 重建 _shownNodes，尊重折叠状态
       // 不修改 fullTree 的 shown 标志（搜索模式下 _shownNodes 与 shown 标志无关）
       // Search mode: rebuild _shownNodes from searchTree, respecting collapse state
@@ -631,7 +635,10 @@ export class GiantTree {
         if (boundaries.length === 0) {
           this._shownNodes.push(n)
           this.shownCount++
-          if (n.collapsed && n.rightNode - n.leftNode > 1) {
+          if (
+            this._searchCollapsedIds.has(n.id) &&
+            n.rightNode - n.leftNode > 1
+          ) {
             boundaries.push(n.rightNode)
           }
         }
@@ -640,14 +647,31 @@ export class GiantTree {
       this._syncCompactShownIndices()
       this._syncLazyShownStates()
     } else {
+      this._hasSearchCache = false
+      node.collapsed = collapsed
+      if (this.useCompactSelection && i < this.compactStore.collapsed.length) {
+        this.compactStore.collapsed[i] = collapsed ? 1 : 0
+      }
       // 正常模式：增量更新 fullTree 子树的 shown 标志和 _shownNodes
       // Normal mode: incrementally update fullTree subtree shown flags and _shownNodes
       if (this.useCompactSelection) {
         this._rebuildCompactShownIndicesFromState()
         this.shownCount = this.compactStore.shownLength
       } else {
-        const delta: i32 = setCollapsedShown(this.fullTree, i + 1, node.rightNode, !collapsed)
-        incrementalUpdateShownNodes(this._shownNodes, this.fullTree, i, node.leftNode, node.rightNode, !collapsed)
+        const delta: i32 = setCollapsedShown(
+          this.fullTree,
+          i + 1,
+          node.rightNode,
+          !collapsed
+        )
+        incrementalUpdateShownNodes(
+          this._shownNodes,
+          this.fullTree,
+          i,
+          node.leftNode,
+          node.rightNode,
+          !collapsed
+        )
         this.shownCount += delta
         this._syncCompactShownIndices()
       }
@@ -662,6 +686,38 @@ export class GiantTree {
    * Развернуть все / Свернуть все
    */
   collapseAll(collapsed: boolean): void {
+    if (this.tree === this.searchTree) {
+      this._searchCollapsedIds.clear()
+      if (collapsed) {
+        for (let i: i32 = 0; i < this.searchTree.length; i++) {
+          const node = this.searchTree[i]
+          if (node.rightNode - node.leftNode > 1)
+            this._searchCollapsedIds.add(node.id)
+        }
+      }
+      this._shownNodes.splice(0)
+      this.shownCount = 0
+      const boundaries: i32[] = []
+      for (let i: i32 = 0; i < this.searchTree.length; i++) {
+        const node = this.searchTree[i]
+        while (
+          boundaries.length > 0 &&
+          node.leftNode >= boundaries[boundaries.length - 1]
+        )
+          boundaries.pop()
+        if (boundaries.length === 0) {
+          this._shownNodes.push(node)
+          this.shownCount++
+          if (this._searchCollapsedIds.has(node.id))
+            boundaries.push(node.rightNode)
+        }
+      }
+      this._syncCompactShownIndices()
+      this._syncLazyShownStates()
+      this._invalidateCache()
+      return
+    }
+
     this._shownNodes.splice(0)
     this.shownCount = 0
     for (let i = 0; i < this.fullTree.length; i++) {
@@ -726,23 +782,22 @@ export class GiantTree {
       return this._cachedJson
     }
 
-    const json: string =
-      this.useCompactSelection
-        ? serializeShownIndicesCompact(
-            this.fullTree,
-            this.compactStore.shownIndices,
-            this.compactStore.shownLength,
-            this.compactStore,
-            this.scrollTop,
-            this.scrollHeight,
-            this.lineHeight
-          )
-        : serializeShownSlice(
-            this._shownNodes,
-            this.scrollTop,
-            this.scrollHeight,
-            this.lineHeight
-          )
+    const json: string = this.useCompactSelection
+      ? serializeShownIndicesCompact(
+          this.fullTree,
+          this.compactStore.shownIndices,
+          this.compactStore.shownLength,
+          this.compactStore,
+          this.scrollTop,
+          this.scrollHeight,
+          this.lineHeight
+        )
+      : serializeShownSlice(
+          this._shownNodes,
+          this.scrollTop,
+          this.scrollHeight,
+          this.lineHeight
+        )
 
     this._cachedStartIdx = startIdx
     this._cachedEndIdx = endIdx
@@ -820,15 +875,34 @@ export class GiantTree {
       }
       const checked = this.useCompactSelection
         ? this.compactStore.checked[index]
-        : this.fullTree[index].checked as u8
+        : (this.fullTree[index].checked as u8)
       const selected = this.useCompactSelection
         ? this.compactStore.selected[index]
-        : this.fullTree[index].selected as u8
+        : (this.fullTree[index].selected as u8)
       states.push(((checked as i32) << 8) | (selected as i32))
     }
     return states
   }
 
+  /** Returns the effective collapsed state for full-tree indices in the active view. */
+  getNodeCollapsedStates(indices: i32[]): i32[] {
+    const states: i32[] = []
+    for (let i: i32 = 0; i < indices.length; i++) {
+      const index = indices[i]
+      if (index < 0 || index >= this.fullTree.length) {
+        states.push(0)
+        continue
+      }
+      const collapsed =
+        this.tree === this.searchTree
+          ? this._searchCollapsedIds.has(this.fullTree[index].id)
+          : this.useCompactSelection
+            ? this.compactStore.collapsed[index] !== 0
+            : this.fullTree[index].collapsed
+      states.push(collapsed ? 1 : 0)
+    }
+    return states
+  }
   /**
    * Returns compact presentation metadata for input IDs in five-value records:
    * full-tree index, left, right, depth and effective disabled flag.
@@ -856,7 +930,8 @@ export class GiantTree {
   /** Returns all full-tree IDs in MPTT order without serializing node JSON. */
   getAllNodeIds(): string[] {
     const ids: string[] = []
-    for (let i: i32 = 0; i < this.fullTree.length; i++) ids.push(this.fullTree[i].id)
+    for (let i: i32 = 0; i < this.fullTree.length; i++)
+      ids.push(this.fullTree[i].id)
     return ids
   }
 
@@ -1042,7 +1117,8 @@ export class GiantTree {
       }
     } else {
       setCheckedNodesInTree(this.fullTree, ids, this.idToIndex)
-      if (this.useCompactSelection) this.compactStore.syncSelection(this.fullTree)
+      if (this.useCompactSelection)
+        this.compactStore.syncSelection(this.fullTree)
     }
     this._invalidateCache()
     // 批量设置后缓存索引失效
@@ -1143,13 +1219,30 @@ export class GiantTree {
       const indices: i32[] = []
       const covered: i32[] = []
       for (let i: i32 = 0; i < this.fullTree.length; i++) {
-        while (covered.length > 0 && this.compactStore.left[i] >= covered[covered.length - 1]) covered.pop()
+        while (
+          covered.length > 0 &&
+          this.compactStore.left[i] >= covered[covered.length - 1]
+        )
+          covered.pop()
         if (this.compactStore.checked[i] !== CheckType.CHECKED) continue
-        if (this.checkedOutputMode === CheckedOutputMode.RootOnly && covered.length > 0) continue
-        if (this.checkedOutputMode !== CheckedOutputMode.LeafOnly || this.compactStore.right[i] - this.compactStore.left[i] === 1) indices.push(i)
-        if (this.checkedOutputMode === CheckedOutputMode.RootOnly) covered.push(this.compactStore.right[i])
+        if (
+          this.checkedOutputMode === CheckedOutputMode.RootOnly &&
+          covered.length > 0
+        )
+          continue
+        if (
+          this.checkedOutputMode !== CheckedOutputMode.LeafOnly ||
+          this.compactStore.right[i] - this.compactStore.left[i] === 1
+        )
+          indices.push(i)
+        if (this.checkedOutputMode === CheckedOutputMode.RootOnly)
+          covered.push(this.compactStore.right[i])
       }
-      return serializeCheckedArrayCompact(this.fullTree, indices, this.compactStore)
+      return serializeCheckedArrayCompact(
+        this.fullTree,
+        indices,
+        this.compactStore
+      )
     }
     return getCheckedNodesFromTree(
       this.fullTree,
@@ -1186,24 +1279,45 @@ export class GiantTree {
     if (this.useCompactSelection && !this._hasCompactDisabledNodes()) {
       if (this.selectType === SelectType.RADIO) {
         const index = this._radioCheckedIdx
-        if (index >= 0 && index < this.compactStore.checked.length && this.compactStore.checked[index] === CheckType.CHECKED)
+        if (
+          index >= 0 &&
+          index < this.compactStore.checked.length &&
+          this.compactStore.checked[index] === CheckType.CHECKED
+        )
           return [this.fullTree[index].id]
         return []
       }
       if (this.selectType === SelectType.SELECT) {
         const index = this._selectSelectedIdx
-        if (index >= 0 && index < this.compactStore.selected.length && this.compactStore.selected[index] === CheckType.CHECKED)
+        if (
+          index >= 0 &&
+          index < this.compactStore.selected.length &&
+          this.compactStore.selected[index] === CheckType.CHECKED
+        )
           return [this.fullTree[index].id]
         return []
       }
       const ids: string[] = []
       const covered: i32[] = []
       for (let i: i32 = 0; i < this.fullTree.length; i++) {
-        while (covered.length > 0 && this.compactStore.left[i] >= covered[covered.length - 1]) covered.pop()
+        while (
+          covered.length > 0 &&
+          this.compactStore.left[i] >= covered[covered.length - 1]
+        )
+          covered.pop()
         if (this.compactStore.checked[i] !== CheckType.CHECKED) continue
-        if (this.checkedOutputMode === CheckedOutputMode.RootOnly && covered.length > 0) continue
-        if (this.checkedOutputMode !== CheckedOutputMode.LeafOnly || this.compactStore.right[i] - this.compactStore.left[i] === 1) ids.push(this.fullTree[i].id)
-        if (this.checkedOutputMode === CheckedOutputMode.RootOnly) covered.push(this.compactStore.right[i])
+        if (
+          this.checkedOutputMode === CheckedOutputMode.RootOnly &&
+          covered.length > 0
+        )
+          continue
+        if (
+          this.checkedOutputMode !== CheckedOutputMode.LeafOnly ||
+          this.compactStore.right[i] - this.compactStore.left[i] === 1
+        )
+          ids.push(this.fullTree[i].id)
+        if (this.checkedOutputMode === CheckedOutputMode.RootOnly)
+          covered.push(this.compactStore.right[i])
       }
       return ids
     }
@@ -1249,6 +1363,7 @@ export class GiantTree {
    */
   fuzzySearch(keyword: string): string {
     if (keyword === null || keyword === '') {
+      this._searchCollapsedIds.clear()
       this.tree = this.fullTree
       // 重建 shown 标志：从 collapse 状态恢复，修复搜索时 shown 污染
       // Rebuild shown flags from collapse state, fixing search pollution
@@ -1263,6 +1378,7 @@ export class GiantTree {
       )
     } else {
       if (!this._hasSearchCache || this._lastSearchKeyword !== keyword) {
+        this._searchCollapsedIds.clear()
         if (this.useSearchCandidateIndex) this._ensureSearchCandidates()
         this.shownCount = fuzzySearchTree(
           this.fullTree,

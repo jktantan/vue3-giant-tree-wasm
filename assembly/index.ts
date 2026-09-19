@@ -29,7 +29,10 @@ export function lazySetCheckedRange(
   target.setRange(left, right, value)
 }
 
-export function lazyGetCheckedPoint(target: LazyCheckRangeStore, index: i32): i32 {
+export function lazyGetCheckedPoint(
+  target: LazyCheckRangeStore,
+  index: i32
+): i32 {
   return target.getPoint(index)
 }
 
@@ -47,7 +50,17 @@ export function newTree(
   selectType: SelectType,
   preserveExtendData: bool = true
 ): GiantTree {
-  return new GiantTree(root, lineHeight, selectType, 'id', 'name', 'parentId', 'leftNode', 'rightNode', preserveExtendData)
+  return new GiantTree(
+    root,
+    lineHeight,
+    selectType,
+    'id',
+    'name',
+    'parentId',
+    'leftNode',
+    'rightNode',
+    preserveExtendData
+  )
 }
 
 export function newTreeWithKeys(
@@ -95,7 +108,10 @@ export function setUseLazyCheckboxRanges(target: GiantTree, value: bool): void {
   target.setUseLazyCheckboxRanges(value)
 }
 
-export function setUseSearchCandidateIndex(target: GiantTree, value: bool): void {
+export function setUseSearchCandidateIndex(
+  target: GiantTree,
+  value: bool
+): void {
   target.setUseSearchCandidateIndex(value)
 }
 
@@ -141,6 +157,13 @@ export function getNodeSelectionStates(
   indices: i32[]
 ): i32[] {
   return target.getNodeSelectionStates(indices)
+}
+
+export function getNodeCollapsedStates(
+  target: GiantTree,
+  indices: i32[]
+): i32[] {
+  return target.getNodeCollapsedStates(indices)
 }
 
 export function getNodeLayouts(target: GiantTree, ids: string[]): i32[] {
@@ -283,6 +306,10 @@ export function setCheckedNodes(target: GiantTree, ids: string[]): void {
 
 export function getShownHeight(target: GiantTree): f32 {
   return target.getShownHeight()
+}
+
+export function collapseAll(target: GiantTree, isCollapse: boolean): void {
+  target.collapseAll(isCollapse)
 }
 
 export function collapseTree(

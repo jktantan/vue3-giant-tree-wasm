@@ -11,9 +11,20 @@ const TREE_SIZES = {
   small: { l1: 5, l2: 3, l3: 2 },
   medium: { l1: 10, l2: 10, l3: 10 },
   large: { l1: 20, l2: 20, l3: 10 },
+  '10k': { count: 10_000, branching: 10 },
+  '100k': { count: 100_000, branching: 10 },
+  '1m': { count: 1_000_000, branching: 32 },
 } as const
 
 type TreeSize = keyof typeof TREE_SIZES
+
+const treeSizeOptions = Object.keys(TREE_SIZES) as TreeSize[]
+const treeSizeLabel = (size: TreeSize) => {
+  const config = TREE_SIZES[size]
+  return 'count' in config
+    ? `${(config.count / 1000).toLocaleString()}k nodes`
+    : `${config.l1}x${config.l2}x${config.l3}`
+}
 
 const currentSize = ref<TreeSize>('medium')
 const currentSelectType = ref<SelectType>(SelectType.CHECKBOX)
@@ -59,7 +70,33 @@ const generateTreeData = (size: TreeSize) => {
     name: string
     disabled?: boolean
     category?: string
+    region?: string
+    status?: string
+    owner?: string
+    score?: number
   }[] = []
+
+  // 大数据集使用确定性 ID 和规则化的宽深混合层级，避免百万节点生成随机 ID 的额外开销。
+  if ('count' in config) {
+    for (let i = 0; i < config.count; i++) {
+      const id = `node-${i}`
+      const parentId =
+        i === 0 ? rootId : `node-${Math.floor((i - 1) / config.branching)}`
+      data.push({
+        id,
+        parentId,
+        name: `Node ${i}`,
+        disabled: enableDisabled.value && i > 0 && i % config.branching === 0,
+        category: i % 2 === 0 ? 'A' : 'B',
+        region: `region-${i % 8}`,
+        status: i % 5 === 0 ? 'warning' : 'active',
+        owner: `team-${i % 32}`,
+        score: (i * 17) % 1000,
+      })
+    }
+    return data
+  }
+
   for (let i = 0; i < config.l1; i++) {
     const id1 = nanoid()
     data.push({
@@ -154,6 +191,14 @@ const queryTreeSize = () => {
   wasmTreeSize.value = treeRef.value?.getTreeSize() ?? 0
 }
 
+const expandAll = () => {
+  treeRef.value?.expandAll()
+}
+
+const collapseAll = () => {
+  treeRef.value?.collapseAll()
+}
+
 const clearAllChecked = () => {
   treeRef.value?.clearAllChecked()
   checkedResult.value = []
@@ -205,17 +250,13 @@ const switchDisplay = (type: DisplayType) => {
           <h3>数据规模</h3>
           <div class="btn-group">
             <button
-              v-for="size in ['small', 'medium', 'large'] as const"
+              v-for="size in treeSizeOptions"
               :key="size"
               :class="{ active: currentSize === size }"
               @click="currentSize = size"
             >
               {{ size }}
-              <span class="btn-detail"
-                >{{ TREE_SIZES[size].l1 }}x{{ TREE_SIZES[size].l2 }}x{{
-                  TREE_SIZES[size].l3
-                }}</span
-              >
+              <span class="btn-detail">{{ treeSizeLabel(size) }}</span>
             </button>
           </div>
         </section>
@@ -383,8 +424,8 @@ const switchDisplay = (type: DisplayType) => {
 
         <section class="ctrl-section">
           <h3>filterFn 自定义过滤</h3>
-          <p style="font-size:11px;color:#888;margin-bottom:8px">
-            CHECKBOX+Custom: 只输出 category 匹配的选中节点<br/>
+          <p style="font-size: 11px; color: #888; margin-bottom: 8px">
+            CHECKBOX+Custom: 只输出 category 匹配的选中节点<br />
             RADIO: 只显示 category 匹配节点的 Radio 框
           </p>
           <div class="toggle-group">
@@ -393,7 +434,7 @@ const switchDisplay = (type: DisplayType) => {
               启用 filterFn
             </label>
           </div>
-          <div v-if="enableFilterFn" class="btn-group" style="margin-top:8px">
+          <div v-if="enableFilterFn" class="btn-group" style="margin-top: 8px">
             <button
               :class="{ active: filterCategory === 'A' }"
               @click="filterCategory = 'A'"
@@ -438,7 +479,8 @@ const switchDisplay = (type: DisplayType) => {
             <button class="action-btn" @click="rebuildTree">
               重新生成树数据
             </button>
-            <button class="action-btn" @click="clearAllChecked">
+                        <button class="action-btn" @click="expandAll">全部展开</button>
+            <button class="action-btn" @click="collapseAll">全部收起</button><button class="action-btn" @click="clearAllChecked">
               清空所有选中
             </button>
             <button class="action-btn" @click="queryTreeSize">
@@ -455,7 +497,11 @@ const switchDisplay = (type: DisplayType) => {
           <div class="result-box">
             <!-- ID 模式：string[] -->
             <template
-              v-if="outputIdOnly && Array.isArray(checkedResult) && checkedResult.length > 0"
+              v-if="
+                outputIdOnly &&
+                Array.isArray(checkedResult) &&
+                checkedResult.length > 0
+              "
             >
               <div
                 v-for="id in (checkedResult as string[]).slice(0, 20)"
@@ -470,14 +516,22 @@ const switchDisplay = (type: DisplayType) => {
             </template>
             <!-- ID 模式单值 -->
             <div
-              v-else-if="outputIdOnly && typeof checkedResult === 'string' && checkedResult"
+              v-else-if="
+                outputIdOnly &&
+                typeof checkedResult === 'string' &&
+                checkedResult
+              "
               class="result-item result-id"
             >
               {{ checkedResult }}
             </div>
             <!-- 完整 JSON 模式：TreeNodeData[] -->
             <template
-              v-else-if="!outputIdOnly && Array.isArray(checkedResult) && checkedResult.length > 0"
+              v-else-if="
+                !outputIdOnly &&
+                Array.isArray(checkedResult) &&
+                checkedResult.length > 0
+              "
             >
               <div
                 v-for="node in (checkedResult as TreeNodeData[]).slice(0, 20)"
@@ -495,14 +549,19 @@ const switchDisplay = (type: DisplayType) => {
             </template>
             <!-- 完整 JSON 模式单值 -->
             <div
-              v-else-if="!outputIdOnly && !Array.isArray(checkedResult) && checkedResult"
+              v-else-if="
+                !outputIdOnly && !Array.isArray(checkedResult) && checkedResult
+              "
               class="result-item"
             >
               <span class="result-name">{{
                 (checkedResult as TreeNodeData).name ||
                 (checkedResult as TreeNodeData).id
               }}</span>
-              <span class="result-extend" v-if="(checkedResult as TreeNodeData).extendData">
+              <span
+                class="result-extend"
+                v-if="(checkedResult as TreeNodeData).extendData"
+              >
                 {{ JSON.stringify((checkedResult as TreeNodeData).extendData) }}
               </span>
             </div>

@@ -103,7 +103,6 @@ export class CompactNodeStore {
     return result
   }
 
-
   setChecked(index: i32, value: u8): void {
     if (index >= 0 && index < this.checked.length) this.checked[index] = value
   }
