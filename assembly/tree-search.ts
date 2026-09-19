@@ -25,7 +25,9 @@ export function fuzzySearchTree(
   searchTree: MpttTree[],
   keyword: string,
   reusableIdSet: Set<string> | null = null,
-  reusableParents: MpttTree[] | null = null
+  reusableParents: MpttTree[] | null = null,
+  candidateIndex: Map<string, i32[]> | null = null,
+  parentIndices: Int32Array | null = null
 ): i32 {
   searchTree.splice(0)
   const idSet: Set<string> =
@@ -34,43 +36,75 @@ export function fuzzySearchTree(
   const parentNodes: MpttTree[] =
     reusableParents !== null ? (reusableParents as MpttTree[]) : []
   parentNodes.splice(0)
+  const matchedIndices: i32[] = []
 
   const MAX_RESULTS: i32 = 5000
   let matchCount: i32 = 0
-  for (let i: i32 = 0; i < fullTree.length; i++) {
+  let candidates: i32[] | null = null
+  if (candidateIndex !== null && keyword.length > 0) {
+    for (let i: i32 = 0; i < keyword.length; i++) {
+      const key = keyword.charAt(i)
+      if (!candidateIndex.has(key)) {
+        candidates = []
+        break
+      }
+      const bucket = candidateIndex.get(key)
+      if (candidates === null || bucket.length < (candidates as i32[]).length) {
+        candidates = bucket
+      }
+    }
+  }
+  const scanCount = candidates !== null ? candidates.length : fullTree.length
+  for (let c: i32 = 0; c < scanCount; c++) {
+    const i = candidates !== null ? candidates[c] : c
     const node: MpttTree = fullTree[i]
     if (node.name.indexOf(keyword) !== -1) {
       searchTree.push(node)
       idSet.add(node.id)
+      matchedIndices.push(i)
       matchCount++
       if (matchCount >= MAX_RESULTS) break
     }
   }
 
-  let searchIdx: i32 = 0
-  for (let i: i32 = 0; i < fullTree.length; i++) {
-    const node: MpttTree = fullTree[i]
-    if (idSet.has(node.id)) continue
-
-    while (
-      searchIdx < searchTree.length &&
-      searchTree[searchIdx].leftNode < node.leftNode
-    ) {
-      searchIdx++
-    }
-
-    let isAncestor: boolean = false
-    for (let j: i32 = searchIdx; j < searchTree.length; j++) {
-      const searchNode: MpttTree = searchTree[j]
-      if (searchNode.leftNode >= node.rightNode) break
-      if (searchNode.rightNode <= node.rightNode) {
-        isAncestor = true
-        break
+  if (parentIndices !== null) {
+    for (let i: i32 = 0; i < matchedIndices.length; i++) {
+      let parentIndex = parentIndices[matchedIndices[i]]
+      while (parentIndex >= 0) {
+        const parent = fullTree[parentIndex]
+        if (!idSet.has(parent.id)) {
+          idSet.add(parent.id)
+          parentNodes.push(parent)
+        }
+        parentIndex = parentIndices[parentIndex]
       }
     }
-    if (isAncestor) {
-      idSet.add(node.id)
-      parentNodes.push(node)
+  } else {
+    let searchIdx: i32 = 0
+    for (let i: i32 = 0; i < fullTree.length; i++) {
+      const node: MpttTree = fullTree[i]
+      if (idSet.has(node.id)) continue
+
+      while (
+        searchIdx < searchTree.length &&
+        searchTree[searchIdx].leftNode < node.leftNode
+      ) {
+        searchIdx++
+      }
+
+      let isAncestor: boolean = false
+      for (let j: i32 = searchIdx; j < searchTree.length; j++) {
+        const searchNode: MpttTree = searchTree[j]
+        if (searchNode.leftNode >= node.rightNode) break
+        if (searchNode.rightNode <= node.rightNode) {
+          isAncestor = true
+          break
+        }
+      }
+      if (isAncestor) {
+        idSet.add(node.id)
+        parentNodes.push(node)
+      }
     }
   }
 

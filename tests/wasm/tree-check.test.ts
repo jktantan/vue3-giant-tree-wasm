@@ -9,10 +9,12 @@ import {
   clear,
   checkNode,
   getCheckedNodes,
+  getCheckedIdList,
   clearCheckedNodes,
   setCheckedNodes,
   setCheckedNode,
   collapseTree,
+  getNodeSelectionStates,
   SelectType,
   CheckType,
 } from '../wasm-bridge'
@@ -71,6 +73,32 @@ describe('tree-check: CHECKBOX 模式', () => {
     expect(a.checked).toBe(CheckType.HALF_CHECKED)
   })
 
+  it('选中第三层叶子节点→所有祖先均为半选', () => {
+    const tree = newTree('', 26, SelectType.CHECKBOX)
+    pushNeighborNode(tree, 'A', 'A', '')
+    pushNeighborNode(tree, 'A1', 'A1', 'A')
+    pushNeighborNode(tree, 'A1a', 'A1a', 'A1')
+    pushNeighborNode(tree, 'A1b', 'A1b', 'A1')
+    pushNeighborNode(tree, 'B', 'B', '')
+    popNeighbor(tree)
+    setBoundary(tree, 0, 5000)
+
+    checkNode(tree, 'A1a', CheckType.CHECKED)
+    collapseTree(tree, 'A', false)
+    collapseTree(tree, 'A1', false)
+    const nodes = JSON.parse(getShownNodes(tree)) as any[]
+
+    expect(nodes.find(node => node.id === 'A')?.checked).toBe(
+      CheckType.HALF_CHECKED
+    )
+    expect(nodes.find(node => node.id === 'A1')?.checked).toBe(
+      CheckType.HALF_CHECKED
+    )
+    expect(nodes.find(node => node.id === 'A1a')?.checked).toBe(
+      CheckType.CHECKED
+    )
+  })
+
   it('全选所有子节点→父节点自动全选', () => {
     const tree = buildCheckboxTree()
     checkNode(tree, 'A1', CheckType.CHECKED)
@@ -120,6 +148,13 @@ describe('tree-check: CHECKBOX 模式', () => {
     expect(ids).toContain('B1')
   })
 
+  it('getCheckedIdList 保持输出模式并避免 JSON 往返', () => {
+    const tree = buildCheckboxTree()
+    checkNode(tree, 'A', CheckType.CHECKED)
+    checkNode(tree, 'B1', CheckType.CHECKED)
+    expect(getCheckedIdList(tree)).toEqual(['A', 'A1', 'A2', 'B', 'B1'])
+  })
+
   it('clearCheckedNodes 清空所有选中', () => {
     const tree = buildCheckboxTree()
     checkNode(tree, 'A', CheckType.CHECKED)
@@ -136,6 +171,32 @@ describe('tree-check: CHECKBOX 模式', () => {
     const b1 = nodes.find((n: any) => n.id === 'B1')
     expect(a1.checked).toBe(CheckType.CHECKED)
     expect(b1.checked).toBe(CheckType.CHECKED)
+  })
+
+  it('setCheckedNode 在 CHECKBOX 模式传播到子树', () => {
+    const tree = buildCheckboxTree()
+    setCheckedNode(tree, 'A')
+    const nodes = getAllNodes(tree)
+    expect(nodes.find(node => node.id === 'A')?.checked).toBe(CheckType.CHECKED)
+    expect(nodes.find(node => node.id === 'A1')?.checked).toBe(
+      CheckType.CHECKED
+    )
+    expect(nodes.find(node => node.id === 'A2')?.checked).toBe(
+      CheckType.CHECKED
+    )
+  })
+
+  it('按索引读取选择状态会返回最新的 checkbox 状态', () => {
+    const tree = buildCheckboxTree()
+    checkNode(tree, 'A', CheckType.CHECKED)
+
+    // Preorder indices: A, A1, A2, B, B1.
+    expect(getNodeSelectionStates(tree, [0, 1, 2, 4])).toEqual([
+      CheckType.CHECKED << 8,
+      CheckType.CHECKED << 8,
+      CheckType.CHECKED << 8,
+      CheckType.UNCHECKED << 8,
+    ])
   })
 })
 

@@ -10,8 +10,10 @@ import {
   fuzzyTree,
   collapseTree,
   switchDisplayTree,
+  checkNode,
   SelectType,
   DisplayType,
+  CheckType,
 } from '../wasm-bridge'
 
 function buildSearchTree() {
@@ -58,6 +60,32 @@ describe('tree-search: 模糊搜索', () => {
     const nodes = JSON.parse(getShownNodes(tree)) as any[]
     const topLevel = nodes.filter((n: any) => n.deep === 0)
     expect(topLevel.length).toBe(3)
+  })
+
+  it('搜索中选中父节点后清空搜索，子节点状态仍保留', () => {
+    const tree = newTree('', 26, SelectType.CHECKBOX)
+    pushNeighborNode(tree, 'parent', 'Searchable parent', '')
+    pushNeighborNode(tree, 'child', 'Hidden child', 'parent')
+    pushNeighborNode(tree, 'grandchild', 'Hidden grandchild', 'child')
+    popNeighbor(tree)
+    setBoundary(tree, 0, 5000)
+
+    fuzzyTree(tree, 'Searchable')
+    checkNode(tree, 'parent', CheckType.CHECKED)
+    fuzzyTree(tree, '')
+    collapseTree(tree, 'parent', false)
+    collapseTree(tree, 'child', false)
+    const nodes = JSON.parse(getShownNodes(tree)) as any[]
+
+    expect(nodes.find(node => node.id === 'parent')?.checked).toBe(
+      CheckType.CHECKED
+    )
+    expect(nodes.find(node => node.id === 'child')?.checked).toBe(
+      CheckType.CHECKED
+    )
+    expect(nodes.find(node => node.id === 'grandchild')?.checked).toBe(
+      CheckType.CHECKED
+    )
   })
 
   it('搜索结果包含祖先节点自动补全', () => {

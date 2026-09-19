@@ -83,6 +83,20 @@ describe('TreeItem: 节点组件', () => {
     expect(emitted![0]).toEqual(['node-x', false])
   })
 
+  it('展开按钮提供名称并支持键盘触发', async () => {
+    const wrapper = mount(TreeItem, {
+      props: {
+        item: makeItem({ leftNode: 0, rightNode: 5, collapsed: true }),
+        fontSize: '14px',
+        selectType: SelectType.CHECKBOX,
+      },
+    })
+    const expander = wrapper.find('[role="button"]')
+    expect(expander.attributes('aria-label')).toBe('展开 Test Node')
+    await expander.trigger('keydown.enter')
+    expect(wrapper.emitted('collapse-click')).toHaveLength(1)
+  })
+
   it('CHECKBOX 模式显示复选框图标', () => {
     const wrapper = mount(TreeItem, {
       props: {
@@ -108,6 +122,22 @@ describe('TreeItem: 节点组件', () => {
     const emitted = wrapper.emitted('check-click')
     expect(emitted).toBeTruthy()
     expect(emitted![0]).toEqual(['chk-1', CheckType.CHECKED])
+  })
+
+  it('复选框提供状态并支持键盘触发', async () => {
+    const wrapper = mount(TreeItem, {
+      props: {
+        item: makeItem({ checked: CheckType.HALF_CHECKED }),
+        fontSize: '14px',
+        selectType: SelectType.CHECKBOX,
+      },
+    })
+    const checkbox = wrapper.find('[role="checkbox"]')
+    expect(checkbox.attributes('aria-checked')).toBe('mixed')
+    await checkbox.trigger('keydown.space')
+    expect(wrapper.emitted('check-click')).toEqual([
+      ['test-1', CheckType.CHECKED],
+    ])
   })
 
   it('CHECKED 状态再点击变为 UNCHECKED', async () => {

@@ -192,7 +192,8 @@ function parseOneObject(
   pos: i32,
   len: i32,
   fk: TreeFieldKeys,
-  result: NeighborTree[]
+  result: NeighborTree[],
+  preserveExtendData: bool
 ): i32 {
   const objStart: i32 = pos
   pos++ // skip '{'
@@ -236,7 +237,7 @@ function parseOneObject(
   }
 
   // extendData: raw JSON substring of the original object
-  nt.extendData = src.substring(objStart, pos)
+  if (preserveExtendData) nt.extendData = src.substring(objStart, pos)
   result.push(nt)
   return pos
 }
@@ -252,7 +253,8 @@ function parseOneObject(
  */
 export function parseNeighborArray(
   src: string,
-  fk: TreeFieldKeys
+  fk: TreeFieldKeys,
+  preserveExtendData: bool = true
 ): NeighborTree[] {
   const result: NeighborTree[] = []
   const len: i32 = src.length
@@ -271,7 +273,7 @@ export function parseNeighborArray(
       continue
     } // ','
     if (c === 0x7b) {
-      pos = parseOneObject(src, pos, len, fk, result)
+      pos = parseOneObject(src, pos, len, fk, result, preserveExtendData)
     } else {
       pos++
     }
@@ -288,9 +290,10 @@ export function parseNeighborArray(
  */
 export function parseTreeFromJson(
   jsonStr: string,
-  fieldKeys: TreeFieldKeys
+  fieldKeys: TreeFieldKeys,
+  preserveExtendData: bool = true
 ): NeighborTree[] {
-  return parseNeighborArray(jsonStr, fieldKeys)
+  return parseNeighborArray(jsonStr, fieldKeys, preserveExtendData)
 }
 
 /**
@@ -324,7 +327,8 @@ export function parseNeighborTreeFromJson(jsonStr: string): NeighborTree[] {
 export function convertNeighborToMptt(
   neighborTrees: NeighborTree[],
   root: string,
-  fullTree: MpttTree[]
+  fullTree: MpttTree[],
+  inputOrderToFullIndex: i32[] | null = null
 ): i32 {
   const treeMap: Map<string, NeighborTree[]> = new Map()
   for (let i = 0; i < neighborTrees.length; i++) {
@@ -335,7 +339,12 @@ export function convertNeighborToMptt(
     treeMap.get(nt.parentId).push(nt)
   }
 
-  const shownCount = _iterativeAssembly(treeMap, root, fullTree)
+  const shownCount = _iterativeAssembly(
+    treeMap,
+    root,
+    fullTree,
+    inputOrderToFullIndex
+  )
   treeMap.clear()
   return shownCount
 }
@@ -376,7 +385,8 @@ class _StackFrame {
 function _iterativeAssembly(
   treeMap: Map<string, NeighborTree[]>,
   root: string,
-  fullTree: MpttTree[]
+  fullTree: MpttTree[],
+  inputOrderToFullIndex: i32[] | null
 ): i32 {
   if (!treeMap.has(root)) return 0
 
@@ -417,6 +427,13 @@ function _iterativeAssembly(
     mptt.leftNode = lNode
     mptt.deep = frame.deep
     fullTree.push(mptt)
+    if (
+      inputOrderToFullIndex !== null &&
+      nt.inputIndex >= 0 &&
+      nt.inputIndex < inputOrderToFullIndex.length
+    ) {
+      inputOrderToFullIndex[nt.inputIndex] = fullTree.length - 1
+    }
 
     if (treeMap.has(mptt.id)) {
       lNode = mptt.leftNode + 1
@@ -460,10 +477,11 @@ export function parseMpttTreeFromJson(
   tree: string,
   root: string,
   fullTree: MpttTree[],
-  fieldKeys: TreeFieldKeys | null = null
+  fieldKeys: TreeFieldKeys | null = null,
+  preserveExtendData: bool = true
 ): i32 {
   const fk = fieldKeys !== null ? fieldKeys : new TreeFieldKeys()
-  const neighborTrees = parseNeighborArray(tree, fk)
+  const neighborTrees = parseNeighborArray(tree, fk, preserveExtendData)
   return convertNeighborToMptt(neighborTrees, root, fullTree)
 }
 

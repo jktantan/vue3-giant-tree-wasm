@@ -14,6 +14,7 @@ export default defineConfig({
     globals: true,
     setupFiles: ['./tests/setup.ts'],
     include: ['tests/**/*.test.ts'],
+    exclude: ['tests/browser/**'],
     server: {
       deps: {
         inline: [/\.vue$/],

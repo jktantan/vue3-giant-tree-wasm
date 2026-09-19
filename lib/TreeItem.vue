@@ -52,16 +52,40 @@ const itemClick = () => {
         :style="{ width: fontSize, height: fontSize }"
         v-if="item.rightNode - item.leftNode > 1 && item.collapsed"
         class="giant-tree__mask-button giant-tree__icon-arrow-right"
+        role="button"
+        tabindex="0"
+        :aria-label="`展开 ${item.name}`"
         @click="collapsedClick"
+        @keydown.enter.prevent="collapsedClick"
+        @keydown.space.prevent="collapsedClick"
       />
       <div
         :style="{ width: fontSize, height: fontSize }"
         v-else-if="item.rightNode - item.leftNode > 1 && !item.collapsed"
         class="giant-tree__mask-button giant-tree__icon-arrow-down"
+        role="button"
+        tabindex="0"
+        :aria-label="`折叠 ${item.name}`"
         @click="collapsedClick"
+        @keydown.enter.prevent="collapsedClick"
+        @keydown.space.prevent="collapsedClick"
       />
     </div>
-    <div v-if="selectType === SelectType.CHECKBOX" @click="checkClick">
+    <div
+      v-if="selectType === SelectType.CHECKBOX"
+      role="checkbox"
+      :tabindex="item.disabled ? -1 : 0"
+      :aria-checked="
+        item.checked === CheckType.HALF_CHECKED
+          ? 'mixed'
+          : item.checked === CheckType.CHECKED
+      "
+      :aria-disabled="item.disabled || undefined"
+      :aria-label="`选择 ${item.name}`"
+      @click="checkClick"
+      @keydown.enter.prevent="checkClick"
+      @keydown.space.prevent="checkClick"
+    >
       <div
         v-if="item.checked === CheckType.UNCHECKED"
         :style="{ width: fontSize, height: fontSize }"
@@ -80,7 +104,14 @@ const itemClick = () => {
     </div>
     <div
       v-else-if="selectType === SelectType.RADIO && showRadio"
+      role="radio"
+      :tabindex="item.disabled ? -1 : 0"
+      :aria-checked="item.checked === CheckType.CHECKED"
+      :aria-disabled="item.disabled || undefined"
+      :aria-label="`选择 ${item.name}`"
       @click="checkClick"
+      @keydown.enter.prevent="checkClick"
+      @keydown.space.prevent="checkClick"
     >
       <div
         v-if="item.checked === CheckType.CHECKED"

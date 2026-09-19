@@ -16,12 +16,15 @@ import {
   CheckedOutputMode,
   clear,
   setNeighborTree,
-  getShownNodes,
+  pushNeighborNodesUtf8,
+  popNeighbor,
+  setPreserveExtendData,
   getShownHeight,
   collapseTree,
   checkNode,
   getCheckedNodes,
   getCheckedIds,
+  getCheckedIdList,
   CheckType,
   DisplayType,
   fuzzyTree,
@@ -31,12 +34,22 @@ import {
   setCheckedNode,
   setCheckedNodes,
   setCheckedOutputMode,
+  getAllNodes,
+  getShownIndices,
+  getNodeSelectionStates,
+  getInputNodeLayouts,
+  clearInputNodeLayouts,
 } from '../build/release'
 
 import { debounce } from 'throttle-debounce'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import TreeItem from '@lib/TreeItem.vue'
-import type { TreeNodeData, TreeInputItem, TreeFieldKeys, FilterFn } from './types'
+import type {
+  TreeNodeData,
+  TreeInputItem,
+  TreeFieldKeys,
+  FilterFn,
+} from './types'
 const props = withDefaults(
   defineProps<{
     modelValue: TreeNodeData | TreeNodeData[] | string | string[]
@@ -55,6 +68,10 @@ const props = withDefaults(
     checkedOutputMode?: CheckedOutputMode
     /** 自定义过滤回调：CHECKBOX 模式 + checkedOutputMode=Custom 时用于过滤输出；RADIO 模式用于判断节点是否可选 */
     filterFn?: FilterFn
+    /** 显式启用分批 WASM 输入；只适用于不需要完整原始行输出的场景 */
+    chunkedBuild?: boolean
+    /** 每批写入 WASM 的节点数 */
+    buildBatchSize?: number
   }>(),
   {
     width: '100%',
@@ -67,6 +84,8 @@ const props = withDefaults(
     fieldKeys: () => ({}),
     outputIdOnly: true,
     checkedOutputMode: CheckedOutputMode.All,
+    chunkedBuild: false,
+    buildBatchSize: 2_000,
   }
 )
 const emit = defineEmits(['update:modelValue'])
@@ -76,24 +95,246 @@ const container = ref<HTMLDivElement>()
 const listHeight = ref<number>(0)
 /** 当前树列表（可视区域内节点） / Current tree list (nodes within viewport) / Текущий список дерева (узлы в области просмотра) */
 const currentTreeList = ref<TreeNodeData[]>([])
+let allNodesCache: TreeNodeData[] = []
+let nodeIndexById = new Map<string, number>()
+let hasActiveSearch = false
+let isTreeReady = false
+let isBuilding = false
+let buildStartedAt = 0
+type BuildMetrics = {
+  inputBridgeMs: number
+  inputYieldMs: number
+  finalizeMs: number
+  layoutBridgeMs: number
+  cacheAssemblyMs: number
+  cacheYieldMs: number
+  layoutReleaseMs: number
+  cacheIndexMs: number
+  cacheRefreshMs: number
+  shownIndicesMs: number
+  selectionStatesMs: number
+  totalMs: number
+}
+let buildMetrics: BuildMetrics = {
+  inputBridgeMs: 0,
+  inputYieldMs: 0,
+  finalizeMs: 0,
+  layoutBridgeMs: 0,
+  cacheAssemblyMs: 0,
+  cacheYieldMs: 0,
+  layoutReleaseMs: 0,
+  cacheIndexMs: 0,
+  cacheRefreshMs: 0,
+  shownIndicesMs: 0,
+  selectionStatesMs: 0,
+  totalMs: 0,
+}
+const now = () => performance.now()
+const resetBuildMetrics = () => {
+  buildMetrics = {
+    inputBridgeMs: 0,
+    inputYieldMs: 0,
+    finalizeMs: 0,
+    layoutBridgeMs: 0,
+    cacheAssemblyMs: 0,
+    cacheYieldMs: 0,
+    layoutReleaseMs: 0,
+    cacheIndexMs: 0,
+    cacheRefreshMs: 0,
+    shownIndicesMs: 0,
+    selectionStatesMs: 0,
+    totalMs: 0,
+  }
+}
 let scrollTop = 0,
   scrollHeight = 0
+let resizeRefreshTimer: ReturnType<typeof setTimeout> | undefined
 const startOffset = ref<number>(0)
 /** ResizeObserver: 监听容器高度变化，同步 WASM 边界 + 刷新视图 / ResizeObserver: watches container height changes, syncs WASM boundary + refreshes view / ResizeObserver: отслеживает изменение высоты контейнера, синхронизирует границы WASM + обновляет вид */
 const ro = new ResizeObserver((entries: ResizeObserverEntry[]) => {
   const { blockSize: height } = entries[0].contentBoxSize[0]
   scrollHeight = height
-  setBoundary(tree, scrollTop, scrollHeight)
-  listHeight.value = getShownHeight(tree)
-  refreshTree()
+  if (resizeRefreshTimer !== undefined) return
+  // Keep DOM updates out of the observer callback to avoid Chromium resize loops.
+  resizeRefreshTimer = setTimeout(() => {
+    resizeRefreshTimer = undefined
+    setBoundary(tree, scrollTop, scrollHeight)
+    listHeight.value = getShownHeight(tree)
+    refreshTree()
+  }, 0)
 })
-/** 记录上次 WASM 返回的 JSON 字符串，相同则跳过 parse+Vue 响应式更新 */
-let lastNodesStr = ''
 const refreshTree = () => {
-  const nodesStr = getShownNodes(tree)
-  if (nodesStr === lastNodesStr) return
-  lastNodesStr = nodesStr
-  currentTreeList.value = JSON.parse(nodesStr) as TreeNodeData[]
+  if (isBuilding) return
+  const shownStarted = now()
+  const indices = getShownIndices(tree) as number[]
+  buildMetrics.shownIndicesMs += now() - shownStarted
+  const selectionStarted = now()
+  const selectionStates = getNodeSelectionStates(tree, indices) as number[]
+  buildMetrics.selectionStatesMs += now() - selectionStarted
+  currentTreeList.value = indices
+    .map((index, position) => {
+      const node = allNodesCache[index]
+      if (node) {
+        const state = selectionStates[position]
+        const checked = state >> 8
+        const selected = state & 0xff
+        if (node.checked !== checked || node.selected !== selected) {
+          // Cache entries may already be Vue proxies in a reused virtual row.
+          // Replace the changed entry so the child receives a new prop value.
+          allNodesCache[index] = { ...node, checked, selected }
+        }
+      }
+      return allNodesCache[index]
+    })
+    .filter((node): node is TreeNodeData => node !== undefined)
+}
+const refreshAllNodesCache = () => {
+  allNodesCache = JSON.parse(getAllNodes(tree)) as TreeNodeData[]
+  nodeIndexById = new Map(allNodesCache.map((node, index) => [node.id, index]))
+  refreshTree()
+}
+// A macrotask yields the main thread for rendering without relying on rAF.
+// Browser test iframes can throttle rAF to seconds while backgrounded.
+const nextBuildTurn = () => new Promise<void>(resolve => setTimeout(resolve, 0))
+const canUseChunkedBuild = () =>
+  props.chunkedBuild && props.outputIdOnly && !props.filterFn
+const utf8Encoder = new TextEncoder()
+const encodeNeighborBatch = (
+  batch: Array<TreeInputItem & Record<string, unknown>>,
+  idField: string,
+  nameField: string,
+  parentIdField: string
+) => {
+  const values = new Array<string>(batch.length * 3)
+  const encoded = new Array<Uint8Array>(batch.length * 3)
+  let payloadLength = batch.length * 16
+  for (let index = 0; index < batch.length; index++) {
+    const node = batch[index]
+    const valueIndex = index * 3
+    values[valueIndex] = String(node[idField] ?? '')
+    values[valueIndex + 1] = String(node[nameField] ?? '')
+    values[valueIndex + 2] = String(node[parentIdField] ?? '')
+    encoded[valueIndex] = utf8Encoder.encode(values[valueIndex])
+    encoded[valueIndex + 1] = utf8Encoder.encode(values[valueIndex + 1])
+    encoded[valueIndex + 2] = utf8Encoder.encode(values[valueIndex + 2])
+    payloadLength += encoded[valueIndex].length
+    payloadLength += encoded[valueIndex + 1].length
+    payloadLength += encoded[valueIndex + 2].length
+  }
+  const payload = new Uint8Array(payloadLength)
+  const view = new DataView(payload.buffer)
+  let cursor = 0
+  for (let index = 0; index < batch.length; index++) {
+    const valueIndex = index * 3
+    const lengths = [
+      encoded[valueIndex].length,
+      encoded[valueIndex + 1].length,
+      encoded[valueIndex + 2].length,
+      batch[index].disabled === true ? 1 : 0,
+    ]
+    view.setInt32(cursor, lengths[0], true)
+    view.setInt32(cursor + 4, lengths[1], true)
+    view.setInt32(cursor + 8, lengths[2], true)
+    view.setInt32(cursor + 12, lengths[3], true)
+    cursor += 16
+    payload.set(encoded[valueIndex], cursor)
+    cursor += lengths[0]
+    payload.set(encoded[valueIndex + 1], cursor)
+    cursor += lengths[1]
+    payload.set(encoded[valueIndex + 2], cursor)
+    cursor += lengths[2]
+  }
+  return payload
+}
+const loadTree = async () => {
+  if (!canUseChunkedBuild()) {
+    setNeighborTree(tree, JSON.stringify(props.tree))
+    return
+  }
+
+  const size = Math.max(1, Math.floor(props.buildBatchSize))
+  const idField = props.fieldKeys.idField ?? 'id'
+  const nameField = props.fieldKeys.nameField ?? 'name'
+  const parentIdField = props.fieldKeys.parentIdField ?? 'parentId'
+  for (let start = 0; start < props.tree.length; start += size) {
+    const batch = props.tree.slice(start, start + size) as Array<
+      TreeInputItem & Record<string, unknown>
+    >
+    const bridgeStarted = now()
+    const payload = encodeNeighborBatch(
+      batch,
+      idField,
+      nameField,
+      parentIdField
+    )
+    pushNeighborNodesUtf8(tree, payload)
+    buildMetrics.inputBridgeMs += now() - bridgeStarted
+    if (start + size < props.tree.length) {
+      const yieldStarted = now()
+      await nextBuildTurn()
+      buildMetrics.inputYieldMs += now() - yieldStarted
+    }
+  }
+  const finalizeStarted = now()
+  popNeighbor(tree)
+  buildMetrics.finalizeMs += now() - finalizeStarted
+}
+const refreshChunkedNodesCache = async () => {
+  const size = Math.max(1, Math.floor(props.buildBatchSize))
+  const idField = props.fieldKeys.idField ?? 'id'
+  const nameField = props.fieldKeys.nameField ?? 'name'
+  const parentIdField = props.fieldKeys.parentIdField ?? 'parentId'
+  const input = props.tree as Array<TreeInputItem & Record<string, unknown>>
+  const layoutBridgeStarted = now()
+  const layouts = getInputNodeLayouts(tree) as number[]
+  buildMetrics.layoutBridgeMs += now() - layoutBridgeStarted
+  const cache = new Array<TreeNodeData>(getSize(tree))
+  for (let start = 0; start < input.length; start += size) {
+    const end = Math.min(start + size, input.length)
+    const assemblyStarted = now()
+    for (let index = start; index < end; index++) {
+      const node = input[index]
+      const offset = index * 5
+      const fullIndex = layouts[offset]
+      if (fullIndex < 0) continue
+      cache[fullIndex] = {
+        id: String(node[idField] ?? ''),
+        name: String(node[nameField] ?? ''),
+        parentId: String(node[parentIdField] ?? ''),
+        leftNode: layouts[offset + 1],
+        rightNode: layouts[offset + 2],
+        deep: layouts[offset + 3],
+        checked: CheckType.UNCHECKED,
+        selected: CheckType.UNCHECKED,
+        collapsed: true,
+        disabled: layouts[offset + 4] !== 0,
+      }
+    }
+    buildMetrics.cacheAssemblyMs += now() - assemblyStarted
+    if (start + size < input.length) {
+      const yieldStarted = now()
+      await nextBuildTurn()
+      buildMetrics.cacheYieldMs += now() - yieldStarted
+    }
+  }
+  const layoutReleaseStarted = now()
+  clearInputNodeLayouts(tree)
+  buildMetrics.layoutReleaseMs += now() - layoutReleaseStarted
+  allNodesCache = cache
+  const cacheIndexStarted = now()
+  nodeIndexById = new Map(cache.map((node, index) => [node.id, index]))
+  buildMetrics.cacheIndexMs += now() - cacheIndexStarted
+  const refreshStarted = now()
+  refreshTree()
+  buildMetrics.cacheRefreshMs += now() - refreshStarted
+  // The tree and its JS presentation cache are now coherent. Mark readiness
+  // here instead of depending on a later mounted-hook continuation.
+  buildMetrics.totalMs = now() - buildStartedAt
+  isTreeReady = true
+}
+const refreshNodesCache = async () => {
+  if (canUseChunkedBuild()) await refreshChunkedNodesCache()
+  else refreshAllNodesCache()
 }
 /** 滚动 rAF 标记：合并同一帧内的多次滚动事件 */
 let scrollRafId = 0
@@ -116,15 +357,16 @@ const emitCheckedResult = () => {
     // Пользовательский режим: получить полные данные узлов, отфильтровать filterFn, затем решить, выводить ID или JSON
     // getCheckedNodes 返回的是 extendData 原始 JSON（非 TreeNodeData 结构），直接传给 filterFn
     const nodes = JSON.parse(getCheckedNodes(tree)) as Record<string, unknown>[]
-    const filtered = nodes.filter((item) => props.filterFn!(item))
-    const result = props.outputIdOnly
-      ? filtered.map((item) => item.id)
-      : filtered
+    const filtered = nodes.filter(item => props.filterFn!(item))
+    const result = props.outputIdOnly ? filtered.map(item => item.id) : filtered
     emit('update:modelValue', result)
   } else {
-    const result = props.outputIdOnly
-      ? JSON.parse(getCheckedIds(tree))
-      : JSON.parse(getCheckedNodes(tree))
+    const result =
+      props.outputIdOnly && props.selectType === SelectType.CHECKBOX
+        ? getCheckedIdList(tree)
+        : props.outputIdOnly
+          ? JSON.parse(getCheckedIds(tree))
+          : JSON.parse(getCheckedNodes(tree))
     emit('update:modelValue', result)
   }
 }
@@ -158,31 +400,61 @@ const tree = hasCustomKeys
       fk.nameField ?? 'name',
       fk.parentIdField ?? 'parentId',
       fk.leftNodeField ?? 'leftNode',
-      fk.rightNodeField ?? 'rightNode'
+      fk.rightNodeField ?? 'rightNode',
+      props.outputIdOnly === false || !!props.filterFn
     )
-  : newTree(props.root, props.lineHeight, props.selectType)
+  : newTree(
+      props.root,
+      props.lineHeight,
+      props.selectType,
+      props.outputIdOnly === false || !!props.filterFn
+    )
 
 // 初始化 CHECKBOX 输出模式
 setCheckedOutputMode(tree, props.checkedOutputMode)
 
 // 输出格式变化（ID ↔ JSON）→ 用新格式重发选中结果
-watch(() => props.outputIdOnly, () => {
-  emitCheckedResult()
-})
+watch(
+  () => props.outputIdOnly,
+  outputIdOnly => {
+    setPreserveExtendData(tree, outputIdOnly === false || !!props.filterFn)
+    clear(tree)
+    isTreeReady = false
+    resetBuildMetrics()
+    buildStartedAt = now()
+    void loadTree().then(() => {
+      return refreshNodesCache()
+    }).then(() => {
+      buildMetrics.totalMs = now() - buildStartedAt
+      isTreeReady = true
+      emitCheckedResult()
+    })
+  }
+)
 
 // CHECKBOX 过滤模式变化 → 更新 WASM 树 + 重发
-watch(() => props.checkedOutputMode, (newMode) => {
-  setCheckedOutputMode(tree, newMode)
-  emitCheckedResult()
-})
+watch(
+  () => props.checkedOutputMode,
+  newMode => {
+    setCheckedOutputMode(tree, newMode)
+    emitCheckedResult()
+  }
+)
 
 /** 挂载时初始化: 观察容器大小、加载树数据、立即渲染首屏 / On mount: observe container, load tree data, render initial viewport immediately / При монтировании: наблюдать за контейнером, загрузить данные дерева, сразу отрендерить начальный viewport */
-onMounted(() => {
+onMounted(async () => {
   ro.observe(container.value!)
   clear(tree)
+  isBuilding = true
+  resetBuildMetrics()
+  buildStartedAt = now()
   if (props.tree.length > 0) {
-    setNeighborTree(tree, JSON.stringify(props.tree))
+    await loadTree()
   }
+  isBuilding = false
+  await refreshNodesCache()
+  buildMetrics.totalMs = now() - buildStartedAt
+  isTreeReady = true
   // 立即刷新视图（不依赖 ResizeObserver）/ Refresh view immediately (not dependent on ResizeObserver) / Немедленное обновление вида (не зависит от ResizeObserver)
   setBoundary(tree, scrollTop, scrollHeight)
   listHeight.value = getShownHeight(tree)
@@ -190,11 +462,14 @@ onMounted(() => {
 })
 onUnmounted(() => {
   ro.disconnect()
+  if (resizeRefreshTimer !== undefined) {
+    clearTimeout(resizeRefreshTimer)
+    resizeRefreshTimer = undefined
+  }
   if (scrollRafId) {
     cancelAnimationFrame(scrollRafId)
     scrollRafId = 0
   }
-  lastNodesStr = ''
 })
 /** 行点击（SELECT 模式选中节点） / Row click (selects node in SELECT mode) / Клик по строке (выбирает узел в режиме SELECT) */
 const itemClick = (id: string) => {
@@ -208,6 +483,8 @@ const itemClick = (id: string) => {
 const collapseClick = (id: string, isCollapse: boolean) => {
   collapseTree(tree, id, isCollapse)
   listHeight.value = getShownHeight(tree)
+  const node = allNodesCache.find(item => item.id === id)
+  if (node) node.collapsed = isCollapse
   refreshTree()
 }
 /** 复选框/单选框点击 / Checkbox/radio click / Клик по чекбоксу/радио */
@@ -221,7 +498,11 @@ const checkClick = (id: string, checkType: CheckType) => {
 const rawFuzzySearch = (keyword: string) => {
   fuzzyTree(tree, keyword)
   listHeight.value = getShownHeight(tree)
+  // Viewport state is read from CompactNodeStore on every refresh, including
+  // nodes that reappear after search. Avoid serializing the full tree solely
+  // to rebuild the JS cache when clearing a search.
   refreshTree()
+  hasActiveSearch = keyword.length > 0
 }
 /** 带 300ms 防抖的模糊搜索（适合 input 实时输入）/ Fuzzy search with 300ms debounce (suitable for real-time input) / Нечёткий поиск с антидребезгом 300мс (подходит для ввода в реальном времени) */
 const fuzzySearch = debounce(300, rawFuzzySearch)
@@ -230,6 +511,9 @@ const fuzzySearch = debounce(300, rawFuzzySearch)
 const getTreeSize = (): number => {
   return getSize(tree)
 }
+
+const getBuildReady = (): boolean => isTreeReady
+const getBuildMetrics = (): BuildMetrics => ({ ...buildMetrics })
 
 /** 单选设置选中节点 / Set checked node (single-select) / Установить выбранный узел (одиночный выбор) */
 const setChecked = (id: string) => {
@@ -271,6 +555,8 @@ defineExpose({
   fuzzySearch,
   fuzzySearchRaw: rawFuzzySearch,
   getTreeSize,
+  getBuildReady,
+  getBuildMetrics,
   setChecked,
   setCheckedByIds,
   clearAllChecked,

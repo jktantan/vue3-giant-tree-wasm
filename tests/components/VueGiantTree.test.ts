@@ -55,6 +55,29 @@ describe('VueGiantTree: 主组件', () => {
     expect(container.exists()).toBe(true)
   })
 
+  it('显式分批构建保留默认输入的可见节点与禁用语义', async () => {
+    const wrapper = mount(VueGiantTree, {
+      props: {
+        modelValue: [],
+        root: 'root',
+        chunkedBuild: true,
+        buildBatchSize: 1,
+        tree: [
+          { id: 'A', name: 'NodeA', parentId: 'root' },
+          { id: 'A1', name: 'NodeA1', parentId: 'A', disabled: true },
+          { id: 'B', name: 'NodeB', parentId: 'root' },
+        ],
+      },
+    })
+    await vi.waitFor(() =>
+      expect((wrapper.vm as any).getBuildReady()).toBe(true)
+    )
+    expect((wrapper.vm as any).getTreeSize()).toBe(3)
+    await wrapper.vm.$nextTick()
+    expect(wrapper.findAll('.tree-item')).toHaveLength(2)
+    expect(wrapper.text()).toContain('NodeA')
+  })
+
   it('默认 props 值', async () => {
     const wrapper = mount(VueGiantTree, {
       props: {
@@ -109,6 +132,135 @@ describe('VueGiantTree: 主组件', () => {
     await flushPromises()
     expect(wrapper.find('.infinite-list-phantom').exists()).toBe(true)
     expect(wrapper.find('.infinite-list').exists()).toBe(true)
+  })
+
+  it('展开节点时只刷新可见窗口且正确显示子节点', async () => {
+    const wrapper = mount(VueGiantTree, {
+      props: {
+        modelValue: [],
+        tree: makeTreeData(),
+        root: 'root',
+      },
+    })
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.findAll('.tree-item')).toHaveLength(2)
+    await wrapper.find('.giant-tree__icon-arrow-right').trigger('click')
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.findAll('.tree-item')).toHaveLength(3)
+    expect(wrapper.text()).toContain('NodeA1')
+  })
+
+  it('勾选后同步可见节点状态', async () => {
+    const wrapper = mount(VueGiantTree, {
+      props: {
+        modelValue: [],
+        tree: makeTreeData(),
+        root: 'root',
+      },
+    })
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+
+    await wrapper.find('.giant-tree__icon-check-unchecked').trigger('click')
+    await wrapper.vm.$nextTick()
+    expect(wrapper.find('.giant-tree__icon-check-checked').exists()).toBe(true)
+  })
+
+  it('搜索中选中父节点后清空搜索会刷新隐藏子节点状态', async () => {
+    const wrapper = mount(VueGiantTree, {
+      props: {
+        modelValue: [],
+        root: 'root',
+        tree: [
+          { id: 'parent', name: 'Searchable parent', parentId: 'root' },
+          { id: 'child', name: 'Hidden child', parentId: 'parent' },
+          { id: 'grandchild', name: 'Hidden grandchild', parentId: 'child' },
+        ],
+      },
+    })
+    await flushPromises()
+    ;(wrapper.vm as any).fuzzySearchRaw('Searchable')
+    await wrapper.vm.$nextTick()
+    await wrapper.find('.giant-tree__icon-check-unchecked').trigger('click')
+    ;(wrapper.vm as any).fuzzySearchRaw('')
+    await wrapper.vm.$nextTick()
+    await wrapper.find('.giant-tree__icon-arrow-right').trigger('click')
+    await wrapper.vm.$nextTick()
+
+    const child = wrapper
+      .findAll('.tree-item')
+      .find(item => item.text().includes('Hidden child'))
+    expect(child?.find('.giant-tree__icon-check-checked').exists()).toBe(true)
+
+    await child?.find('.giant-tree__icon-arrow-right').trigger('click')
+    await wrapper.vm.$nextTick()
+    const grandchild = wrapper
+      .findAll('.tree-item')
+      .find(item => item.text().includes('Hidden grandchild'))
+    expect(grandchild?.find('.giant-tree__icon-check-checked').exists()).toBe(
+      true
+    )
+  })
+
+  it('选择 API 同步隐藏后代和清空状态的缓存', async () => {
+    const wrapper = mount(VueGiantTree, {
+      props: {
+        modelValue: [],
+        root: 'root',
+        tree: [
+          { id: 'parent', name: 'Parent', parentId: 'root' },
+          { id: 'child', name: 'Child', parentId: 'parent' },
+        ],
+      },
+    })
+    await flushPromises()
+
+    const api = wrapper.vm as any
+    api.setChecked('parent')
+    await wrapper.vm.$nextTick()
+    await wrapper.find('.giant-tree__icon-arrow-right').trigger('click')
+    await wrapper.vm.$nextTick()
+
+    const child = wrapper
+      .findAll('.tree-item')
+      .find(item => item.text().includes('Child'))
+    expect(child?.find('.giant-tree__icon-check-checked').exists()).toBe(true)
+
+    api.clearAllChecked()
+    await wrapper.vm.$nextTick()
+    expect(child?.find('.giant-tree__icon-check-unchecked').exists()).toBe(true)
+
+    api.setCheckedByIds(['parent'])
+    await wrapper.vm.$nextTick()
+    expect(child?.find('.giant-tree__icon-check-checked').exists()).toBe(true)
+  })
+
+  it('SELECT 模式首击展开后的叶子节点即可选中', async () => {
+    const wrapper = mount(VueGiantTree, {
+      props: {
+        modelValue: [],
+        root: 'root',
+        selectType: SelectType.SELECT,
+        tree: [
+          { id: 'parent', name: 'Parent', parentId: 'root' },
+          { id: 'leaf', name: 'Leaf', parentId: 'parent' },
+        ],
+      },
+    })
+    await flushPromises()
+    await wrapper.find('.giant-tree__icon-arrow-right').trigger('click')
+    await wrapper.vm.$nextTick()
+
+    const leaf = wrapper
+      .findAll('.tree-item')
+      .find(item => item.text().includes('Leaf'))
+    await leaf?.find('.item-text').trigger('click')
+    await wrapper.vm.$nextTick()
+
+    expect(leaf?.classes()).toContain('selected')
   })
 
   it('自定义 fontSize', async () => {

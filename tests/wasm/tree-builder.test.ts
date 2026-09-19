@@ -9,9 +9,11 @@ import {
   popMptt,
   getSize,
   getShownNodes,
+  getAllNodes,
   getShownHeight,
   setBoundary,
   clear,
+  pushNeighborNodesUtf8,
   SelectType,
 } from '../wasm-bridge'
 
@@ -38,6 +40,35 @@ describe('tree-builder: 树构建', () => {
   it('逐条推入邻接表节点后 popNeighbor', () => {
     const tree = buildSimpleTree()
     expect(getSize(tree)).toBe(5)
+  })
+
+  it('UTF-8 连续输入与逐条邻接表输入保留顺序、禁用和 Unicode', () => {
+    const fields = ['A', '\u6839\u8282\u70b9', 'root', 'A1', '\u5b50\u8282\u70b9', 'A']
+    const values = fields.map(value => new TextEncoder().encode(value))
+    const encoded = new Uint8Array(32 + values.reduce((total, value) => total + value.length, 0))
+    const view = new DataView(encoded.buffer)
+    let cursor = 0
+    for (let record = 0; record < 2; record++) {
+      const field = record * 3
+      view.setInt32(cursor, values[field].length, true)
+      view.setInt32(cursor + 4, values[field + 1].length, true)
+      view.setInt32(cursor + 8, values[field + 2].length, true)
+      view.setInt32(cursor + 12, record, true)
+      cursor += 16
+      for (let index = field; index < field + 3; index++) {
+        encoded.set(values[index], cursor)
+        cursor += values[index].length
+      }
+    }
+    const tree = newTree('root', 26, SelectType.CHECKBOX)
+    pushNeighborNodesUtf8(tree, encoded)
+    popNeighbor(tree)
+    setBoundary(tree, 0, 1000)
+
+    expect(JSON.parse(getAllNodes(tree))).toMatchObject([
+      { id: 'A', name: '\u6839\u8282\u70b9', parentId: 'root', disabled: false },
+      { id: 'A1', name: '\u5b50\u8282\u70b9', parentId: 'A', disabled: true },
+    ])
   })
 
   it('空数据 popNeighbor 不崩溃', () => {

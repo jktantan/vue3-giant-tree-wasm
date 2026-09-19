@@ -1,4 +1,5 @@
 import { MpttTree } from './models'
+import { CompactNodeStore } from './compact-store'
 import { JsonEncoder } from './json/index'
 import { escapeString } from './json/types'
 
@@ -50,6 +51,36 @@ function nodeToJson(node: MpttTree, comma: bool): string {
   return s
 }
 
+/** Serialize a visible node while sourcing numeric state from the compact store. */
+function nodeToJsonCompact(node: MpttTree, index: i32, store: CompactNodeStore, comma: bool): string {
+  let s: string = comma ? ',{"id":"' : '{"id":"'
+  s += escapeString(node.id)
+  s += '","name":"'
+  s += escapeString(node.name)
+  s += '","parentId":"'
+  s += escapeString(node.parentId)
+  s += '","leftNode":'
+  s += itoa(store.left[index])
+  s += ',"rightNode":'
+  s += itoa(store.right[index])
+  s += ',"deep":'
+  s += itoa(store.depth[index])
+  s += ',"checked":'
+  s += itoa(store.checked[index])
+  s += ',"selected":'
+  s += itoa(store.selected[index])
+  s += ',"collapsed":'
+  s += store.collapsed[index] !== 0 ? 'true' : 'false'
+  s += ',"disabled":'
+  s += store.disabled[index] !== 0 ? 'true' : 'false'
+  if (node.extendData.length > 0) {
+    s += ',"extendData":'
+    s += node.extendData
+  }
+  s += '}'
+  return s
+}
+
 /**
  * 从 shownNodes 直接按索引范围序列化，合并 getVisibleSlice + serializeMpttArray，
  * 消除中间 MpttTree[] 分配。每帧省 1 次数组分配 + 1 次遍历。
@@ -88,6 +119,51 @@ export function serializeShownSlice(
   return result
 }
 
+export function serializeShownSliceCompact(
+  shownNodes: MpttTree[],
+  indices: Int32Array,
+  store: CompactNodeStore,
+  scrollTop: f32,
+  scrollHeight: f32,
+  lineHeight: f32
+): string {
+  const startIdx: i32 = <i32>Math.floor(scrollTop / lineHeight)
+  const endIdx: i32 = <i32>Math.ceil((scrollTop + scrollHeight) / lineHeight) + 1
+  const from: i32 = startIdx < 0 ? 0 : startIdx >= shownNodes.length ? shownNodes.length : startIdx
+  const to: i32 = endIdx < from ? from : endIdx > shownNodes.length ? shownNodes.length : endIdx
+  if (from >= to) return '[]'
+  let result: string = '['
+  for (let i: i32 = from; i < to; i++) {
+    const fullIndex = indices[i]
+    result += nodeToJsonCompact(shownNodes[i], fullIndex, store, i > from)
+  }
+  result += ']'
+  return result
+}
+
+/** Serializes a virtual-list slice directly from compact full-tree indices. */
+export function serializeShownIndicesCompact(
+  tree: MpttTree[],
+  indices: Int32Array,
+  shownLength: i32,
+  store: CompactNodeStore,
+  scrollTop: f32,
+  scrollHeight: f32,
+  lineHeight: f32
+): string {
+  const startIdx: i32 = <i32>Math.floor(scrollTop / lineHeight)
+  const endIdx: i32 = <i32>Math.ceil((scrollTop + scrollHeight) / lineHeight) + 1
+  const from: i32 = startIdx < 0 ? 0 : startIdx >= shownLength ? shownLength : startIdx
+  const to: i32 = endIdx < from ? from : endIdx > shownLength ? shownLength : endIdx
+  if (from >= to) return '[]'
+  let result = '['
+  for (let i: i32 = from; i < to; i++) {
+    const fullIndex = indices[i]
+    result += nodeToJsonCompact(tree[fullIndex], fullIndex, store, i > from)
+  }
+  return result + ']'
+}
+
 /**
  * 将 MPTT 树数组序列化为 JSON 字符串（完整字段）
  * 主要用于非热路径（搜索结果等），滚动热路径请用 serializeShownSlice
@@ -97,6 +173,20 @@ export function serializeMpttArray(tree: MpttTree[]): string {
   let result: string = '['
   for (let i = 0; i < tree.length; i++) {
     result += nodeToJson(tree[i], i > 0)
+  }
+  result += ']'
+  return result
+}
+
+/** Serialize full MPTT output while sourcing numeric/state fields from compact storage. */
+export function serializeMpttArrayCompact(
+  tree: MpttTree[],
+  store: CompactNodeStore
+): string {
+  if (tree.length === 0) return '[]'
+  let result: string = '['
+  for (let i: i32 = 0; i < tree.length; i++) {
+    result += nodeToJsonCompact(tree[i], i, store, i > 0)
   }
   result += ']'
   return result
@@ -143,6 +233,41 @@ export function serializeCheckedArray(tree: MpttTree[]): string {
       encoder.setBoolean('disabled', node.disabled)
       encoder.popObject()
     }
+  }
+  encoder.popArray()
+  return encoder.toString()
+}
+
+/**
+ * Serializes selected nodes using object strings/extendData and compact numeric
+ * state. `indices` is already filtered by the caller's output mode.
+ */
+export function serializeCheckedArrayCompact(
+  tree: MpttTree[],
+  indices: i32[],
+  store: CompactNodeStore
+): string {
+  const encoder = new JsonEncoder()
+  encoder.pushArray(null)
+  for (let i: i32 = 0; i < indices.length; i++) {
+    const index = indices[i]
+    const node = tree[index]
+    if (node.extendData.length > 0) {
+      encoder.setRawJson(null, node.extendData)
+      continue
+    }
+    encoder.pushObject(null)
+    encoder.setString('id', node.id)
+    encoder.setString('name', node.name)
+    encoder.setString('parentId', node.parentId)
+    encoder.setInteger('leftNode', store.left[index])
+    encoder.setInteger('rightNode', store.right[index])
+    encoder.setInteger('deep', store.depth[index])
+    encoder.setInteger('checked', store.checked[index])
+    encoder.setInteger('selected', store.selected[index])
+    encoder.setBoolean('collapsed', store.collapsed[index] !== 0)
+    encoder.setBoolean('disabled', store.disabled[index] !== 0)
+    encoder.popObject()
   }
   encoder.popArray()
   return encoder.toString()

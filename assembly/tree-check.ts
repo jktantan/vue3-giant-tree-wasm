@@ -342,17 +342,44 @@ export function getCheckedIdsFromTree(
   radioIdx: i32 = -1,
   selectIdx: i32 = -1
 ): string {
+  const ids = getCheckedIdListFromTree(
+    fullTree,
+    selectType,
+    outputMode,
+    radioIdx,
+    selectIdx
+  )
+  if (selectType === SelectType.RADIO || selectType === SelectType.SELECT) {
+    return ids.length > 0 ? '"' + escapeString(ids[0]) + '"' : 'null'
+  }
+  if (ids.length === 0) return '[]'
+  const escaped: string[] = []
+  for (let i = 0; i < ids.length; i++) escaped.push('"' + escapeString(ids[i]) + '"')
+  return '[' + escaped.join(',') + ']'
+}
+
+/**
+ * Collects checked IDs without creating a JSON payload. The Vue component uses
+ * this on the CHECKBOX ID-output path to avoid serializing then parsing IDs.
+ */
+export function getCheckedIdListFromTree(
+  fullTree: MpttTree[],
+  selectType: SelectType,
+  outputMode: CheckedOutputMode = CheckedOutputMode.All,
+  radioIdx: i32 = -1,
+  selectIdx: i32 = -1
+): string[] {
   if (selectType === SelectType.RADIO) {
     if (
       radioIdx >= 0 &&
       radioIdx < fullTree.length &&
       fullTree[radioIdx].checked === CheckType.CHECKED
     ) {
-      return '"' + escapeString(fullTree[radioIdx].id) + '"'
+      return [fullTree[radioIdx].id]
     }
     for (let i = 0; i < fullTree.length; i++) {
       if (fullTree[i].checked === CheckType.CHECKED) {
-        return '"' + escapeString(fullTree[i].id) + '"'
+        return [fullTree[i].id]
       }
     }
   } else if (selectType === SelectType.SELECT) {
@@ -361,11 +388,11 @@ export function getCheckedIdsFromTree(
       selectIdx < fullTree.length &&
       fullTree[selectIdx].selected === CheckType.CHECKED
     ) {
-      return '"' + escapeString(fullTree[selectIdx].id) + '"'
+      return [fullTree[selectIdx].id]
     }
     for (let i = 0; i < fullTree.length; i++) {
       if (fullTree[i].selected === CheckType.CHECKED) {
-        return '"' + escapeString(fullTree[i].id) + '"'
+        return [fullTree[i].id]
       }
     }
   } else {
@@ -384,7 +411,7 @@ export function getCheckedIdsFromTree(
         }
         if (node.checked !== CheckType.CHECKED) continue
         if (coverStack.length > 0) continue
-        ids.push('"' + escapeString(node.id) + '"')
+        ids.push(node.id)
         coverStack.push(node.rightNode)
       }
     } else {
@@ -392,13 +419,12 @@ export function getCheckedIdsFromTree(
         const node = fullTree[i]
         if (node.checked !== CheckType.CHECKED) continue
         if (outputMode === CheckedOutputMode.LeafOnly && !isLeaf(node)) continue
-        ids.push('"' + escapeString(node.id) + '"')
+        ids.push(node.id)
       }
     }
-    if (ids.length === 0) return '[]'
-    return '[' + ids.join(',') + ']'
+    return ids
   }
-  return 'null'
+  return []
 }
 
 /**

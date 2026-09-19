@@ -93,6 +93,8 @@ export class NeighborTree {
   extendData: string = ''
   /** 是否禁用（禁用节点不可选中） / Whether disabled (disabled nodes cannot be checked) / Отключён ли (отключённые узлы не могут быть выбраны) */
   disabled: boolean = false
+  /** Temporary insertion order used by the opt-in chunked input bridge. */
+  inputIndex: i32 = -1
 }
 
 /**
@@ -119,10 +121,6 @@ export class MpttTree extends NeighborTree {
   rightNode: i32 = 0
   /** 节点深度，根节点的直接子节点为 0 / Node depth, direct children of root are 0 / Глубина узла, прямые потомки корня имеют глубину 0 */
   deep: i32 = 0
-  /** 虚拟滚动顶部像素位置（预留字段） / Virtual scroll top pixel position (reserved field) / Позиция верхнего пикселя виртуальной прокрутки (зарезервированное поле) */
-  top: f32 = 0
-  /** 虚拟滚动底部像素位置（预留字段） / Virtual scroll bottom pixel position (reserved field) / Позиция нижнего пикселя виртуальной прокрутки (зарезервированное поле) */
-  bottom: f32 = 0
   /** 复选框选中状态 / Checkbox check state / Состояние выбора чекбокса */
   checked: CheckType = CheckType.UNCHECKED
   /** 点击选中状态（SELECT 模式专用） / Click selection state (for SELECT mode) / Состояние выбора по клику (для режима SELECT) */
