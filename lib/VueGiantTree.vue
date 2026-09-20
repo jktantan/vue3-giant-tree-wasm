@@ -52,6 +52,8 @@ import type {
   TreeFieldKeys,
   FilterFn,
   NodeIconResolver,
+  TreeMutationItem,
+  TreeNodePatch,
 } from './types'
 const props = withDefaults(
   defineProps<{
@@ -94,7 +96,7 @@ const props = withDefaults(
     buildBatchSize: 2_000,
   }
 )
-const emit = defineEmits(['update:modelValue'])
+const emit = defineEmits(['update:modelValue', 'update:tree'])
 /** 组件引用: 滚动容器 DOM / Component ref: scroll container DOM / Ссылка на компонент: DOM контейнера прокрутки */
 const container = ref<HTMLDivElement>()
 /** 可见节点总数，由 WASM 侧 shownCount 驱动 / Total visible node count, driven by WASM shownCount / Общее количество видимых узлов */
@@ -128,6 +130,7 @@ const releaseSettledRenderPlan = () => {
 let allNodesCache: TreeNodeData[] = []
 let isTreeReady = false
 let isBuilding = false
+let activeSearchKeyword = ''
 let buildStartedAt = 0
 type BuildMetrics = {
   inputBridgeMs: number
@@ -704,6 +707,7 @@ const checkClick = (id: string, checkType: CheckType) => {
 
 /** 模糊搜索（无防抖，立即执行）/ Fuzzy search (no debounce, immediate) / Нечёткий поиск (без антидребезга, немедленно) */
 const rawFuzzySearch = (keyword: string) => {
+  activeSearchKeyword = keyword
   fuzzyTree(tree, keyword)
   listHeight.value = getShownHeight(tree)
   // Viewport state is read from CompactNodeStore on every refresh, including
@@ -760,6 +764,116 @@ const refreshCheckedResult = () => {
   emitCheckedResult()
 }
 
+/**
+ * Rebuild the structural MPTT index in-place after the input data changes.
+ * Vue keeps the same component instance, while ID-based interaction state is
+ * restored onto the new index. Structural edits necessarily get new MPTT
+ * boundaries; presentation-only edits still use this path for consistency
+ * with the controlled `tree` prop.
+ */
+const reconcileTreeData = async () => {
+  if (!isTreeReady || isBuilding) return
+
+  const expandedIds = allNodesCache
+    .filter(node => !node.collapsed && node.rightNode - node.leftNode > 1)
+    .map(node => node.id)
+  const checkedIds = (getCheckedIdList(tree) as string[]).slice()
+
+  releaseSettledRenderPlan()
+  clear(tree)
+  isBuilding = true
+  try {
+    if (props.tree.length > 0) await loadTree()
+    await refreshNodesCache()
+
+    for (const id of expandedIds) collapseTree(tree, id, false)
+    if (checkedIds.length > 0) setCheckedNodes(tree, checkedIds)
+    if (activeSearchKeyword) fuzzyTree(tree, activeSearchKeyword)
+  } finally {
+    isBuilding = false
+  }
+
+  await nextTick()
+  scrollTop = container.value?.scrollTop ?? scrollTop
+  startOffset.value = scrollTop - (scrollTop % props.lineHeight)
+  setBoundary(tree, scrollTop, scrollHeight)
+  listHeight.value = getShownHeight(tree)
+  refreshTree()
+  emitCheckedResult()
+}
+
+/** Update raw input data through v-model:tree. Node IDs are immutable. */
+const updateNode = (id: string, patch: TreeNodePatch): boolean => {
+  const idField = props.fieldKeys.idField ?? 'id'
+  const input = props.tree as TreeMutationItem[]
+  if (idField in patch && String(patch[idField]) !== id) return false
+  const index = input.findIndex(item => String(item[idField] ?? '') === id)
+  if (index < 0) return false
+
+  const next = input.slice()
+  next[index] = { ...next[index], ...patch }
+  emit('update:tree', next)
+  return true
+}
+
+/** Insert a node under root or an existing parent through v-model:tree. */
+const addNode = (node: TreeMutationItem): boolean => {
+  const idField = props.fieldKeys.idField ?? 'id'
+  const parentIdField = props.fieldKeys.parentIdField ?? 'parentId'
+  const input = props.tree as TreeMutationItem[]
+  const id = String(node[idField] ?? '')
+  const parentId = String(node[parentIdField] ?? '')
+  if (!id || input.some(item => String(item[idField] ?? '') === id)) {
+    return false
+  }
+  if (
+    parentId !== props.root &&
+    !input.some(item => String(item[idField] ?? '') === parentId)
+  ) {
+    return false
+  }
+
+  emit('update:tree', [...input, { ...node }])
+  return true
+}
+
+/** Remove a node and every descendant through v-model:tree. */
+const removeNode = (id: string): boolean => {
+  const idField = props.fieldKeys.idField ?? 'id'
+  const parentIdField = props.fieldKeys.parentIdField ?? 'parentId'
+  const input = props.tree as TreeMutationItem[]
+  if (!input.some(item => String(item[idField] ?? '') === id)) return false
+
+  const childrenByParent = new Map<string, string[]>()
+  for (const item of input) {
+    const parentId = String(item[parentIdField] ?? '')
+    const children = childrenByParent.get(parentId) ?? []
+    children.push(String(item[idField] ?? ''))
+    childrenByParent.set(parentId, children)
+  }
+  const idsToRemove = new Set<string>()
+  const pendingIds = [id]
+  while (pendingIds.length > 0) {
+    const currentId = pendingIds.pop()!
+    if (idsToRemove.has(currentId)) continue
+    idsToRemove.add(currentId)
+    pendingIds.push(...(childrenByParent.get(currentId) ?? []))
+  }
+
+  emit(
+    'update:tree',
+    input.filter(item => !idsToRemove.has(String(item[idField] ?? '')))
+  )
+  return true
+}
+
+watch(
+  () => props.tree,
+  () => {
+    void reconcileTreeData()
+  }
+)
+
 /** 暴露给父组件的方法 / Methods exposed to parent component / Методы, доступные родительскому компоненту */
 defineExpose({
   fuzzySearch,
@@ -774,6 +888,9 @@ defineExpose({
   collapseAll: () => setAllCollapsed(true),
   switchDisplay,
   refreshCheckedResult,
+  updateNode,
+  addNode,
+  removeNode,
 })
 </script>
 

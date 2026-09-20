@@ -78,6 +78,28 @@ describe('VueGiantTree: 主组件', () => {
     expect(wrapper.findAll('.node-action')).toHaveLength(2)
   })
 
+  it('结构操作通过 update:tree 回写，且不需要重挂载组件', async () => {
+    const wrapper = mount(VueGiantTree, {
+      props: { modelValue: [], tree: makeTreeData(), root: 'root' },
+    })
+    await flushPromises()
+
+    expect((wrapper.vm as any).updateNode('A', { name: 'Renamed A' })).toBe(
+      true
+    )
+    const renamedTree = wrapper.emitted('update:tree')![0][0] as any[]
+    expect(renamedTree.find(node => node.id === 'A')?.name).toBe('Renamed A')
+
+    await wrapper.setProps({ tree: renamedTree })
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+    expect(wrapper.text()).toContain('Renamed A')
+
+    expect((wrapper.vm as any).removeNode('A')).toBe(true)
+    const prunedTree = wrapper.emitted('update:tree')![1][0] as any[]
+    expect(prunedTree.map(node => node.id)).toEqual(['B'])
+  })
+
   it('显式分批构建保留默认输入的可见节点与禁用语义', async () => {
     const wrapper = mount(VueGiantTree, {
       props: {

@@ -188,46 +188,35 @@ const rebuildTree = () => {
   treeKey.value++
 }
 
-const refreshAfterNodeAction = () => {
-  checkedResult.value = []
-  searchKeyword.value = ''
-  setCheckedIdsInput.value = ''
-  currentDisplayType.value = DisplayType.TREE
-  wasmTreeSize.value = 0
-  treeKey.value++
-}
-
 const editNode = (node: TreeNodeData) => {
-  const editedName = node.name.endsWith('（已编辑）')
+  const name = node.name.endsWith('（已编辑）')
     ? node.name
     : `${node.name}（已编辑）`
-  testData.value = testData.value.map(item =>
-    item.id === node.id ? { ...item, name: editedName } : item
-  )
-  lastNodeAction.value = `已编辑节点：${editedName}`
-  refreshAfterNodeAction()
+  const updated = treeRef.value?.updateNode(node.id, { name })
+  lastNodeAction.value = updated
+    ? `已编辑节点：${name}`
+    : `编辑失败：未找到节点 ${node.id}`
+}
+
+const addChildNode = (node: TreeNodeData) => {
+  const id = nanoid()
+  const added = treeRef.value?.addNode({
+    id,
+    parentId: node.id,
+    name: `${node.name} 的新子节点`,
+    category: 'A',
+    nodeType: 'document',
+  })
+  lastNodeAction.value = added
+    ? `已新增子节点：${id.slice(0, 8)}`
+    : `新增失败：未找到父节点 ${node.id}`
 }
 
 const deleteNode = (node: TreeNodeData) => {
-  const childrenByParent = new Map<string, string[]>()
-  for (const item of testData.value) {
-    const children = childrenByParent.get(item.parentId) ?? []
-    children.push(item.id)
-    childrenByParent.set(item.parentId, children)
-  }
-
-  const idsToRemove = new Set<string>()
-  const pendingIds = [node.id]
-  while (pendingIds.length > 0) {
-    const id = pendingIds.pop()!
-    if (idsToRemove.has(id)) continue
-    idsToRemove.add(id)
-    pendingIds.push(...(childrenByParent.get(id) ?? []))
-  }
-
-  testData.value = testData.value.filter(item => !idsToRemove.has(item.id))
-  lastNodeAction.value = `已删除「${node.name}」及 ${idsToRemove.size - 1} 个子节点`
-  refreshAfterNodeAction()
+  const removed = treeRef.value?.removeNode(node.id)
+  lastNodeAction.value = removed
+    ? `已删除节点及其子树：${node.name}`
+    : `删除失败：未找到节点 ${node.id}`
 }
 
 watch(currentSize, rebuildTree)
@@ -709,7 +698,7 @@ const switchDisplay = (type: DisplayType) => {
           <VueGiantTree
             ref="treeRef"
             :key="treeKey"
-            :tree="testData"
+            v-model:tree="testData"
             :root="rootId"
             :select-type="currentSelectType"
             :line-height="lineHeight"
@@ -737,6 +726,13 @@ const switchDisplay = (type: DisplayType) => {
               </button>
               <button
                 type="button"
+                class="node-action"
+                @click="addChildNode(node)"
+              >
+                新增
+              </button>
+              <button
+                type="button"
                 class="node-action node-action--danger"
                 @click="deleteNode(node)"
               >
@@ -745,7 +741,7 @@ const switchDisplay = (type: DisplayType) => {
             </template>
           </VueGiantTree>
           <p v-if="lastNodeAction" class="node-action-feedback">
-            {{ lastNodeAction }}
+            {{ lastNodeAction }}；已保留当前滚动、展开和选中状态。
           </p>
         </div>
       </main>

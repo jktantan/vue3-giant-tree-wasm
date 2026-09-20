@@ -91,6 +91,21 @@ const search = (keyword: string) => treeRef.value?.fuzzySearch(keyword)
 | `clearAllChecked()`                       | 清除所有选中状态                           |
 | `switchDisplay(displayType)`              | 切换 `TREE` 或 `SEARCH` 视图               |
 | `refreshCheckedResult()`                  | 按当前输出配置重新触发 `v-model` 结果      |
+| `updateNode(id, patch)`                   | 更新节点原始字段；节点 ID 不可修改         |
+| `addNode(node)`                           | 在根或已有父节点下新增节点                  |
+| `removeNode(id)`                          | 删除节点及其全部子树                       |
+
+### 节点增删改
+
+通过 `v-model:tree` 接收更新后的输入数组。编辑只更新节点内容；新增和删除会在同一组件实例中重算 MPTT 左右边界，并恢复滚动位置、展开和选中状态，不会通过 `key` 重挂载组件。
+
+```vue
+<VueGiantTree ref="treeRef" v-model:tree="treeData" v-model="selected" />
+
+<!-- treeRef.value?.addNode({ id: crypto.randomUUID(), name: '新节点', parentId }) -->
+<!-- treeRef.value?.updateNode(id, { name: '新名称' }) -->
+<!-- treeRef.value?.removeNode(id)  // 删除全部子孙节点 -->
+```
 
 ### Props
 
@@ -118,6 +133,8 @@ const search = (keyword: string) => treeRef.value?.fuzzySearch(keyword)
 | --- | --- |
 | `#node` | 替换节点名称所在的主体内容区；未传入时默认显示 `node.name`。 |
 | `#actions` | 节点行末的操作区，例如编辑、删除和更多菜单；未传入时不渲染也不占空间。操作区的点击会自动阻止触发行点击/选中。 |
+
+`#actions` 只提供操作入口，不会修改或重建树数据；编辑、删除后的数据同步由业务方自行处理。
 
 ```vue
 <VueGiantTree :tree="treeData" root="root" v-model="selected">
@@ -407,6 +424,13 @@ const collapseAll = () => treeRef.value?.collapseAll()
 | `clearAllChecked()`                       | Clears all checked state                                             |
 | `switchDisplay(displayType)`              | Switches to `TREE` or `SEARCH` view                                  |
 | `refreshCheckedResult()`                  | Re-emits the current v-model result using the active output settings |
+| `updateNode(id, patch)`                   | Updates raw node fields; node IDs are immutable                       |
+| `addNode(node)`                           | Adds a node under root or an existing parent                          |
+| `removeNode(id)`                          | Removes a node and its entire subtree                                 |
+
+### Add, Edit, and Delete Nodes
+
+Use `v-model:tree` to receive the updated input array. Adding or deleting recomputes MPTT boundaries within the existing component instance and restores scroll, expanded, and selected state; it does not remount the component with a `key`.
 
 ### Props
 
@@ -433,6 +457,8 @@ Both slots receive `{ node }`, where `node` is the current `TreeNodeData`.
 | --- | --- |
 | `#node` | Replaces the main node-content area; the default is `node.name`. |
 | `#actions` | An end-of-row area for actions such as edit, delete, or a menu. It is omitted without a slot and its clicks do not select the node. |
+
+`#actions` does not mutate data on its own. The consuming application can use the instance APIs below with `v-model:tree` when an action should change data.
 
 ```vue
 <VueGiantTree :tree="treeData" root="root" v-model="selected">
@@ -677,6 +703,8 @@ const selected = ref([])
 | --- | --- |
 | `#node` | Заменяет основную область содержимого узла; по умолчанию отображается `node.name`. |
 | `#actions` | Область в конце строки для действий (редактирование, удаление, меню). Без слота не рендерится и не занимает место; клики не выбирают узел. |
+
+`#actions` сам по себе не изменяет данные. Для изменения данных приложение может вызывать API экземпляра вместе с `v-model:tree`.
 
 ```vue
 <VueGiantTree :tree="treeData" root="root" v-model="selected">

@@ -9,6 +9,8 @@ export { default as VueGiantTree } from './VueGiantTree.vue'
 export type {
   TreeNodeData,
   TreeInputItem,
+  TreeMutationItem,
+  TreeNodePatch,
   TreeFieldKeys,
   FilterFn,
   NodeIconSpec,

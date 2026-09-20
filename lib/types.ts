@@ -73,3 +73,12 @@ export interface TreeInputItem {
   parentId: string
   disabled?: boolean
 }
+
+/**
+ * 用于 addNode 的原始输入节点。使用 fieldKeys 时，请使用映射后的字段名。
+ * Raw input node accepted by addNode. When fieldKeys is used, provide the mapped field names.
+ */
+export type TreeMutationItem = Record<string, unknown> & Partial<TreeInputItem>
+
+/** 用于 updateNode 的原始字段补丁；节点 ID 不可修改。 */
+export type TreeNodePatch = Record<string, unknown>
