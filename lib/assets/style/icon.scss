@@ -27,15 +27,21 @@
   mask-size: contain;
 }
 
+.giant-tree__icon-arrow-right,
 .giant-tree__icon-arrow-down {
-  /* 类似一个到路径上做一个遮罩， 用法和background属性一样 */
-  mask: url('../image/arrow-down-filling.svg') no-repeat center center;
-  mask-size: contain;
-}
-
-.giant-tree__icon-arrow-right {
   /* 类似一个到路径上做一个遮罩， 用法和background属性一样 */
   mask: url('../image/arrow-right-filling.svg') no-repeat center center;
   mask-size: contain;
+  transition: transform 180ms ease;
 }
 
+.giant-tree__icon-arrow-down {
+  transform: rotate(90deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .giant-tree__icon-arrow-right,
+  .giant-tree__icon-arrow-down {
+    transition: none;
+  }
+}

@@ -61,13 +61,12 @@ const itemClick = () => {
     >
       <div
         :style="{ width: fontSize, height: fontSize }"
-        v-if="item.collapsed"
-        class="giant-tree__mask-button giant-tree__icon-arrow-right"
-      />
-      <div
-        :style="{ width: fontSize, height: fontSize }"
-        v-else
-        class="giant-tree__mask-button giant-tree__icon-arrow-down"
+        class="giant-tree__mask-button"
+        :class="
+          item.collapsed
+            ? 'giant-tree__icon-arrow-right'
+            : 'giant-tree__icon-arrow-down'
+        "
       />
     </div>
     <div v-else class="item-icon" :style="{ width: fontSize }"></div>
