@@ -5,7 +5,7 @@ import { SelectType, DisplayType, CheckedOutputMode } from '../build/release'
 
 import { nanoid } from 'nanoid'
 import { ref, shallowRef, computed, watch } from 'vue'
-import type { TreeNodeData, FilterFn } from '@lib/types'
+import type { TreeNodeData, FilterFn, NodeIconResolver } from '@lib/types'
 
 const TREE_SIZES = {
   small: { l1: 5, l2: 3, l3: 2 },
@@ -39,6 +39,9 @@ const wasmTreeSize = ref(0)
 const treeRef = ref<InstanceType<typeof VueGiantTree>>()
 const useCustomSlot = ref(false)
 const enableDisabled = ref(true)
+type NodeIconMode = 'off' | 'default' | 'business' | 'single' | 'partial'
+const nodeIconMode = ref<NodeIconMode>('off')
+const useDarkNodeIcons = ref(false)
 
 const enableFilterFn = ref(false)
 const filterCategory = ref<'A' | 'B'>('A')
@@ -47,6 +50,34 @@ const filterFn = computed<FilterFn | undefined>(() => {
   if (!enableFilterFn.value) return undefined
   return (extendData: Record<string, unknown>) => {
     return extendData.category === filterCategory.value
+  }
+})
+
+/** Exercises every NodeIconResolver return shape without coupling sample data to icon assets. */
+const nodeIcon = computed<boolean | NodeIconResolver>(() => {
+  switch (nodeIconMode.value) {
+    case 'default':
+      return true
+    case 'single':
+      return () => 'demo-node-icon-document'
+    case 'partial':
+      return node => (node.extendData?.nodeType === 'hidden' ? false : true)
+    case 'business':
+      return node => {
+        switch (node.extendData?.nodeType) {
+          case 'directory':
+            return {
+              collapsed: 'demo-node-icon-directory-closed',
+              expanded: 'demo-node-icon-directory-open',
+            }
+          case 'hidden':
+            return false
+          default:
+            return 'demo-node-icon-document'
+        }
+      }
+    default:
+      return false
   }
 })
 
@@ -74,6 +105,7 @@ const generateTreeData = (size: TreeSize) => {
     status?: string
     owner?: string
     score?: number
+    nodeType?: 'directory' | 'document' | 'hidden'
   }[] = []
 
   // 大数据集使用确定性 ID 和规则化的宽深混合层级，避免百万节点生成随机 ID 的额外开销。
@@ -92,6 +124,8 @@ const generateTreeData = (size: TreeSize) => {
         status: i % 5 === 0 ? 'warning' : 'active',
         owner: `team-${i % 32}`,
         score: (i * 17) % 1000,
+        nodeType:
+          i % 11 === 0 ? 'hidden' : i % config.branching === 0 ? 'directory' : 'document',
       })
     }
     return data
@@ -104,6 +138,7 @@ const generateTreeData = (size: TreeSize) => {
       parentId: rootId,
       name: `L1-${i}: ${id1.slice(0, 6)}`,
       category: i % 2 === 0 ? 'A' : 'B',
+      nodeType: 'directory',
     })
     for (let j = 0; j < config.l2; j++) {
       const id2 = nanoid()
@@ -114,6 +149,7 @@ const generateTreeData = (size: TreeSize) => {
         name: `L2-${i}-${j}: ${id2.slice(0, 6)}`,
         disabled: disableL2,
         category: j % 2 === 0 ? 'A' : 'B',
+        nodeType: 'document',
       })
       for (let z = 0; z < config.l3; z++) {
         const id3 = nanoid()
@@ -124,6 +160,7 @@ const generateTreeData = (size: TreeSize) => {
           name: `L3-${i}-${j}-${z}: ${id3.slice(0, 6)}`,
           disabled: disableL3,
           category: z % 2 === 0 ? 'A' : 'B',
+          nodeType: z === 0 ? 'hidden' : 'document',
         })
       }
     }
@@ -236,7 +273,7 @@ const switchDisplay = (type: DisplayType) => {
 </script>
 
 <template>
-  <div class="dev-container">
+  <div class="dev-container" :class="{ 'dev-container--dark-icons': useDarkNodeIcons }">
     <header class="dev-header">
       <h1>VueGiantTree 开发测试</h1>
       <p class="dev-subtitle">
@@ -381,6 +418,52 @@ const switchDisplay = (type: DisplayType) => {
               仅输出 ID（默认，否则完整 JSON）
             </label>
           </div>
+        </section>
+
+        <section class="ctrl-section">
+          <h3>节点图标</h3>
+          <p class="control-hint">
+            演示 `false`、`true`、单个 class 与收起/展开 class 对四种返回值。
+          </p>
+          <div class="btn-group node-icon-mode-group">
+            <button
+              :class="{ active: nodeIconMode === 'off' }"
+              @click="nodeIconMode = 'off'"
+            >
+              关闭
+            </button>
+            <button
+              :class="{ active: nodeIconMode === 'default' }"
+              @click="nodeIconMode = 'default'"
+            >
+              默认图标
+            </button>
+            <button
+              :class="{ active: nodeIconMode === 'business' }"
+              @click="nodeIconMode = 'business'"
+            >
+              类型映射
+            </button>
+            <button
+              :class="{ active: nodeIconMode === 'single' }"
+              @click="nodeIconMode = 'single'"
+            >
+              单一图标
+            </button>
+            <button
+              :class="{ active: nodeIconMode === 'partial' }"
+              @click="nodeIconMode = 'partial'"
+            >
+              局部隐藏
+            </button>
+          </div>
+          <label class="toggle-label node-icon-theme-toggle">
+            <input type="checkbox" v-model="useDarkNodeIcons" />
+            深色图标色（覆盖 CSS 变量）
+          </label>
+          <p class="control-hint">
+            类型映射：directory 使用收起/展开图标，document 使用单一图标，hidden 不显示。
+          </p>
         </section>
 
         <section
@@ -585,6 +668,7 @@ const switchDisplay = (type: DisplayType) => {
             :output-id-only="outputIdOnly"
             :checked-output-mode="checkedOutputMode"
             :filter-fn="filterFn"
+            :node-icon="nodeIcon"
             v-model="checkedResult"
           >
             <template v-if="useCustomSlot" #node="{ node }">
@@ -614,9 +698,14 @@ body {
 }
 
 .dev-container {
+  --giant-tree-node-icon-color: #637083;
   max-width: 1200px;
   margin: 0 auto;
   padding: 24px;
+}
+
+.dev-container--dark-icons {
+  --giant-tree-node-icon-color: #b9c6d8;
 }
 
 .dev-header {
@@ -646,6 +735,8 @@ body {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  height: 720px;
+  overflow-y: auto;
 }
 
 .ctrl-section {
@@ -662,6 +753,13 @@ body {
   margin-bottom: 10px;
   text-transform: uppercase;
   letter-spacing: 0.3px;
+}
+
+.control-hint {
+  margin-top: 10px;
+  color: #788596;
+  font-size: 11px;
+  line-height: 1.5;
 }
 
 .btn-group {
@@ -847,6 +945,11 @@ input[type='range'] {
   .dev-layout {
     grid-template-columns: 1fr;
   }
+
+  .dev-sidebar {
+    height: auto;
+    overflow: visible;
+  }
 }
 
 .toggle-group {
@@ -866,6 +969,45 @@ input[type='range'] {
 
 .toggle-label input[type='checkbox'] {
   accent-color: #4096ff;
+}
+
+.node-icon-mode-group button {
+  min-width: 76px;
+}
+
+.node-icon-theme-toggle {
+  margin-top: 10px;
+}
+
+.demo-node-icon-directory-closed {
+  mask-image: url('../lib/assets/image/node-folder-closed.svg');
+}
+
+.demo-node-icon-directory-open {
+  mask-image: url('../lib/assets/image/node-folder-open.svg');
+}
+
+.demo-node-icon-document {
+  mask-image: url('../lib/assets/image/node-leaf.svg');
+}
+
+.dev-container--dark-icons .tree-wrapper {
+  background: #1e2936;
+  border-color: #35465d;
+}
+
+.dev-container--dark-icons .giant-tree,
+.dev-container--dark-icons .giant-tree .tree-item {
+  color: #e7edf5;
+}
+
+.dev-container--dark-icons .giant-tree .tree-item:hover,
+.dev-container--dark-icons .giant-tree .tree-item.selected {
+  background: #2a4058;
+}
+
+.dev-container--dark-icons .giant-tree__mask-button {
+  background-color: #b9c6d8;
 }
 
 .custom-badge {

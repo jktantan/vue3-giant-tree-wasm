@@ -39,6 +39,18 @@
   transform: rotate(90deg);
 }
 
+.giant-tree__icon-node-collapsed {
+  mask-image: url('../image/node-folder-closed.svg');
+}
+
+.giant-tree__icon-node-expanded {
+  mask-image: url('../image/node-folder-open.svg');
+}
+
+.giant-tree__icon-node-leaf {
+  mask-image: url('../image/node-leaf.svg');
+}
+
 @media (prefers-reduced-motion: reduce) {
   .giant-tree__icon-arrow-right,
   .giant-tree__icon-arrow-down {

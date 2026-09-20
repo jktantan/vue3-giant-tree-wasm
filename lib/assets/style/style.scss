@@ -55,6 +55,13 @@
     //  background-color: $giant-tree__color-primary;
     //}
   }
+  &__node-icon {
+    flex: 0 0 auto;
+    background-color: var(--giant-tree-node-icon-color, #{$giant-tree__text-color});
+    mask-repeat: no-repeat;
+    mask-position: center;
+    mask-size: contain;
+  }
 
   .tree-item {
     display: flex;
@@ -81,6 +88,11 @@
     }
     .item-control {
       align-self: stretch;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .item-node-icon {
       display: flex;
       align-items: center;
       justify-content: center;

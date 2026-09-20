@@ -8,6 +8,21 @@ import type { CheckType } from '../build/release'
 export type FilterFn = (extendData: Record<string, unknown>) => boolean
 
 /**
+ * 节点图标配置：true 使用内置图标；false 隐藏图标；字符串为两种状态共用的 CSS 类；
+ * 对象可分别指定收起和展开状态的 CSS 类。
+ */
+export type NodeIconSpec =
+  | boolean
+  | string
+  | {
+      collapsed: string
+      expanded?: string
+    }
+
+/** 根据节点数据返回节点图标配置。 */
+export type NodeIconResolver = (node: TreeNodeData) => NodeIconSpec
+
+/**
  * JSON 字段键名配置
  * JSON field key configuration
  * Конфигурация имён полей JSON

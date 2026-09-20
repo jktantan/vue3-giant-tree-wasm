@@ -108,6 +108,39 @@ const search = (keyword: string) => treeRef.value?.fuzzySearch(keyword)
 | `outputIdOnly`      | `boolean`                        | `true`     | `true` 时 v-model 只传选中节点的 ID（默认）；`false` 时传完整 JSON                      |
 | `checkedOutputMode` | `CheckedOutputMode`              | `All`      | CHECKBOX 输出 ID 过滤模式：`All` / `RootOnly` / `LeafOnly` / `Custom`                   |
 | `filterFn`          | `FilterFn`                       | —          | 自定义过滤回调。CHECKBOX + Custom 模式下过滤输出；RADIO 模式下判断节点是否显示 Radio 框 |
+| `nodeIcon`          | `boolean \| NodeIconResolver`   | `false`    | 节点图标：`true` 使用内置图标；回调可按节点指定或隐藏 CSS 图标类                        |
+
+### 节点图标 (nodeIcon)
+
+`nodeIcon` 默认关闭，因此不会改变现有行布局。设为 `true` 后，父节点收起时显示关闭文件夹、展开时显示打开文件夹，叶子节点显示文件图标。
+
+若图标取决于业务类型，使用回调在前端将后端返回的业务字段映射为 CSS 图标类；后端无需、也不应知道具体的前端图标资源。
+
+```typescript
+import type { NodeIconResolver } from 'vue3-giant-tree-wasm'
+
+const nodeIcon: NodeIconResolver = node => {
+  switch (node.extendData?.nodeType) {
+    case 'directory':
+      return {
+        collapsed: 'app-icon-folder',
+        expanded: 'app-icon-folder-open',
+      }
+    case 'document':
+      return 'app-icon-document' // 两种状态共用
+    case 'hidden':
+      return false // 此节点不显示图标
+    default:
+      return true // 回退到组件的默认图标
+  }
+}
+```
+
+```vue
+<VueGiantTree :tree="treeData" :node-icon="nodeIcon" />
+```
+
+回调返回值为 `true | false | string | { collapsed: string; expanded?: string }`。对象缺少 `expanded` 时自动复用 `collapsed`；叶子节点也使用 `collapsed`。自定义类负责提供图标形状（例如 `mask-image`），颜色建议使用 `currentColor` 或 CSS 变量。内置图标使用 `--giant-tree-node-icon-color`，可在暗色主题中覆盖该变量。
 
 ### CheckedOutputMode
 

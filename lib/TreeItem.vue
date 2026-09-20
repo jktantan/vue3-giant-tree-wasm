@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { SelectType, CheckType } from '../build/release'
-import type { FilterFn, TreeNodeData } from './types'
+import type { FilterFn, NodeIconResolver, TreeNodeData } from './types'
 import { computed } from 'vue'
 
 const props = defineProps<{
@@ -8,6 +8,7 @@ const props = defineProps<{
   fontSize: string
   selectType: SelectType
   filterFn?: FilterFn
+  nodeIcon?: boolean | NodeIconResolver
 }>()
 
 const emit = defineEmits(['collapse-click', 'check-click', 'item-click'])
@@ -16,6 +17,27 @@ const emit = defineEmits(['collapse-click', 'check-click', 'item-click'])
 const showRadio = computed(() => {
   if (!props.filterFn) return true
   return props.filterFn(props.item.extendData || {})
+})
+const isBranch = computed(() => props.item.rightNode - props.item.leftNode > 1)
+
+/** Resolve the optional presentation icon locally so virtual rows stay light. */
+const nodeIconClass = computed<string | undefined>(() => {
+  const setting = props.nodeIcon
+  if (setting === false || setting === undefined) return undefined
+
+  const icon = typeof setting === 'function' ? setting(props.item) : setting
+  if (icon === false) return undefined
+  if (icon === true) {
+    if (!isBranch.value) return 'giant-tree__icon-node-leaf'
+    return props.item.collapsed
+      ? 'giant-tree__icon-node-collapsed'
+      : 'giant-tree__icon-node-expanded'
+  }
+  if (typeof icon === 'string') return icon
+
+  return !isBranch.value || props.item.collapsed
+    ? icon.collapsed
+    : (icon.expanded ?? icon.collapsed)
 })
 const collapsedClick = () => {
   emit('collapse-click', props.item.id, !props.item.collapsed)
@@ -49,7 +71,7 @@ const itemClick = () => {
   >
     <div v-for="i in item.deep" :style="{ width: fontSize }" :key="i"></div>
     <div
-      v-if="item.rightNode - item.leftNode > 1"
+      v-if="isBranch"
       class="item-icon item-control"
       :style="{ width: fontSize }"
       role="button"
@@ -125,6 +147,13 @@ const itemClick = () => {
         class="giant-tree__mask-button giant-tree__icon-radio-unchecked"
       ></div>
     </div>
+    <div
+      v-if="nodeIconClass"
+      class="item-node-icon giant-tree__node-icon"
+      :class="nodeIconClass"
+      :style="{ width: fontSize, height: fontSize }"
+      aria-hidden="true"
+    ></div>
     <div class="item-text">
       <slot name="node" :node="item">
         <span>{{ item.name }}</span>

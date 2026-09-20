@@ -51,6 +51,7 @@ import type {
   TreeInputItem,
   TreeFieldKeys,
   FilterFn,
+  NodeIconResolver,
 } from './types'
 const props = withDefaults(
   defineProps<{
@@ -70,6 +71,8 @@ const props = withDefaults(
     checkedOutputMode?: CheckedOutputMode
     /** 自定义过滤回调：CHECKBOX 模式 + checkedOutputMode=Custom 时用于过滤输出；RADIO 模式用于判断节点是否可选 */
     filterFn?: FilterFn
+    /** 节点图标：true 使用内置图标；回调可按节点决定显示的 CSS 图标类 */
+    nodeIcon?: boolean | NodeIconResolver
     /** 显式启用分批 WASM 输入；只适用于不需要完整原始行输出的场景 */
     chunkedBuild?: boolean
     /** 每批写入 WASM 的节点数 */
@@ -86,6 +89,7 @@ const props = withDefaults(
     fieldKeys: () => ({}),
     outputIdOnly: true,
     checkedOutputMode: CheckedOutputMode.All,
+    nodeIcon: false,
     chunkedBuild: false,
     buildBatchSize: 2_000,
   }
@@ -800,6 +804,7 @@ defineExpose({
           @collapse-click="collapseClick"
           :select-type="selectType"
           :filter-fn="filterFn"
+          :node-icon="nodeIcon"
           @check-click="checkClick"
           @item-click="itemClick"
         >
@@ -825,6 +830,7 @@ defineExpose({
             @collapse-click="collapseClick"
             :select-type="selectType"
             :filter-fn="filterFn"
+            :node-icon="nodeIcon"
             @check-click="checkClick"
             @item-click="itemClick"
           >
@@ -847,6 +853,7 @@ defineExpose({
             @collapse-click="collapseClick"
             :select-type="selectType"
             :filter-fn="filterFn"
+            :node-icon="nodeIcon"
             @check-click="checkClick"
             @item-click="itemClick"
           >
@@ -864,6 +871,7 @@ defineExpose({
           @collapse-click="collapseClick"
           :select-type="selectType"
           :filter-fn="filterFn"
+          :node-icon="nodeIcon"
           @check-click="checkClick"
           @item-click="itemClick"
         >
@@ -881,6 +889,7 @@ defineExpose({
           @collapse-click="collapseClick"
           :select-type="selectType"
           :filter-fn="filterFn"
+          :node-icon="nodeIcon"
           @check-click="checkClick"
           @item-click="itemClick"
         >

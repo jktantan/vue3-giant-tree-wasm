@@ -64,6 +64,66 @@ describe('TreeItem: 节点组件', () => {
     expect(wrapper.find('.giant-tree__icon-arrow-down').exists()).toBe(true)
   })
 
+  it('默认不显示节点图标', () => {
+    const wrapper = mount(TreeItem, {
+      props: {
+        item: makeItem({ leftNode: 0, rightNode: 5 }),
+        fontSize: '14px',
+        selectType: SelectType.CHECKBOX,
+      },
+    })
+    expect(wrapper.find('.giant-tree__node-icon').exists()).toBe(false)
+  })
+
+  it('启用默认节点图标时按收起状态切换文件夹图标', async () => {
+    const wrapper = mount(TreeItem, {
+      props: {
+        item: makeItem({ leftNode: 0, rightNode: 5, collapsed: true }),
+        fontSize: '14px',
+        selectType: SelectType.CHECKBOX,
+        nodeIcon: true,
+      },
+    })
+    expect(wrapper.find('.giant-tree__icon-node-collapsed').exists()).toBe(true)
+
+    await wrapper.setProps({
+      item: makeItem({ leftNode: 0, rightNode: 5, collapsed: false }),
+    })
+    expect(wrapper.find('.giant-tree__icon-node-expanded').exists()).toBe(true)
+  })
+
+  it('节点图标回调支持隐藏、共用和状态图标', () => {
+    const resolver = (node: ReturnType<typeof makeItem>) => {
+      if (node.id === 'hidden') return false
+      if (node.id === 'file') return 'app-icon-file'
+      return { collapsed: 'app-icon-folder', expanded: 'app-icon-folder-open' }
+    }
+    const baseProps = {
+      fontSize: '14px',
+      selectType: SelectType.CHECKBOX,
+      nodeIcon: resolver,
+    }
+
+    expect(
+      mount(TreeItem, {
+        props: { ...baseProps, item: makeItem({ id: 'hidden' }) },
+      }).find('.giant-tree__node-icon').exists()
+    ).toBe(false)
+    expect(
+      mount(TreeItem, {
+        props: { ...baseProps, item: makeItem({ id: 'file' }) },
+      }).find('.app-icon-file').exists()
+    ).toBe(true)
+    expect(
+      mount(TreeItem, {
+        props: {
+          ...baseProps,
+          item: makeItem({ leftNode: 0, rightNode: 5, collapsed: false }),
+        },
+      }).find('.app-icon-folder-open').exists()
+    ).toBe(true)
+  })
+
   it('点击箭头触发 collapse-click 事件', async () => {
     const wrapper = mount(TreeItem, {
       props: {

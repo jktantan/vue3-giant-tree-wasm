@@ -11,4 +11,6 @@ export type {
   TreeInputItem,
   TreeFieldKeys,
   FilterFn,
+  NodeIconSpec,
+  NodeIconResolver,
 } from './types'
