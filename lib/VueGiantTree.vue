@@ -79,6 +79,8 @@ const props = withDefaults(
     chunkedBuild?: boolean
     /** 每批写入 WASM 的节点数 */
     buildBatchSize?: number
+    /** 将树算法放入 Web Worker；适合大树或频繁结构变更 */
+    workerMode?: boolean
   }>(),
   {
     width: '100%',
@@ -94,6 +96,7 @@ const props = withDefaults(
     nodeIcon: false,
     chunkedBuild: false,
     buildBatchSize: 2_000,
+    workerMode: false,
   }
 )
 const emit = defineEmits(['update:modelValue', 'update:tree'])
@@ -123,6 +126,9 @@ const animationDuration = 220
 let animationTimer: ReturnType<typeof setTimeout> | undefined
 let frozenScrollTop = 0
 let pendingResizeHeight: number | undefined
+let pendingWorkerCollapse:
+  | { revision: number; id: string; collapsed: boolean; before: TreeNodeData[] }
+  | undefined
 const isTreeAnimating = () => treeAnimation.value?.phase === 'running'
 const releaseSettledRenderPlan = () => {
   if (treeAnimation.value?.phase === 'settled') treeAnimation.value = undefined
@@ -131,6 +137,36 @@ let allNodesCache: TreeNodeData[] = []
 let isTreeReady = false
 let isBuilding = false
 let activeSearchKeyword = ''
+let worker: Worker | undefined
+let workerRevision = 0
+let workerCheckedIds: string[] = []
+let workerTreeSize = 0
+type WorkerMetrics = {
+  enabled: boolean
+  pendingCommands: number
+  commandsSent: number
+  snapshotsReceived: number
+  lastRoundTripMs: number
+  lastWorkerResponseMs: number
+  lastWorkerSerializeMs: number
+  structuralBatches: number
+  structuralOperations: number
+  lastBatchSize: number
+  visibleRows: number
+}
+let workerMetrics: WorkerMetrics = {
+  enabled: false, pendingCommands: 0, commandsSent: 0, snapshotsReceived: 0,
+  lastRoundTripMs: 0, lastWorkerResponseMs: 0, lastWorkerSerializeMs: 0,
+  structuralBatches: 0, structuralOperations: 0, lastBatchSize: 0, visibleRows: 0,
+}
+const workerCommandStartedAt = new Map<number, number>()
+// Worker replies can arrive before Vue has propagated the preceding v-model
+// echo back through props. Keep the acknowledged controlled value locally so
+// rapid replies compose instead of overwriting one another.
+let workerInput: TreeMutationItem[] = props.tree as TreeMutationItem[]
+let awaitingWorkerTreeEchoes = 0
+let skipNextPresentationOnlyReconcile = false
+const isUsingWorker = () => worker !== undefined
 let buildStartedAt = 0
 type BuildMetrics = {
   inputBridgeMs: number
@@ -198,6 +234,11 @@ const ro = new ResizeObserver((entries: ResizeObserverEntry[]) => {
     resizeRefreshTimer = undefined
     if (isTreeAnimating()) {
       pendingResizeHeight = height
+      return
+    }
+    if (isUsingWorker()) {
+      scrollHeight = height
+      postWorker('boundary', { scrollTop, scrollHeight })
       return
     }
     setBoundary(tree, scrollTop, scrollHeight)
@@ -432,6 +473,10 @@ const handleScroll = (event: Event) => {
   }
   scrollTop = target.scrollTop
   startOffset.value = scrollTop - (scrollTop % props.lineHeight)
+  if (isUsingWorker()) {
+    postWorker('boundary', { scrollTop, scrollHeight })
+    return
+  }
   setBoundary(tree, scrollTop, scrollHeight)
   refreshTree()
 }
@@ -441,7 +486,9 @@ const handleScroll = (event: Event) => {
  */
 /** 按防抖输出选中结果 / Emit checked result with debounce / Выдать результат выбора с антидребезгом */
 const emitCheckedResult = () => {
-  const ids = getCheckedIdList(tree) as string[]
+  const ids = isUsingWorker()
+    ? workerCheckedIds
+    : (getCheckedIdList(tree) as string[])
   const records = ids
     .map(id => inputNodeById.get(id))
     .filter((item): item is Record<string, unknown> => item !== undefined)
@@ -463,7 +510,9 @@ const emitCheckedResult = () => {
       props.outputIdOnly && props.selectType === SelectType.CHECKBOX
         ? ids
         : props.outputIdOnly
-          ? JSON.parse(getCheckedIds(tree))
+          ? isUsingWorker()
+            ? (ids[0] ?? '')
+            : JSON.parse(getCheckedIds(tree))
           : records
     emit('update:modelValue', result)
   }
@@ -514,9 +563,19 @@ const finishTreeAnimation = () => {
   treeAnimation.value = { ...animation, phase: 'settled' }
   animationOpen.value = false
 
-  if (pendingResizeHeight !== undefined) {
-    scrollHeight = pendingResizeHeight
+  const resizeHeight = pendingResizeHeight
+  if (resizeHeight !== undefined) {
+    scrollHeight = resizeHeight
     pendingResizeHeight = undefined
+  }
+  if (isUsingWorker()) {
+    // The worker has already supplied the final viewport rows. Returning to
+    // normal rendering must not consult the dormant main-thread WASM tree.
+    // Keep the settled render plan, just like main-thread mode: replacing it
+    // immediately remounts all surrounding virtual rows and causes a flash.
+    if (resizeHeight !== undefined)
+      postWorker('boundary', { scrollTop, scrollHeight })
+    return
   }
   setBoundary(tree, scrollTop, scrollHeight)
   listHeight.value = getShownHeight(tree)
@@ -609,6 +668,180 @@ for (const item of props.tree as Array<
   inputNodeById.set(String(item[inputIdField] ?? ''), item)
 }
 
+const refreshInputNodeById = (items: TreeMutationItem[]) => {
+  const idField = props.fieldKeys.idField ?? 'id'
+  inputNodeById.clear()
+  for (const item of items) inputNodeById.set(String(item[idField] ?? ''), item)
+}
+
+// Vue props may be reactive proxies, which the structured-clone algorithm used
+// by Worker.postMessage rejects. Tree input is JSON-shaped by contract.
+const cloneForWorker = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T
+
+const postWorker = (type: string, payload: Record<string, unknown> = {}) => {
+  if (!worker) return undefined
+  try {
+    const revision = ++workerRevision
+    workerCommandStartedAt.set(revision, now())
+    workerMetrics.commandsSent++
+    workerMetrics.pendingCommands = workerCommandStartedAt.size
+    worker.postMessage(
+      cloneForWorker({ type, revision, ...payload })
+    )
+    return revision
+  } catch {
+    worker.terminate()
+    worker = undefined
+    workerCommandStartedAt.clear()
+    workerMetrics.pendingCommands = 0
+    workerMetrics.enabled = false
+    void initializeMainTree()
+    return undefined
+  }
+}
+
+const applyWorkerMutation = (mutation: any) => {
+  if (!mutation) return
+  const idField = props.fieldKeys.idField ?? 'id'
+  let next = workerInput
+  const mutations = mutation.type === 'batch' ? mutation.mutations ?? [] : [mutation]
+  let changed = false
+  for (const item of mutations) {
+    if (item.type === 'update') {
+      next = next.map(node =>
+        String(node[idField] ?? '') === item.id ? { ...node, ...item.patch } : node
+      )
+      changed = true
+    } else if (item.type === 'add') {
+      next = [...next, item.node]
+      changed = true
+    } else if (item.type === 'remove') {
+      const removed = new Set<string>(item.ids)
+      next = next.filter(node => !removed.has(String(node[idField] ?? '')))
+      changed = true
+    }
+  }
+  if (!changed) return
+  workerInput = next
+  awaitingWorkerTreeEchoes++
+  refreshInputNodeById(next)
+  emit('update:tree', next)
+}
+
+const startWorker = () => {
+  if (!props.workerMode || typeof Worker === 'undefined') return false
+  worker = new Worker(new URL('./tree.worker.ts', import.meta.url), {
+    type: 'module',
+  })
+  workerMetrics.enabled = true
+  worker.onmessage = event => {
+    const snapshot = event.data as {
+      type: string
+      revision: number
+      size: number
+      listHeight: number
+      rows: TreeNodeData[]
+      checkedIds: string[]
+      mutation?: unknown
+      metrics?: {
+        structuralBatches: number
+        structuralOperations: number
+        lastBatchSize: number
+        lastResponseMs: number
+        lastSerializeMs: number
+      }
+    }
+    if (snapshot.type === 'boot' || snapshot.type === 'ready') return
+    if (snapshot.type === 'fatal') {
+      console.error('VueGiantTree worker failed', (snapshot as any).error)
+      worker?.terminate()
+      worker = undefined
+      workerMetrics.enabled = false
+      void initializeMainTree()
+      return
+    }
+    if (snapshot.type !== 'snapshot') return
+    const commandStartedAt = workerCommandStartedAt.get(snapshot.revision)
+    if (commandStartedAt !== undefined)
+      workerMetrics.lastRoundTripMs = now() - commandStartedAt
+    for (const revision of workerCommandStartedAt.keys()) {
+      if (revision <= snapshot.revision) workerCommandStartedAt.delete(revision)
+    }
+    workerMetrics.pendingCommands = workerCommandStartedAt.size
+    workerMetrics.snapshotsReceived++
+    workerMetrics.visibleRows = snapshot.rows.length
+    if (snapshot.metrics) {
+      workerMetrics.lastWorkerResponseMs = snapshot.metrics.lastResponseMs
+      workerMetrics.lastWorkerSerializeMs = snapshot.metrics.lastSerializeMs
+      workerMetrics.structuralBatches = snapshot.metrics.structuralBatches
+      workerMetrics.structuralOperations = snapshot.metrics.structuralOperations
+      workerMetrics.lastBatchSize = snapshot.metrics.lastBatchSize
+    }
+    if (snapshot.revision < workerRevision) return
+    workerCheckedIds = snapshot.checkedIds
+    workerTreeSize = snapshot.size
+    isTreeReady = true
+    listHeight.value = snapshot.listHeight
+    currentTreeList.value = snapshot.rows.map(row => ({
+      ...row,
+      extendData: inputNodeById.get(row.id),
+    }))
+    if (
+      pendingWorkerCollapse &&
+      snapshot.revision >= pendingWorkerCollapse.revision
+    ) {
+      const pending = pendingWorkerCollapse
+      pendingWorkerCollapse = undefined
+      const parent = pending.before.find(item => item.id === pending.id)
+      if (parent) {
+        void startTreeAnimation(
+          pending.collapsed ? 'collapse' : 'expand',
+          parent,
+          pending.before,
+          currentTreeList.value.slice()
+        )
+      }
+    }
+    applyWorkerMutation(snapshot.mutation)
+    emitCheckedResult()
+  }
+  worker.onerror = event => {
+    console.error('VueGiantTree worker failed', event.message)
+    worker?.terminate()
+    worker = undefined
+    workerMetrics.enabled = false
+    void initializeMainTree()
+  }
+  postWorker('init', {
+    config: {
+      root: props.root,
+      lineHeight: props.lineHeight,
+      selectType: props.selectType,
+      checkedOutputMode: props.checkedOutputMode,
+      fieldKeys: props.fieldKeys,
+    },
+    tree: props.tree,
+    scrollTop,
+    scrollHeight,
+  })
+  return true
+}
+
+const initializeMainTree = async () => {
+  clear(tree)
+  isBuilding = true
+  resetBuildMetrics()
+  buildStartedAt = now()
+  if (props.tree.length > 0) await loadTree()
+  isBuilding = false
+  await refreshNodesCache()
+  buildMetrics.totalMs = now() - buildStartedAt
+  isTreeReady = true
+  setBoundary(tree, scrollTop, scrollHeight)
+  listHeight.value = getShownHeight(tree)
+  refreshTree()
+}
+
 setCheckedOutputMode(tree, props.checkedOutputMode)
 
 // 输出格式变化（ID ↔ JSON）→ 用新格式重发选中结果
@@ -625,6 +858,10 @@ watch(
 watch(
   () => props.checkedOutputMode,
   newMode => {
+    if (isUsingWorker()) {
+      postWorker('set-output', { mode: newMode })
+      return
+    }
     setCheckedOutputMode(tree, newMode)
     emitCheckedResult()
   }
@@ -633,23 +870,12 @@ watch(
 /** 挂载时初始化: 观察容器大小、加载树数据、立即渲染首屏 / On mount: observe container, load tree data, render initial viewport immediately / При монтировании: наблюдать за контейнером, загрузить данные дерева, сразу отрендерить начальный viewport */
 onMounted(async () => {
   ro.observe(container.value!)
-  clear(tree)
-  isBuilding = true
-  resetBuildMetrics()
-  buildStartedAt = now()
-  if (props.tree.length > 0) {
-    await loadTree()
-  }
-  isBuilding = false
-  await refreshNodesCache()
-  buildMetrics.totalMs = now() - buildStartedAt
-  isTreeReady = true
-  // 立即刷新视图（不依赖 ResizeObserver）/ Refresh view immediately (not dependent on ResizeObserver) / Немедленное обновление вида (не зависит от ResizeObserver)
-  setBoundary(tree, scrollTop, scrollHeight)
-  listHeight.value = getShownHeight(tree)
-  refreshTree()
+  if (startWorker()) return
+  await initializeMainTree()
 })
 onUnmounted(() => {
+  worker?.terminate()
+  worker = undefined
   ro.disconnect()
   if (resizeRefreshTimer !== undefined) {
     clearTimeout(resizeRefreshTimer)
@@ -664,6 +890,10 @@ onUnmounted(() => {
 /** 行点击（SELECT 模式选中节点） / Row click (selects node in SELECT mode) / Клик по строке (выбирает узел в режиме SELECT) */
 const itemClick = (id: string) => {
   if (props.selectType === SelectType.SELECT) {
+    if (isUsingWorker()) {
+      postWorker('check', { id, checked: CheckType.CHECKED })
+      return
+    }
     checkNode(tree, id, CheckType.CHECKED)
     emitCheckedResult()
     refreshTree()
@@ -672,12 +902,29 @@ const itemClick = (id: string) => {
 }
 /** 展开/折叠节点 / Expand/collapse node / Развернуть/свернуть узел */
 const setAllCollapsed = (collapsed: boolean) => {
+  if (isUsingWorker()) {
+    postWorker('collapse-all', { collapsed })
+    return
+  }
   collapseAll(tree, collapsed)
   listHeight.value = getShownHeight(tree)
   refreshTree()
 }
 
 const collapseClick = (id: string, isCollapse: boolean) => {
+  if (isUsingWorker()) {
+    if (isTreeAnimating() || pendingWorkerCollapse) return
+    const revision = postWorker('collapse', { id, collapsed: isCollapse })
+    if (revision !== undefined) {
+      pendingWorkerCollapse = {
+        revision,
+        id,
+        collapsed: isCollapse,
+        before: currentTreeList.value.slice(),
+      }
+    }
+    return
+  }
   if (isTreeAnimating()) return
   releaseSettledRenderPlan()
   const beforeChange = currentTreeList.value.slice()
@@ -699,6 +946,10 @@ const collapseClick = (id: string, isCollapse: boolean) => {
 }
 /** 复选框/单选框点击 / Checkbox/radio click / Клик по чекбоксу/радио */
 const checkClick = (id: string, checkType: CheckType) => {
+  if (isUsingWorker()) {
+    postWorker('check', { id, checked: checkType })
+    return
+  }
   checkNode(tree, id, checkType)
   emitCheckedResult()
   refreshTree()
@@ -708,6 +959,10 @@ const checkClick = (id: string, checkType: CheckType) => {
 /** 模糊搜索（无防抖，立即执行）/ Fuzzy search (no debounce, immediate) / Нечёткий поиск (без антидребезга, немедленно) */
 const rawFuzzySearch = (keyword: string) => {
   activeSearchKeyword = keyword
+  if (isUsingWorker()) {
+    postWorker('search', { keyword })
+    return
+  }
   fuzzyTree(tree, keyword)
   listHeight.value = getShownHeight(tree)
   // Viewport state is read from CompactNodeStore on every refresh, including
@@ -720,14 +975,23 @@ const fuzzySearch = debounce(300, rawFuzzySearch)
 
 /** 获取树节点总数 / Get total tree node count / Получить общее количество узлов дерева */
 const getTreeSize = (): number => {
-  return getSize(tree)
+  return isUsingWorker() ? workerTreeSize : getSize(tree)
 }
 
 const getBuildReady = (): boolean => isTreeReady
 const getBuildMetrics = (): BuildMetrics => ({ ...buildMetrics })
+/** Worker queue, transfer and serialization timings for diagnostics. */
+const getWorkerMetrics = (): WorkerMetrics => ({
+  ...workerMetrics,
+  pendingCommands: workerCommandStartedAt.size,
+})
 
 /** 单选设置选中节点 / Set checked node (single-select) / Установить выбранный узел (одиночный выбор) */
 const setChecked = (id: string) => {
+  if (isUsingWorker()) {
+    postWorker('set-check', { id })
+    return
+  }
   setCheckedNode(tree, id)
   emitCheckedResult()
   listHeight.value = getShownHeight(tree)
@@ -737,6 +1001,10 @@ const setChecked = (id: string) => {
 
 /** 批量设置选中节点 / Batch set checked nodes / Пакетная установка выбранных узлов */
 const setCheckedByIds = (ids: string[]) => {
+  if (isUsingWorker()) {
+    postWorker('set-checks', { ids })
+    return
+  }
   setCheckedNodes(tree, ids)
   emitCheckedResult()
   listHeight.value = getShownHeight(tree)
@@ -746,6 +1014,10 @@ const setCheckedByIds = (ids: string[]) => {
 
 /** 清除所有选中状态 / Clear all check states / Очистить все состояния выбора */
 const clearAllChecked = () => {
+  if (isUsingWorker()) {
+    postWorker('clear-check')
+    return
+  }
   clearCheckedNodes(tree)
   emitCheckedResult()
   refreshTree()
@@ -754,6 +1026,15 @@ const clearAllChecked = () => {
 
 /** 切换显示模式（完整树↔搜索树） / Switch display mode (full tree ↔ search tree) / Переключение режима отображения (полное дерево ↔ дерево поиска) */
 const switchDisplay = (displayType: DisplayType) => {
+  if (isUsingWorker()) {
+    // Search commands already select the worker's search view. Clearing search
+    // returns to TREE; explicit view switching is otherwise a no-op here.
+    if (displayType === DisplayType.TREE && activeSearchKeyword) {
+      activeSearchKeyword = ''
+      postWorker('search', { keyword: '' })
+    }
+    return
+  }
   switchDisplayTree(tree, displayType)
   listHeight.value = getShownHeight(tree)
   refreshTree()
@@ -809,9 +1090,37 @@ const updateNode = (id: string, patch: TreeNodePatch): boolean => {
   if (idField in patch && String(patch[idField]) !== id) return false
   const index = input.findIndex(item => String(item[idField] ?? '') === id)
   if (index < 0) return false
+  if (isUsingWorker()) {
+    postWorker('update', { id, patch })
+    return true
+  }
 
   const next = input.slice()
   next[index] = { ...next[index], ...patch }
+  const nameField = props.fieldKeys.nameField ?? 'name'
+  const updatePresentation = (node: TreeNodeData) =>
+    node.id === id
+      ? {
+          ...node,
+          name:
+            nameField in patch ? String(patch[nameField] ?? node.name) : node.name,
+          extendData: next[index],
+        }
+      : node
+  allNodesCache = allNodesCache.map(updatePresentation)
+  currentTreeList.value = currentTreeList.value.map(updatePresentation)
+  if (treeAnimation.value) {
+    treeAnimation.value = {
+      ...treeAnimation.value,
+      before: treeAnimation.value.before.map(updatePresentation),
+      rows: treeAnimation.value.rows.map(updatePresentation),
+      after: treeAnimation.value.after.map(updatePresentation),
+    }
+  }
+  refreshInputNodeById(next)
+  // Content-only patches do not change parentage, order, or MPTT boundaries.
+  // The v-model echo is intentionally ignored by the structural reconciler.
+  skipNextPresentationOnlyReconcile = true
   emit('update:tree', next)
   return true
 }
@@ -832,6 +1141,10 @@ const addNode = (node: TreeMutationItem): boolean => {
   ) {
     return false
   }
+  if (isUsingWorker()) {
+    postWorker('add', { node })
+    return true
+  }
 
   emit('update:tree', [...input, { ...node }])
   return true
@@ -843,6 +1156,10 @@ const removeNode = (id: string): boolean => {
   const parentIdField = props.fieldKeys.parentIdField ?? 'parentId'
   const input = props.tree as TreeMutationItem[]
   if (!input.some(item => String(item[idField] ?? '') === id)) return false
+  if (isUsingWorker()) {
+    postWorker('remove', { id })
+    return true
+  }
 
   const childrenByParent = new Map<string, string[]>()
   for (const item of input) {
@@ -869,7 +1186,33 @@ const removeNode = (id: string): boolean => {
 
 watch(
   () => props.tree,
-  () => {
+  tree => {
+    if (isUsingWorker()) {
+      if (awaitingWorkerTreeEchoes > 0) {
+        awaitingWorkerTreeEchoes--
+        workerInput = tree as TreeMutationItem[]
+        return
+      }
+      workerInput = tree as TreeMutationItem[]
+      refreshInputNodeById(tree as TreeMutationItem[])
+      postWorker('replace', {
+        config: {
+          root: props.root,
+          lineHeight: props.lineHeight,
+          selectType: props.selectType,
+          checkedOutputMode: props.checkedOutputMode,
+          fieldKeys: props.fieldKeys,
+        },
+        tree,
+        scrollTop,
+        scrollHeight,
+      })
+      return
+    }
+    if (skipNextPresentationOnlyReconcile) {
+      skipNextPresentationOnlyReconcile = false
+      return
+    }
     void reconcileTreeData()
   }
 )
@@ -881,6 +1224,7 @@ defineExpose({
   getTreeSize,
   getBuildReady,
   getBuildMetrics,
+  getWorkerMetrics,
   setChecked,
   setCheckedByIds,
   clearAllChecked,

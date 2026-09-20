@@ -87,6 +87,7 @@ const search = (keyword: string) => treeRef.value?.fuzzySearch(keyword)
 | `fuzzySearch(keyword)`                    | 300ms 防抖的模糊搜索；传入空字符串清除搜索 |
 | `fuzzySearchRaw(keyword)`                 | 立即执行模糊搜索；传入空字符串清除搜索     |
 | `getTreeSize()`                           | 返回树节点总数                             |
+| `getWorkerMetrics()`                      | 返回 Worker 队列、往返、序列化与结构批次指标 |
 | `setChecked(id)` / `setCheckedByIds(ids)` | 以编程方式设置选中节点                     |
 | `clearAllChecked()`                       | 清除所有选中状态                           |
 | `switchDisplay(displayType)`              | 切换 `TREE` 或 `SEARCH` 视图               |
@@ -94,6 +95,8 @@ const search = (keyword: string) => treeRef.value?.fuzzySearch(keyword)
 | `updateNode(id, patch)`                   | 更新节点原始字段；节点 ID 不可修改         |
 | `addNode(node)`                           | 在根或已有父节点下新增节点                  |
 | `removeNode(id)`                          | 删除节点及其全部子树                       |
+
+`getWorkerMetrics()` 仅在启用 `workerMode` 时有实际数据。可用它区分主线程感知的往返时间（`lastRoundTripMs`）、Worker 处理等待/计算时间（`lastWorkerResponseMs`）、可视行序列化时间（`lastWorkerSerializeMs`），以及连续结构操作的合并效果（`structuralBatches`、`structuralOperations`、`lastBatchSize`）。
 
 ### 节点增删改
 

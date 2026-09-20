@@ -31,6 +31,11 @@ import {
   clearCheckedNodes,
   collapseTree,
   fuzzyTree,
+  updateNodeName,
+  appendChild,
+  removeSubtree,
+  beginStructureBatch,
+  endStructureBatch,
   SelectType,
   CheckType,
   DisplayType,
@@ -38,6 +43,41 @@ import {
 } from '../wasm-bridge'
 
 describe('giant-tree: 集成测试', () => {
+  it('结构编辑批次支持新增节点作为后续新增的父节点', () => {
+    const tree = newTree('root', 26, SelectType.CHECKBOX)
+    pushNeighborNode(tree, 'A', 'A', 'root')
+    popNeighbor(tree)
+
+    beginStructureBatch(tree)
+    expect(appendChild(tree, 'B', 'B', 'A')).toBe(true)
+    expect(appendChild(tree, 'C', 'C', 'B')).toBe(true)
+    expect(removeSubtree(tree, 'B')).toBe(true)
+    endStructureBatch(tree)
+
+    expect(JSON.parse(getAllNodes(tree)).map((node: { id: string }) => node.id)).toEqual(['A'])
+  })
+
+  it('增量新增、编辑和删除维护 MPTT 子树范围', () => {
+    const tree = newTree('root', 26, SelectType.CHECKBOX)
+    pushNeighborNode(tree, 'A', 'A', 'root')
+    pushNeighborNode(tree, 'A1', 'A1', 'A')
+    pushNeighborNode(tree, 'B', 'B', 'root')
+    popNeighbor(tree)
+
+    expect(appendChild(tree, 'A2', 'A2', 'A')).toBe(true)
+    expect(updateNodeName(tree, 'A2', 'Renamed A2')).toBe(true)
+    const afterAdd = JSON.parse(getAllNodes(tree))
+    const a = afterAdd.find((node: { id: string }) => node.id === 'A')
+    const a2 = afterAdd.find((node: { id: string }) => node.id === 'A2')
+    expect(a2.name).toBe('Renamed A2')
+    expect(a2.leftNode).toBeGreaterThan(a.leftNode)
+    expect(a2.rightNode).toBeLessThan(a.rightNode)
+
+    expect(removeSubtree(tree, 'A')).toBe(true)
+    expect(getSize(tree)).toBe(1)
+    expect(JSON.parse(getAllNodes(tree)).map((node: { id: string }) => node.id)).toEqual(['B'])
+  })
+
   it('批量邻接表输入与逐条输入保持树、禁用和搜索语义一致', () => {
     const batched = newTree('root', 26, SelectType.CHECKBOX)
     const single = newTree('root', 26, SelectType.CHECKBOX)

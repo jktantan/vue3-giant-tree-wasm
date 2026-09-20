@@ -23,6 +23,9 @@ export default defineConfig(() => ({
       ),
     },
   },
+  worker: {
+    format: 'es',
+  },
   oxc: {
     transform: {
       target: 'es2022',

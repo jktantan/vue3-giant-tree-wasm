@@ -106,6 +106,9 @@ export class GiantTree {
   useCompactSelection: bool = true
   useLazyCheckboxRanges: bool = false
   private _hasLazyCheckboxRanges: bool = false
+  /** Structural edits may be grouped so compact indexes rebuild only once. */
+  private _structureBatchDepth: i32 = 0
+  private _structureDirty: bool = false
 
   setUseCompactSelection(value: bool): void {
     this.useCompactSelection = value
@@ -197,6 +200,120 @@ export class GiantTree {
    */
   _invalidateCache(): void {
     this._cacheValid = false
+  }
+
+  /** Update display text without changing topology or MPTT boundaries. */
+  updateNodeName(id: string, name: string): bool {
+    if (!this.idToIndex.has(id)) return false
+    const index = this.idToIndex.get(id)
+    this.fullTree[index].name = name
+    this._invalidateSearchCandidates()
+    this._invalidateCache()
+    return true
+  }
+
+  /** Begins a structural-edit transaction. Calls may be nested. */
+  beginStructureBatch(): void {
+    this._structureBatchDepth++
+  }
+
+  /** Completes a structural-edit transaction and synchronizes derived state once. */
+  endStructureBatch(): void {
+    if (this._structureBatchDepth <= 0) return
+    this._structureBatchDepth--
+    if (this._structureBatchDepth === 0 && this._structureDirty) {
+      this._structureDirty = false
+      this._syncAfterStructureMutation()
+    }
+  }
+
+  private _finishStructureMutation(): void {
+    if (this._structureBatchDepth > 0) {
+      this._structureDirty = true
+      return
+    }
+    this._syncAfterStructureMutation()
+  }
+
+  private _syncAfterStructureMutation(): void {
+    const searchKeyword = this.tree === this.searchTree ? this._lastSearchKeyword : ''
+    this.idToIndex = buildIdIndex(this.fullTree)
+    this.tree = this.fullTree
+    this.searchTree.splice(0)
+    this._clearLazyCheckboxRanges()
+    this._invalidateSearchCandidates()
+    resetShownFlags(this.fullTree)
+    this.compactStore.load(this.fullTree)
+    this._hasSearchCache = false
+    if (searchKeyword.length > 0) this.fuzzySearch(searchKeyword)
+    else this._rebuildShownNodes()
+  }
+
+  appendChild(id: string, name: string, parentId: string, disabled: bool = false): bool {
+    if (!id.length || this.idToIndex.has(id)) return false
+    let insertIndex = this.fullTree.length
+    let left = this.fullTree.length > 0 ? this.fullTree[this.fullTree.length - 1].rightNode : 1
+    let depth: i32 = 0
+    if (parentId !== this.root) {
+      if (!this.idToIndex.has(parentId)) return false
+      const parentIndex = this.idToIndex.get(parentId)
+      const parent = this.fullTree[parentIndex]
+      // compactStore is intentionally stale inside a structure batch. Find the
+      // preorder end from MPTT boundaries so a child added earlier in this
+      // transaction can itself receive children.
+      insertIndex = parentIndex + 1
+      while (
+        insertIndex < this.fullTree.length &&
+        this.fullTree[insertIndex].leftNode < parent.rightNode
+      ) insertIndex++
+      left = parent.rightNode - 1
+      depth = parent.deep + 1
+    }
+    for (let i: i32 = 0; i < this.fullTree.length; i++) {
+      const node = this.fullTree[i]
+      if (node.leftNode >= left) node.leftNode += 2
+      if (node.rightNode >= left) node.rightNode += 2
+    }
+    const node = new MpttTree()
+    node.id = id
+    node.name = name
+    node.parentId = parentId
+    node.disabled = disabled
+    node.leftNode = left
+    node.rightNode = left + 1
+    node.deep = depth
+    node.collapsed = true
+    this.fullTree.push(node)
+    for (let i: i32 = this.fullTree.length - 1; i > insertIndex; i--)
+      this.fullTree[i] = this.fullTree[i - 1]
+    this.fullTree[insertIndex] = node
+    // Keep O(1) lookup valid for the rest of this batch; the compact arrays
+    // and visible list are deferred until endStructureBatch().
+    for (let i = insertIndex; i < this.fullTree.length; i++)
+      this.idToIndex.set(this.fullTree[i].id, i)
+    this._finishStructureMutation()
+    return true
+  }
+
+  removeSubtree(id: string): bool {
+    if (!this.idToIndex.has(id)) return false
+    const index = this.idToIndex.get(id)
+    const target = this.fullTree[index]
+    const right = target.rightNode
+    const width = target.rightNode - target.leftNode
+    let end = index
+    while (end < this.fullTree.length && this.fullTree[end].leftNode < right) end++
+    for (let i = index; i < end; i++) this.idToIndex.delete(this.fullTree[i].id)
+    this.fullTree.splice(index, end - index)
+    for (let i: i32 = 0; i < this.fullTree.length; i++) {
+      const node = this.fullTree[i]
+      if (node.leftNode >= right) node.leftNode -= width
+      if (node.rightNode > right) node.rightNode -= width
+    }
+    for (let i = index; i < this.fullTree.length; i++)
+      this.idToIndex.set(this.fullTree[i].id, i)
+    this._finishStructureMutation()
+    return true
   }
 
   // ─── 树构建 / Tree Building / Построение дерева ───

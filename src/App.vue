@@ -36,6 +36,7 @@ const searchKeyword = ref('')
 const setCheckedIdsInput = ref('')
 const currentDisplayType = ref<DisplayType>(DisplayType.TREE)
 const wasmTreeSize = ref(0)
+const workerMetrics = ref<Record<string, number | boolean>>({})
 const treeRef = ref<InstanceType<typeof VueGiantTree>>()
 const useNodeSlot = ref(false)
 const useActionsSlot = ref(false)
@@ -262,6 +263,10 @@ const clearSearch = () => {
 
 const queryTreeSize = () => {
   wasmTreeSize.value = treeRef.value?.getTreeSize() ?? 0
+}
+
+const queryWorkerMetrics = () => {
+  workerMetrics.value = treeRef.value?.getWorkerMetrics?.() ?? {}
 }
 
 const expandAll = () => {
@@ -609,9 +614,21 @@ const switchDisplay = (type: DisplayType) => {
             <button class="action-btn" @click="queryTreeSize">
               查询 WASM 树节点数
             </button>
+            <button class="action-btn" @click="queryWorkerMetrics">
+              查询 Worker 指标
+            </button>
           </div>
           <div v-if="wasmTreeSize > 0" class="info-badge">
             WASM 树节点数: <strong>{{ wasmTreeSize }}</strong>
+          </div>
+          <div v-if="Object.keys(workerMetrics).length" class="info-badge">
+            Worker：排队 {{ workerMetrics.pendingCommands }} · 往返
+            {{ Number(workerMetrics.lastRoundTripMs ?? 0).toFixed(1) }}ms · Worker 响应
+            {{ Number(workerMetrics.lastWorkerResponseMs ?? 0).toFixed(1) }}ms · 序列化
+            {{ Number(workerMetrics.lastWorkerSerializeMs ?? 0).toFixed(1) }}ms<br />
+            结构批次 {{ workerMetrics.structuralBatches }} / 操作
+            {{ workerMetrics.structuralOperations }}（最近合并 {{ workerMetrics.lastBatchSize }}）·
+            当前可视行 {{ workerMetrics.visibleRows }}
           </div>
         </section>
 
@@ -709,6 +726,7 @@ const switchDisplay = (type: DisplayType) => {
             :checked-output-mode="checkedOutputMode"
             :filter-fn="filterFn"
             :node-icon="nodeIcon"
+            :worker-mode="true"
             v-model="checkedResult"
           >
             <template v-if="useNodeSlot" #node="{ node }">

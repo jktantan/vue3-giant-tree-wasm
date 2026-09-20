@@ -205,6 +205,26 @@ export function setCheckedOutputMode(
   target.setCheckedOutputMode(mode)
 }
 
+export function updateNodeName(target: GiantTree, id: string, name: string): bool {
+  return target.updateNodeName(id, name)
+}
+
+export function appendChild(target: GiantTree, id: string, name: string, parentId: string, disabled: bool = false): bool {
+  return target.appendChild(id, name, parentId, disabled)
+}
+
+export function removeSubtree(target: GiantTree, id: string): bool {
+  return target.removeSubtree(id)
+}
+
+export function beginStructureBatch(target: GiantTree): void {
+  target.beginStructureBatch()
+}
+
+export function endStructureBatch(target: GiantTree): void {
+  target.endStructureBatch()
+}
+
 export function switchDisplayTree(
   target: GiantTree,
   displayType: DisplayType

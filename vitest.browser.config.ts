@@ -31,6 +31,9 @@ export default defineConfig({
       ),
     },
   },
+  worker: {
+    format: 'es',
+  },
   test: {
     include: ['tests/browser/**/*.browser.test.ts'],
     browser: {

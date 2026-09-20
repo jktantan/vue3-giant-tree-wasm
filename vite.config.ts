@@ -25,5 +25,8 @@ export default defineConfig(({ command }) => {
           : {}),
       },
     },
+    worker: {
+      format: 'es',
+    },
   }
 })
