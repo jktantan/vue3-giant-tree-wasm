@@ -44,7 +44,7 @@ import {
 } from '../build/release'
 
 import { debounce } from 'throttle-debounce'
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import TreeItem from '@lib/TreeItem.vue'
 import type {
   TreeNodeData,
@@ -97,6 +97,30 @@ const container = ref<HTMLDivElement>()
 const listHeight = ref<number>(0)
 /** 当前树列表（可视区域内节点） / Current tree list (nodes within viewport) / Текущий список дерева (узлы в области просмотра) */
 const currentTreeList = ref<TreeNodeData[]>([])
+/**
+ * A short-lived render plan used only while a branch opens or closes.  Keeping
+ * this separate from the regular virtual list means that we never materialize
+ * an entire subtree: `rows` contains only entries already in this viewport.
+ */
+type TreeAnimation = {
+  direction: 'expand' | 'collapse'
+  /** settled keeps stable sibling DOM in place after the transition. */
+  phase: 'running' | 'settled'
+  before: TreeNodeData[]
+  rows: TreeNodeData[]
+  after: TreeNodeData[]
+  height: number
+}
+const treeAnimation = ref<TreeAnimation>()
+const animationOpen = ref(false)
+const animationDuration = 220
+let animationTimer: ReturnType<typeof setTimeout> | undefined
+let frozenScrollTop = 0
+let pendingResizeHeight: number | undefined
+const isTreeAnimating = () => treeAnimation.value?.phase === 'running'
+const releaseSettledRenderPlan = () => {
+  if (treeAnimation.value?.phase === 'settled') treeAnimation.value = undefined
+}
 let allNodesCache: TreeNodeData[] = []
 let isTreeReady = false
 let isBuilding = false
@@ -153,11 +177,22 @@ const startOffset = ref<number>(0)
 /** ResizeObserver: 监听容器高度变化，同步 WASM 边界 + 刷新视图 / ResizeObserver: watches container height changes, syncs WASM boundary + refreshes view / ResizeObserver: отслеживает изменение высоты контейнера, синхронизирует границы WASM + обновляет вид */
 const ro = new ResizeObserver((entries: ResizeObserverEntry[]) => {
   const { blockSize: height } = entries[0].contentBoxSize[0]
+  if (isTreeAnimating()) {
+    // The animation owns layout until its final frame. Applying a new boundary
+    // here would replace its temporary rows midway through the transition.
+    pendingResizeHeight = height
+    return
+  }
+  releaseSettledRenderPlan()
   scrollHeight = height
   if (resizeRefreshTimer !== undefined) return
   // Keep DOM updates out of the observer callback to avoid Chromium resize loops.
   resizeRefreshTimer = setTimeout(() => {
     resizeRefreshTimer = undefined
+    if (isTreeAnimating()) {
+      pendingResizeHeight = height
+      return
+    }
     setBoundary(tree, scrollTop, scrollHeight)
     listHeight.value = getShownHeight(tree)
     refreshTree()
@@ -384,6 +419,10 @@ const refreshNodesCache = async () => {
 let scrollRafId = 0
 const handleScroll = (event: Event) => {
   const target = event.target as HTMLElement
+  if (isTreeAnimating()) {
+    if (target.scrollTop !== frozenScrollTop) target.scrollTop = frozenScrollTop
+    return
+  }
   scrollTop = target.scrollTop
   startOffset.value = scrollTop - (scrollTop % props.lineHeight)
   setBoundary(tree, scrollTop, scrollHeight)
@@ -425,6 +464,12 @@ const emitCheckedResult = () => {
 
 /** rAF 包裹的滚动处理：跟随浏览器渲染帧，减少无效回调 */
 const scrollEvent = (event: Event) => {
+  if (isTreeAnimating()) {
+    const target = event.target as HTMLElement
+    if (target.scrollTop !== frozenScrollTop) target.scrollTop = frozenScrollTop
+    return
+  }
+  releaseSettledRenderPlan()
   if (scrollRafId) return
   scrollRafId = requestAnimationFrame(() => {
     scrollRafId = 0
@@ -435,6 +480,97 @@ const scrollEvent = (event: Event) => {
 const transformOffset = computed(
   () => `translate3d(0,${startOffset.value}px,0)`
 )
+
+/** Prevent native scrolling only for the brief period where virtual geometry is
+ * represented by the transition layer. */
+const preventScrollWhileAnimating = (event: Event) => {
+  if (isTreeAnimating()) event.preventDefault()
+}
+
+const rowsInside = (items: TreeNodeData[], parent: TreeNodeData) =>
+  items.filter(
+    item =>
+      item.leftNode > parent.leftNode && item.leftNode < parent.rightNode
+  )
+
+const finishTreeAnimation = () => {
+  const animation = treeAnimation.value
+  if (!animation || animation.phase !== 'running') return
+  if (animationTimer !== undefined) {
+    clearTimeout(animationTimer)
+    animationTimer = undefined
+  }
+  // Do not switch back to the normal v-for here: that would remount every
+  // stable row around the branch and produces a visible flash. For collapse,
+  // the transition div simply disappears. For expansion, only its own rows
+  // are promoted to ordinary rows; before/after rows retain their DOM.
+  treeAnimation.value = { ...animation, phase: 'settled' }
+  animationOpen.value = false
+
+  if (pendingResizeHeight !== undefined) {
+    scrollHeight = pendingResizeHeight
+    pendingResizeHeight = undefined
+  }
+  setBoundary(tree, scrollTop, scrollHeight)
+  listHeight.value = getShownHeight(tree)
+  refreshTree()
+}
+
+/** Selection can still be changed during an animation. Rebind the temporary
+ * rows to the refreshed cache so their controls do not show stale state. */
+const syncAnimationRows = () => {
+  const animation = treeAnimation.value
+  if (!animation) return
+  const latestById = new Map(allNodesCache.map(item => [item.id, item]))
+  const sync = (rows: TreeNodeData[]) =>
+    rows.map(item => latestById.get(item.id) ?? item)
+  treeAnimation.value = {
+    ...animation,
+    before: sync(animation.before),
+    rows: sync(animation.rows),
+    after: sync(animation.after),
+  }
+}
+
+const startTreeAnimation = async (
+  direction: TreeAnimation['direction'],
+  parent: TreeNodeData,
+  beforeChange: TreeNodeData[],
+  afterChange: TreeNodeData[]
+) => {
+  const parentIndex = afterChange.findIndex(item => item.id === parent.id)
+  if (parentIndex < 0) return
+
+  const rows =
+    direction === 'expand'
+      ? rowsInside(afterChange, parent)
+      : rowsInside(beforeChange, parent)
+  if (rows.length === 0) return
+
+  const after =
+    direction === 'expand'
+      ? afterChange.slice(parentIndex + rows.length + 1)
+      : afterChange.slice(parentIndex + 1)
+  treeAnimation.value = {
+    direction,
+    phase: 'running',
+    before: afterChange.slice(0, parentIndex + 1),
+    rows,
+    after,
+    height: rows.length * props.lineHeight,
+  }
+  frozenScrollTop = scrollTop
+  // Collapse begins open and closes; expansion follows the inverse sequence.
+  animationOpen.value = direction === 'collapse'
+  await nextTick()
+  requestAnimationFrame(() => {
+    if (!isTreeAnimating()) return
+    animationOpen.value = direction === 'expand'
+  })
+  // transitionend is not guaranteed (e.g. a tab is backgrounded), so the
+  // timeout always returns the component to normal virtual rendering.
+  animationTimer = setTimeout(finishTreeAnimation, animationDuration + 80)
+}
 
 const fk = props.fieldKeys
 const hasCustomKeys =
@@ -516,6 +652,7 @@ onUnmounted(() => {
     cancelAnimationFrame(scrollRafId)
     scrollRafId = 0
   }
+  if (animationTimer !== undefined) clearTimeout(animationTimer)
 })
 /** 行点击（SELECT 模式选中节点） / Row click (selects node in SELECT mode) / Клик по строке (выбирает узел в режиме SELECT) */
 const itemClick = (id: string) => {
@@ -523,6 +660,7 @@ const itemClick = (id: string) => {
     checkNode(tree, id, CheckType.CHECKED)
     emitCheckedResult()
     refreshTree()
+    syncAnimationRows()
   }
 }
 /** 展开/折叠节点 / Expand/collapse node / Развернуть/свернуть узел */
@@ -533,17 +671,30 @@ const setAllCollapsed = (collapsed: boolean) => {
 }
 
 const collapseClick = (id: string, isCollapse: boolean) => {
+  if (isTreeAnimating()) return
+  releaseSettledRenderPlan()
+  const beforeChange = currentTreeList.value.slice()
+  const parent = beforeChange.find(item => item.id === id)
   collapseTree(tree, id, isCollapse)
   listHeight.value = getShownHeight(tree)
   const node = allNodesCache.find(item => item.id === id)
   if (node) node.collapsed = isCollapse
   refreshTree()
+  if (parent) {
+    void startTreeAnimation(
+      isCollapse ? 'collapse' : 'expand',
+      parent,
+      beforeChange,
+      currentTreeList.value.slice()
+    )
+  }
 }
 /** 复选框/单选框点击 / Checkbox/radio click / Клик по чекбоксу/радио */
 const checkClick = (id: string, checkType: CheckType) => {
   checkNode(tree, id, checkType)
   emitCheckedResult()
   refreshTree()
+  syncAnimationRows()
 }
 
 /** 模糊搜索（无防抖，立即执行）/ Fuzzy search (no debounce, immediate) / Нечёткий поиск (без антидребезга, немедленно) */
@@ -572,6 +723,7 @@ const setChecked = (id: string) => {
   emitCheckedResult()
   listHeight.value = getShownHeight(tree)
   refreshTree()
+  syncAnimationRows()
 }
 
 /** 批量设置选中节点 / Batch set checked nodes / Пакетная установка выбранных узлов */
@@ -580,6 +732,7 @@ const setCheckedByIds = (ids: string[]) => {
   emitCheckedResult()
   listHeight.value = getShownHeight(tree)
   refreshTree()
+  syncAnimationRows()
 }
 
 /** 清除所有选中状态 / Clear all check states / Очистить все состояния выбора */
@@ -587,6 +740,7 @@ const clearAllChecked = () => {
   clearCheckedNodes(tree)
   emitCheckedResult()
   refreshTree()
+  syncAnimationRows()
 }
 
 /** 切换显示模式（完整树↔搜索树） / Switch display mode (full tree ↔ search tree) / Переключение режима отображения (полное дерево ↔ дерево поиска) */
@@ -623,16 +777,104 @@ defineExpose({
   <div
     ref="container"
     class="giant-tree tree-container"
+    :class="{ 'tree-container--animating': isTreeAnimating() }"
     :style="{ width: width, height: height }"
+    tabindex="0"
     @scroll="scrollEvent"
+    @wheel="preventScrollWhileAnimating"
+    @touchmove="preventScrollWhileAnimating"
+    @keydown="preventScrollWhileAnimating"
   >
     <div
       class="infinite-list-phantom"
       :style="{ height: listHeight + 'px' }"
     ></div>
     <div class="infinite-list" :style="{ transform: transformOffset }">
+      <template v-if="treeAnimation">
+        <tree-item
+          v-for="item in treeAnimation.before"
+          :key="item.id"
+          :style="{ height: lineHeight + 'px' }"
+          :item="item"
+          :fontSize="fontSize"
+          @collapse-click="collapseClick"
+          :select-type="selectType"
+          :filter-fn="filterFn"
+          @check-click="checkClick"
+          @item-click="itemClick"
+        >
+          <template v-if="$slots.node" #node="slotProps">
+            <slot name="node" v-bind="slotProps" />
+          </template>
+        </tree-item>
+        <div
+          v-if="treeAnimation.phase === 'running'"
+          class="giant-tree__branch-transition"
+          :class="`giant-tree__branch-transition--${treeAnimation.direction}`"
+          :style="{
+            height: (animationOpen ? treeAnimation.height : 0) + 'px',
+          }"
+          @transitionend.self="finishTreeAnimation"
+        >
+          <tree-item
+            v-for="item in treeAnimation.rows"
+            :key="item.id"
+            :style="{ height: lineHeight + 'px' }"
+            :item="item"
+            :fontSize="fontSize"
+            @collapse-click="collapseClick"
+            :select-type="selectType"
+            :filter-fn="filterFn"
+            @check-click="checkClick"
+            @item-click="itemClick"
+          >
+            <template v-if="$slots.node" #node="slotProps">
+              <slot name="node" v-bind="slotProps" />
+            </template>
+          </tree-item>
+        </div>
+        <!-- On expansion, replace only the completed wrapper with its normal
+             rows. A completed collapse intentionally renders nothing here. -->
+        <template
+          v-else-if="treeAnimation.direction === 'expand'"
+          v-for="item in treeAnimation.rows"
+          :key="item.id"
+        >
+          <tree-item
+            :style="{ height: lineHeight + 'px' }"
+            :item="item"
+            :fontSize="fontSize"
+            @collapse-click="collapseClick"
+            :select-type="selectType"
+            :filter-fn="filterFn"
+            @check-click="checkClick"
+            @item-click="itemClick"
+          >
+            <template v-if="$slots.node" #node="slotProps">
+              <slot name="node" v-bind="slotProps" />
+            </template>
+          </tree-item>
+        </template>
+        <tree-item
+          v-for="item in treeAnimation.after"
+          :key="item.id"
+          :style="{ height: lineHeight + 'px' }"
+          :item="item"
+          :fontSize="fontSize"
+          @collapse-click="collapseClick"
+          :select-type="selectType"
+          :filter-fn="filterFn"
+          @check-click="checkClick"
+          @item-click="itemClick"
+        >
+          <template v-if="$slots.node" #node="slotProps">
+            <slot name="node" v-bind="slotProps" />
+          </template>
+        </tree-item>
+      </template>
       <template v-for="item in currentTreeList" :key="item.id">
         <tree-item
+          v-if="!treeAnimation"
           :style="{ height: lineHeight + 'px' }"
           :item="item"
           :fontSize="fontSize"

@@ -19,6 +19,24 @@
       white-space: nowrap;
       width: 100%;
     }
+
+    &.tree-container--animating {
+      // The virtual offset is frozen while this layer owns the branch gap.
+      // `overflow: auto` is retained so the scrollbar does not jump in/out.
+      overscroll-behavior: contain;
+    }
+
+    .giant-tree__branch-transition {
+      display: grid;
+      overflow: hidden;
+      min-width: 0;
+      transition: height 220ms cubic-bezier(0.22, 0.72, 0.2, 1);
+      will-change: height;
+
+      @media (prefers-reduced-motion: reduce) {
+        transition-duration: 1ms;
+      }
+    }
   }
   &__mask-button {
     height: 100%;

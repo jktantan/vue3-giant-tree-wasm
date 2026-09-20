@@ -28,6 +28,11 @@ function makeTreeData() {
   ]
 }
 
+const waitForBranchAnimation = async (wrapper: ReturnType<typeof mount>) => {
+  await new Promise(resolve => setTimeout(resolve, 320))
+  await wrapper.vm.$nextTick()
+}
+
 describe('VueGiantTree: 主组件', () => {
   it('空数据挂载不崩溃', async () => {
     const wrapper = mount(VueGiantTree, {
@@ -207,6 +212,9 @@ describe('VueGiantTree: 主组件', () => {
     await parent?.find('.giant-tree__icon-arrow-down').trigger('click')
     await wrapper.vm.$nextTick()
 
+    expect(wrapper.find('.giant-tree__branch-transition').exists()).toBe(true)
+    await waitForBranchAnimation(wrapper)
+
     expect(wrapper.text()).toContain('Parent')
     expect(wrapper.text()).toContain('Other match')
     expect(wrapper.text()).not.toContain('First match')
@@ -232,6 +240,7 @@ describe('VueGiantTree: 主组件', () => {
     await wrapper.vm.$nextTick()
     await wrapper.find('.giant-tree__icon-arrow-right').trigger('click')
     await wrapper.vm.$nextTick()
+    await waitForBranchAnimation(wrapper)
 
     const child = wrapper
       .findAll('.tree-item')
@@ -240,6 +249,7 @@ describe('VueGiantTree: 主组件', () => {
 
     await child?.find('.giant-tree__icon-arrow-right').trigger('click')
     await wrapper.vm.$nextTick()
+    await waitForBranchAnimation(wrapper)
     const grandchild = wrapper
       .findAll('.tree-item')
       .find(item => item.text().includes('Hidden grandchild'))
@@ -266,6 +276,7 @@ describe('VueGiantTree: 主组件', () => {
     await wrapper.vm.$nextTick()
     await wrapper.find('.giant-tree__icon-arrow-right').trigger('click')
     await wrapper.vm.$nextTick()
+    await waitForBranchAnimation(wrapper)
 
     const child = wrapper
       .findAll('.tree-item')
