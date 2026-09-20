@@ -300,7 +300,8 @@ describe('VueGiantTree: 主组件', () => {
     const leaf = wrapper
       .findAll('.tree-item')
       .find(item => item.text().includes('Leaf'))
-    await leaf?.find('.item-text').trigger('click')
+    // Selection is bound to the full virtual row, not just its text line.
+    await leaf?.trigger('click')
     await wrapper.vm.$nextTick()
 
     expect(leaf?.classes()).toContain('selected')

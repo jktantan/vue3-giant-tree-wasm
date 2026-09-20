@@ -45,34 +45,35 @@ const itemClick = () => {
     class="tree-item"
     :style="{ fontSize: fontSize }"
     :class="{ selected: item.selected, disabled: item.disabled }"
+    @click="itemClick"
   >
     <div v-for="i in item.deep" :style="{ width: fontSize }" :key="i"></div>
-    <div class="item-icon" :style="{ width: fontSize }">
+    <div
+      v-if="item.rightNode - item.leftNode > 1"
+      class="item-icon item-control"
+      :style="{ width: fontSize }"
+      role="button"
+      tabindex="0"
+      :aria-label="`${item.collapsed ? '展开' : '折叠'} ${item.name}`"
+      @click.stop="collapsedClick"
+      @keydown.enter.prevent="collapsedClick"
+      @keydown.space.prevent="collapsedClick"
+    >
       <div
         :style="{ width: fontSize, height: fontSize }"
-        v-if="item.rightNode - item.leftNode > 1 && item.collapsed"
+        v-if="item.collapsed"
         class="giant-tree__mask-button giant-tree__icon-arrow-right"
-        role="button"
-        tabindex="0"
-        :aria-label="`展开 ${item.name}`"
-        @click="collapsedClick"
-        @keydown.enter.prevent="collapsedClick"
-        @keydown.space.prevent="collapsedClick"
       />
       <div
         :style="{ width: fontSize, height: fontSize }"
-        v-else-if="item.rightNode - item.leftNode > 1 && !item.collapsed"
+        v-else
         class="giant-tree__mask-button giant-tree__icon-arrow-down"
-        role="button"
-        tabindex="0"
-        :aria-label="`折叠 ${item.name}`"
-        @click="collapsedClick"
-        @keydown.enter.prevent="collapsedClick"
-        @keydown.space.prevent="collapsedClick"
       />
     </div>
+    <div v-else class="item-icon" :style="{ width: fontSize }"></div>
     <div
       v-if="selectType === SelectType.CHECKBOX"
+      class="item-selection item-control"
       role="checkbox"
       :tabindex="item.disabled ? -1 : 0"
       :aria-checked="
@@ -82,7 +83,7 @@ const itemClick = () => {
       "
       :aria-disabled="item.disabled || undefined"
       :aria-label="`选择 ${item.name}`"
-      @click="checkClick"
+      @click.stop="checkClick"
       @keydown.enter.prevent="checkClick"
       @keydown.space.prevent="checkClick"
     >
@@ -104,12 +105,13 @@ const itemClick = () => {
     </div>
     <div
       v-else-if="selectType === SelectType.RADIO && showRadio"
+      class="item-selection item-control"
       role="radio"
       :tabindex="item.disabled ? -1 : 0"
       :aria-checked="item.checked === CheckType.CHECKED"
       :aria-disabled="item.disabled || undefined"
       :aria-label="`选择 ${item.name}`"
-      @click="checkClick"
+      @click.stop="checkClick"
       @keydown.enter.prevent="checkClick"
       @keydown.space.prevent="checkClick"
     >
@@ -124,7 +126,7 @@ const itemClick = () => {
         class="giant-tree__mask-button giant-tree__icon-radio-unchecked"
       ></div>
     </div>
-    <div class="item-text" @click="itemClick">
+    <div class="item-text">
       <slot name="node" :node="item">
         <span>{{ item.name }}</span>
       </slot>
