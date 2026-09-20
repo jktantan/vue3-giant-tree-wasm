@@ -812,6 +812,9 @@ defineExpose({
           <template v-if="$slots.node" #node="slotProps">
             <slot name="node" v-bind="slotProps" />
           </template>
+          <template v-if="$slots.actions" #actions="slotProps">
+            <slot name="actions" v-bind="slotProps" />
+          </template>
         </tree-item>
         <div
           v-if="treeAnimation.phase === 'running'"
@@ -838,6 +841,9 @@ defineExpose({
             <template v-if="$slots.node" #node="slotProps">
               <slot name="node" v-bind="slotProps" />
             </template>
+            <template v-if="$slots.actions" #actions="slotProps">
+              <slot name="actions" v-bind="slotProps" />
+            </template>
           </tree-item>
         </div>
         <!-- On expansion, replace only the completed wrapper with its normal
@@ -861,6 +867,9 @@ defineExpose({
             <template v-if="$slots.node" #node="slotProps">
               <slot name="node" v-bind="slotProps" />
             </template>
+            <template v-if="$slots.actions" #actions="slotProps">
+              <slot name="actions" v-bind="slotProps" />
+            </template>
           </tree-item>
         </template>
         <tree-item
@@ -879,6 +888,9 @@ defineExpose({
           <template v-if="$slots.node" #node="slotProps">
             <slot name="node" v-bind="slotProps" />
           </template>
+          <template v-if="$slots.actions" #actions="slotProps">
+            <slot name="actions" v-bind="slotProps" />
+          </template>
         </tree-item>
       </template>
       <template v-for="item in currentTreeList" :key="item.id">
@@ -896,6 +908,9 @@ defineExpose({
         >
           <template v-if="$slots.node" #node="slotProps">
             <slot name="node" v-bind="slotProps" />
+          </template>
+          <template v-if="$slots.actions" #actions="slotProps">
+            <slot name="actions" v-bind="slotProps" />
           </template>
         </tree-item>
       </template>

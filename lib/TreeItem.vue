@@ -159,6 +159,9 @@ const itemClick = () => {
         <span>{{ item.name }}</span>
       </slot>
     </div>
+    <div v-if="$slots.actions" class="item-actions" @click.stop>
+      <slot name="actions" :node="item" />
+    </div>
   </div>
 </template>
 

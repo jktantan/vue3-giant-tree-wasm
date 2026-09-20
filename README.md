@@ -110,6 +110,29 @@ const search = (keyword: string) => treeRef.value?.fuzzySearch(keyword)
 | `filterFn`          | `FilterFn`                       | —          | 自定义过滤回调。CHECKBOX + Custom 模式下过滤输出；RADIO 模式下判断节点是否显示 Radio 框 |
 | `nodeIcon`          | `boolean \| NodeIconResolver`   | `false`    | 节点图标：`true` 使用内置图标；回调可按节点指定或隐藏 CSS 图标类                        |
 
+### 插槽
+
+两个插槽都接收 `{ node }`，其中 `node` 为当前的 `TreeNodeData`。
+
+| 插槽 | 说明 |
+| --- | --- |
+| `#node` | 替换节点名称所在的主体内容区；未传入时默认显示 `node.name`。 |
+| `#actions` | 节点行末的操作区，例如编辑、删除和更多菜单；未传入时不渲染也不占空间。操作区的点击会自动阻止触发行点击/选中。 |
+
+```vue
+<VueGiantTree :tree="treeData" root="root" v-model="selected">
+  <template #node="{ node }">
+    <strong>{{ node.name }}</strong>
+    <span v-if="node.disabled">禁用</span>
+  </template>
+
+  <template #actions="{ node }">
+    <button @click="edit(node)">编辑</button>
+    <button @click="remove(node)">删除</button>
+  </template>
+</VueGiantTree>
+```
+
 ### 节点图标 (nodeIcon)
 
 `nodeIcon` 默认关闭，因此不会改变现有行布局。设为 `true` 后，父节点收起时显示关闭文件夹、展开时显示打开文件夹，叶子节点显示文件图标。
@@ -402,6 +425,24 @@ const collapseAll = () => treeRef.value?.collapseAll()
 | `checkedOutputMode` | `CheckedOutputMode`              | `All`      | CHECKBOX output ID filter mode: `All` / `RootOnly` / `LeafOnly` / `Custom`                                  |
 | `filterFn`          | `FilterFn`                       | —          | Custom filter callback. CHECKBOX + Custom mode filters output; RADIO mode determines which nodes show Radio |
 
+### Slots
+
+Both slots receive `{ node }`, where `node` is the current `TreeNodeData`.
+
+| Slot | Description |
+| --- | --- |
+| `#node` | Replaces the main node-content area; the default is `node.name`. |
+| `#actions` | An end-of-row area for actions such as edit, delete, or a menu. It is omitted without a slot and its clicks do not select the node. |
+
+```vue
+<VueGiantTree :tree="treeData" root="root" v-model="selected">
+  <template #actions="{ node }">
+    <button @click="edit(node)">Edit</button>
+    <button @click="remove(node)">Delete</button>
+  </template>
+</VueGiantTree>
+```
+
 ### CheckedOutputMode
 
 Controls the output of `getCheckedIds` and `getCheckedNodes` in CHECKBOX mode:
@@ -627,6 +668,24 @@ const selected = ref([])
 | `outputIdOnly`      | `boolean`                        | `true`       | Если `true` (по умолч.), v-model передаёт только ID выбранных узлов; `false` — полные данные                       |
 | `checkedOutputMode` | `CheckedOutputMode`              | `All`        | Режим фильтрации вывода ID для CHECKBOX: `All` / `RootOnly` / `LeafOnly` / `Custom`                                |
 | `filterFn`          | `FilterFn`                       | —            | Пользовательский callback фильтрации. CHECKBOX + Custom — фильтрует вывод; RADIO — определяет, показывать ли Radio |
+
+### Слоты
+
+Оба слота получают `{ node }`, где `node` — текущий `TreeNodeData`.
+
+| Слот | Описание |
+| --- | --- |
+| `#node` | Заменяет основную область содержимого узла; по умолчанию отображается `node.name`. |
+| `#actions` | Область в конце строки для действий (редактирование, удаление, меню). Без слота не рендерится и не занимает место; клики не выбирают узел. |
+
+```vue
+<VueGiantTree :tree="treeData" root="root" v-model="selected">
+  <template #actions="{ node }">
+    <button @click="edit(node)">Изменить</button>
+    <button @click="remove(node)">Удалить</button>
+  </template>
+</VueGiantTree>
+```
 
 ### CheckedOutputMode
 

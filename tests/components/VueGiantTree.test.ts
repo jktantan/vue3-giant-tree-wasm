@@ -60,6 +60,24 @@ describe('VueGiantTree: 主组件', () => {
     expect(container.exists()).toBe(true)
   })
 
+  it('将 actions 插槽透传到每个可见节点', async () => {
+    const wrapper = mount(VueGiantTree, {
+      props: {
+        modelValue: [],
+        tree: makeTreeData(),
+        root: 'root',
+      },
+      slots: {
+        actions: '<button class="node-action">操作</button>',
+      },
+    })
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.findAll('.item-actions')).toHaveLength(2)
+    expect(wrapper.findAll('.node-action')).toHaveLength(2)
+  })
+
   it('显式分批构建保留默认输入的可见节点与禁用语义', async () => {
     const wrapper = mount(VueGiantTree, {
       props: {

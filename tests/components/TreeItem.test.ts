@@ -240,4 +240,21 @@ describe('TreeItem: 节点组件', () => {
     expect(emitted).toBeTruthy()
     expect(emitted![0]).toEqual(['click-me'])
   })
+
+  it('操作插槽接收节点且点击不会触发行点击', async () => {
+    const wrapper = mount(TreeItem, {
+      props: {
+        item: makeItem({ id: 'action-node' }),
+        fontSize: '14px',
+        selectType: SelectType.CHECKBOX,
+      },
+      slots: {
+        actions: '<button class="edit-action">编辑</button>',
+      },
+    })
+
+    expect(wrapper.find('.item-actions').text()).toBe('编辑')
+    await wrapper.find('.edit-action').trigger('click')
+    expect(wrapper.emitted('item-click')).toBeFalsy()
+  })
 })

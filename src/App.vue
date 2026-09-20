@@ -37,7 +37,9 @@ const setCheckedIdsInput = ref('')
 const currentDisplayType = ref<DisplayType>(DisplayType.TREE)
 const wasmTreeSize = ref(0)
 const treeRef = ref<InstanceType<typeof VueGiantTree>>()
-const useCustomSlot = ref(false)
+const useNodeSlot = ref(false)
+const useActionsSlot = ref(false)
+const lastNodeAction = ref('')
 const enableDisabled = ref(true)
 type NodeIconMode = 'off' | 'default' | 'business' | 'single' | 'partial'
 const nodeIconMode = ref<NodeIconMode>('off')
@@ -186,10 +188,55 @@ const rebuildTree = () => {
   treeKey.value++
 }
 
+const refreshAfterNodeAction = () => {
+  checkedResult.value = []
+  searchKeyword.value = ''
+  setCheckedIdsInput.value = ''
+  currentDisplayType.value = DisplayType.TREE
+  wasmTreeSize.value = 0
+  treeKey.value++
+}
+
+const editNode = (node: TreeNodeData) => {
+  const editedName = node.name.endsWith('（已编辑）')
+    ? node.name
+    : `${node.name}（已编辑）`
+  testData.value = testData.value.map(item =>
+    item.id === node.id ? { ...item, name: editedName } : item
+  )
+  lastNodeAction.value = `已编辑节点：${editedName}`
+  refreshAfterNodeAction()
+}
+
+const deleteNode = (node: TreeNodeData) => {
+  const childrenByParent = new Map<string, string[]>()
+  for (const item of testData.value) {
+    const children = childrenByParent.get(item.parentId) ?? []
+    children.push(item.id)
+    childrenByParent.set(item.parentId, children)
+  }
+
+  const idsToRemove = new Set<string>()
+  const pendingIds = [node.id]
+  while (pendingIds.length > 0) {
+    const id = pendingIds.pop()!
+    if (idsToRemove.has(id)) continue
+    idsToRemove.add(id)
+    pendingIds.push(...(childrenByParent.get(id) ?? []))
+  }
+
+  testData.value = testData.value.filter(item => !idsToRemove.has(item.id))
+  lastNodeAction.value = `已删除「${node.name}」及 ${idsToRemove.size - 1} 个子节点`
+  refreshAfterNodeAction()
+}
+
 watch(currentSize, rebuildTree)
 watch(currentSelectType, () => {
   treeKey.value++
   checkedResult.value = []
+})
+watch(useActionsSlot, enabled => {
+  if (!enabled) lastNodeAction.value = ''
 })
 
 const selectTypeLabel = computed(() => {
@@ -410,8 +457,12 @@ const switchDisplay = (type: DisplayType) => {
               启用节点禁用 (每组第1个L2/L3)
             </label>
             <label class="toggle-label">
-              <input type="checkbox" v-model="useCustomSlot" />
-              启用自定义插槽
+              <input type="checkbox" v-model="useNodeSlot" />
+              启用节点内容插槽
+            </label>
+            <label class="toggle-label">
+              <input type="checkbox" v-model="useActionsSlot" />
+              启用操作插槽
             </label>
             <label class="toggle-label">
               <input type="checkbox" v-model="outputIdOnly" />
@@ -671,12 +722,31 @@ const switchDisplay = (type: DisplayType) => {
             :node-icon="nodeIcon"
             v-model="checkedResult"
           >
-            <template v-if="useCustomSlot" #node="{ node }">
+            <template v-if="useNodeSlot" #node="{ node }">
               <span>{{ node.name }}</span>
               <span class="custom-badge">D{{ node.deep }}</span>
               <span v-if="node.disabled" class="custom-disabled-tag">禁用</span>
             </template>
+            <template v-if="useActionsSlot" #actions="{ node }">
+              <button
+                type="button"
+                class="node-action"
+                @click="editNode(node)"
+              >
+                编辑
+              </button>
+              <button
+                type="button"
+                class="node-action node-action--danger"
+                @click="deleteNode(node)"
+              >
+                删除
+              </button>
+            </template>
           </VueGiantTree>
+          <p v-if="lastNodeAction" class="node-action-feedback">
+            {{ lastNodeAction }}
+          </p>
         </div>
       </main>
     </div>
@@ -1027,5 +1097,25 @@ input[type='range'] {
   background: #fff1f0;
   color: #ff4d4f;
   border: 1px solid #ffccc7;
+}
+
+.node-action {
+  padding: 2px 6px;
+  border: 1px solid #91caff;
+  border-radius: 3px;
+  background: #fff;
+  color: #1677ff;
+  cursor: pointer;
+}
+
+.node-action--danger {
+  border-color: #ffccc7;
+  color: #ff4d4f;
+}
+
+.node-action-feedback {
+  margin: 8px 0 0;
+  color: #595959;
+  font-size: 12px;
 }
 </style>
