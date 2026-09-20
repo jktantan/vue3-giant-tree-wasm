@@ -140,7 +140,7 @@ const nodeIcon: NodeIconResolver = node => {
 <VueGiantTree :tree="treeData" :node-icon="nodeIcon" />
 ```
 
-回调返回值为 `true | false | string | { collapsed: string; expanded?: string }`。对象缺少 `expanded` 时自动复用 `collapsed`；叶子节点也使用 `collapsed`。自定义类负责提供图标形状（例如 `mask-image`），颜色建议使用 `currentColor` 或 CSS 变量。内置图标使用 `--giant-tree-node-icon-color`，可在暗色主题中覆盖该变量。
+回调返回值为 `true | false | string | { collapsed: string; expanded?: string }`。对象缺少 `expanded` 时自动复用 `collapsed`；叶子节点也使用 `collapsed`。自定义类负责提供完整图标样式，例如 `background-image: url(...)`；这种方式会保留 SVG 的多色填充。暗色主题可在主题选择器中为相同的图标类覆盖 `background-image`。
 
 ### CheckedOutputMode
 

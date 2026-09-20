@@ -57,10 +57,9 @@
   }
   &__node-icon {
     flex: 0 0 auto;
-    background-color: var(--giant-tree-node-icon-color, #{$giant-tree__text-color});
-    mask-repeat: no-repeat;
-    mask-position: center;
-    mask-size: contain;
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: contain;
   }
 
   .tree-item {

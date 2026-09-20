@@ -158,6 +158,30 @@ describe('VueGiantTree: 主组件', () => {
     expect(wrapper.text()).toContain('NodeA1')
   })
 
+  it('节点图标会在展开和收起时同步切换', async () => {
+    const wrapper = mount(VueGiantTree, {
+      props: {
+        modelValue: [],
+        tree: makeTreeData(),
+        root: 'root',
+        nodeIcon: true,
+      },
+    })
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.find('.giant-tree__icon-node-collapsed').exists()).toBe(true)
+    await wrapper.find('.giant-tree__icon-arrow-right').trigger('click')
+    await wrapper.vm.$nextTick()
+    expect(wrapper.find('.giant-tree__icon-node-expanded').exists()).toBe(true)
+
+    await waitForBranchAnimation(wrapper)
+    await wrapper.find('.giant-tree__icon-arrow-down').trigger('click')
+    await wrapper.vm.$nextTick()
+    expect(wrapper.find('.giant-tree__icon-node-collapsed').exists()).toBe(true)
+    expect(wrapper.find('.giant-tree__icon-node-expanded').exists()).toBe(false)
+  })
+
   it('勾选后同步可见节点状态', async () => {
     const wrapper = mount(VueGiantTree, {
       props: {

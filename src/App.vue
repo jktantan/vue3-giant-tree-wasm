@@ -459,7 +459,7 @@ const switchDisplay = (type: DisplayType) => {
           </div>
           <label class="toggle-label node-icon-theme-toggle">
             <input type="checkbox" v-model="useDarkNodeIcons" />
-            深色图标色（覆盖 CSS 变量）
+            深色树背景预览
           </label>
           <p class="control-hint">
             类型映射：directory 使用收起/展开图标，document 使用单一图标，hidden 不显示。
@@ -698,14 +698,9 @@ body {
 }
 
 .dev-container {
-  --giant-tree-node-icon-color: #637083;
   max-width: 1200px;
   margin: 0 auto;
   padding: 24px;
-}
-
-.dev-container--dark-icons {
-  --giant-tree-node-icon-color: #b9c6d8;
 }
 
 .dev-header {
@@ -980,15 +975,15 @@ input[type='range'] {
 }
 
 .demo-node-icon-directory-closed {
-  mask-image: url('../lib/assets/image/node-folder-closed.svg');
+  background-image: url('../lib/assets/image/node-folder-closed.svg');
 }
 
 .demo-node-icon-directory-open {
-  mask-image: url('../lib/assets/image/node-folder-open.svg');
+  background-image: url('../lib/assets/image/node-folder-open.svg');
 }
 
 .demo-node-icon-document {
-  mask-image: url('../lib/assets/image/node-leaf.svg');
+  background-image: url('../lib/assets/image/node-leaf.svg');
 }
 
 .dev-container--dark-icons .tree-wrapper {

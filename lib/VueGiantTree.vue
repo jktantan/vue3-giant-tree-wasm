@@ -681,8 +681,9 @@ const collapseClick = (id: string, isCollapse: boolean) => {
   const parent = beforeChange.find(item => item.id === id)
   collapseTree(tree, id, isCollapse)
   listHeight.value = getShownHeight(tree)
-  const node = allNodesCache.find(item => item.id === id)
-  if (node) node.collapsed = isCollapse
+  // Do not mutate the cached node here. refreshTree deliberately replaces a
+  // changed cache entry so virtual rows receive a new prop reference; mutating
+  // first would make it miss the collapsed-state transition.
   refreshTree()
   if (parent) {
     void startTreeAnimation(
