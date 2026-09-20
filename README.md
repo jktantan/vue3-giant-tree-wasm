@@ -8,7 +8,18 @@
 
 ### 简介
 
-基于 Vue 3 + WebAssembly 的高性能虚拟滚动树组件，专为海量数据场景设计。核心树算法使用 AssemblyScript 编写并编译为 WASM，利用 MPTT（改进的前序遍历树）数据结构实现 O(1) 子树判定和 O(k) 可视区域切片，轻松处理十万级甚至百万级节点。
+面向 10 万至百万级节点数据的 Vue 3 + WebAssembly 虚拟树组件。核心树算法使用 AssemblyScript 编写并编译为 WASM，利用 MPTT（改进的前序遍历树）数据结构实现 O(1) 子树判定和 O(k) 可视区域切片，专注大规模树的交互性能。
+
+### 性能
+
+以下数据来自 release WASM、本机 Chromium 环境的可重复基准；实际结果会受数据形状、浏览器、硬件、启用功能和行内容复杂度影响。
+
+- 容量基准覆盖最多 100 万节点数据集
+- 100,000 节点滚动动作 P95：约 0.1 ms
+- 4,620 节点浏览器工作负载滚动动作 P95：约 0.4 ms
+- 仅将视口内的行渲染到 DOM
+
+完整测试方法、环境和结果见 [性能门禁归档](docs/performance-gate-2026-09-19.md)。
 
 ### 特性
 
@@ -348,7 +359,18 @@ pnpm lib:build
 
 ### Introduction
 
-A high-performance virtual-scrolling tree component built with Vue 3 + WebAssembly, designed for massive datasets. The core tree algorithms are written in AssemblyScript and compiled to WASM, leveraging the MPTT (Modified Preorder Tree Traversal) data structure to achieve O(1) subtree checks and O(k) viewport slicing — easily handling hundreds of thousands or even millions of nodes.
+A WebAssembly-powered virtual tree for Vue 3, designed for responsive interaction with 100K–1M-node datasets. The core tree algorithms are written in AssemblyScript and compiled to WASM, leveraging the MPTT (Modified Preorder Tree Traversal) data structure to achieve O(1) subtree checks and O(k) viewport slicing.
+
+### Performance
+
+The following reproducible benchmarks use release WASM and local Chromium. Results depend on data shape, browser, hardware, enabled features, and rendering complexity.
+
+- Capacity benchmarks cover datasets up to 1M nodes
+- 100K-node scroll action P95: ~0.1 ms
+- 4,620-node browser-workload scroll action P95: ~0.4 ms
+- Only viewport rows are rendered to the DOM
+
+See the [performance-gate archive](docs/performance-gate-2026-09-19.md) for methodology, environment, and complete results.
 
 ### Features
 

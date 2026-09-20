@@ -1,5 +1,6 @@
 {
   "name": "vue3-giant-tree-wasm",
+  "description": "A WebAssembly-powered Vue 3 virtual tree for 100K–1M-node datasets.",
   "private": true,
   "version": "0.0.0",
   "type": "module",
