@@ -719,12 +719,10 @@ export class GiantTree {
    * Сложность O(поддерево + log N), значительно лучше полной перестройки O(N)
    */
   private _hasCompactDisabledNodes(): bool {
-    // Object flags remain the compatibility authority for disabled nodes until
-    // the direct-input compact loader is migrated; this guards mixed inputs.
-    for (let i: i32 = 0; i < this.fullTree.length; i++) {
-      if (this.fullTree[i].disabled) return true
-    }
-    return false
+    // compactStore is synchronized on every load and structural transaction;
+    // querying its prefix summary is O(1). Scanning fullTree here made every
+    // checkbox snapshot O(N), even when only one visible row changed.
+    return this.compactStore.hasDisabledNodes()
   }
 
   collapseTree(id: string, collapsed: boolean): void {
@@ -771,27 +769,26 @@ export class GiantTree {
       }
       // 正常模式：增量更新 fullTree 子树的 shown 标志和 _shownNodes
       // Normal mode: incrementally update fullTree subtree shown flags and _shownNodes
-      if (this.useCompactSelection) {
-        this._rebuildCompactShownIndicesFromState()
-        this.shownCount = this.compactStore.shownLength
-      } else {
-        const delta: i32 = setCollapsedShown(
-          this.fullTree,
-          i + 1,
-          node.rightNode,
-          !collapsed
-        )
-        incrementalUpdateShownNodes(
-          this._shownNodes,
-          this.fullTree,
-          i,
-          node.leftNode,
-          node.rightNode,
-          !collapsed
-        )
-        this.shownCount += delta
-        this._syncCompactShownIndices()
-      }
+      // Do not rebuild visibility for the complete tree here. In compact mode
+      // that used to turn a small branch toggle on a million-node tree into an
+      // O(N) pass. Both representations can be updated from the changed MPTT
+      // subtree, then the compact viewport index is refreshed from it.
+      const delta: i32 = setCollapsedShown(
+        this.fullTree,
+        i + 1,
+        node.rightNode,
+        !collapsed
+      )
+      incrementalUpdateShownNodes(
+        this._shownNodes,
+        this.fullTree,
+        i,
+        node.leftNode,
+        node.rightNode,
+        !collapsed
+      )
+      this.shownCount += delta
+      this._syncCompactShownIndices()
       this._syncLazyShownStates()
     }
     this._invalidateCache()

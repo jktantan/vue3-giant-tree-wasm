@@ -11,6 +11,8 @@ let ready = false
 const queue: any[] = []
 let pendingSnapshotRevision = -1
 let snapshotScheduled = false
+let pendingCheckedResultRevision = -1
+let checkedResultScheduled = false
 let pendingStructure: any[] = []
 let structureFlushScheduled = false
 let commandsHandled = 0
@@ -29,14 +31,30 @@ const workerMetrics = () => ({
   lastBatchSize, lastResponseMs: performance.now() - lastCommandStartedAt,
   lastSerializeMs,
 })
+const scheduleCheckedResult = (revision: number) => {
+  pendingCheckedResultRevision = revision
+  if (checkedResultScheduled) return
+  checkedResultScheduled = true
+  // Visual state must be responsive even when the selected-ID result is huge.
+  // Coalescing keeps a rapid sequence of checkbox clicks to one large clone.
+  setTimeout(() => {
+    checkedResultScheduled = false
+    if (!tree) return
+    self.postMessage({
+      type: 'checked',
+      revision: pendingCheckedResultRevision,
+      checkedIds: wasm.getCheckedIdList(tree),
+    })
+  }, 48)
+}
 const snapshot = (revision: number, mutation?: any) => {
   if (mutation) {
     const serializeStartedAt = performance.now()
     wasm.setBoundary(tree, scrollTop, scrollHeight)
-    const size = wasm.getSize(tree), listHeight = wasm.getShownHeight(tree), rows = JSON.parse(wasm.getShownNodes(tree)), checkedIds = wasm.getCheckedIdList(tree)
+    const size = wasm.getSize(tree), listHeight = wasm.getShownHeight(tree), rows = JSON.parse(wasm.getShownNodes(tree))
     lastSerializeMs = performance.now() - serializeStartedAt
     snapshotsSent++
-    self.postMessage({ type: 'snapshot', revision, size, listHeight, rows, checkedIds, mutation, metrics: workerMetrics() })
+    self.postMessage({ type: 'snapshot', revision, size, listHeight, rows, mutation, metrics: workerMetrics() })
     return
   }
   pendingSnapshotRevision = revision
@@ -48,10 +66,10 @@ const snapshot = (revision: number, mutation?: any) => {
     if (!tree) return
     const serializeStartedAt = performance.now()
     wasm.setBoundary(tree, scrollTop, scrollHeight)
-    const size = wasm.getSize(tree), listHeight = wasm.getShownHeight(tree), rows = JSON.parse(wasm.getShownNodes(tree)), checkedIds = wasm.getCheckedIdList(tree)
+    const size = wasm.getSize(tree), listHeight = wasm.getShownHeight(tree), rows = JSON.parse(wasm.getShownNodes(tree))
     lastSerializeMs = performance.now() - serializeStartedAt
     snapshotsSent++
-    self.postMessage({ type: 'snapshot', revision: nextRevision, size, listHeight, rows, checkedIds, metrics: workerMetrics() })
+    self.postMessage({ type: 'snapshot', revision: nextRevision, size, listHeight, rows, metrics: workerMetrics() })
   }, 0)
 }
 const rebuild = (next: Input[]) => {
@@ -108,7 +126,10 @@ const flushStructure = () => {
     if (mutation) mutations.push(mutation)
   }
   wasm.endStructureBatch(tree)
-  if (mutations.length > 0) snapshot(revision, { type: 'batch', mutations })
+  if (mutations.length > 0) {
+    snapshot(revision, { type: 'batch', mutations })
+    scheduleCheckedResult(revision)
+  }
   else snapshot(revision)
 }
 const enqueueStructure = (m: any) => {
@@ -125,7 +146,7 @@ const handle = (m: any) => {
   lastCommandStartedAt = performance.now()
   const revision = Number(m.revision ?? 0)
   if (m.type === 'init' || m.type === 'replace') {
-    config = m.config; scrollTop = m.scrollTop ?? 0; scrollHeight = m.scrollHeight ?? 0; rebuild(m.tree); snapshot(revision); return
+    config = m.config; scrollTop = m.scrollTop ?? 0; scrollHeight = m.scrollHeight ?? 0; rebuild(m.tree); snapshot(revision); scheduleCheckedResult(revision); return
   }
   if (!tree) return
   if (m.type === 'add' || m.type === 'remove') { enqueueStructure(m); return }
@@ -153,6 +174,11 @@ const handle = (m: any) => {
     }
   }
   snapshot(revision)
+  if (
+    m.type === 'check' || m.type === 'clear-check' ||
+    m.type === 'set-check' || m.type === 'set-checks' ||
+    m.type === 'set-output'
+  ) scheduleCheckedResult(revision)
 }
 self.onmessage = e => { if (ready) handle(e.data); else queue.push(e.data) }
 self.postMessage({ type: 'boot' })

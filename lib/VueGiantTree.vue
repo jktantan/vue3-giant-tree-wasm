@@ -598,6 +598,23 @@ const syncAnimationRows = () => {
   }
 }
 
+/** Worker snapshots update the ordinary virtual list first. If a completed
+ * branch animation is still holding stable DOM, rebind those same DOM rows to
+ * the fresh snapshot rather than dropping the plan (which would flash). */
+const syncWorkerAnimationRows = () => {
+  const animation = treeAnimation.value
+  if (!animation) return
+  const latestById = new Map(currentTreeList.value.map(item => [item.id, item]))
+  const sync = (rows: TreeNodeData[]) =>
+    rows.map(item => latestById.get(item.id) ?? item)
+  treeAnimation.value = {
+    ...animation,
+    before: sync(animation.before),
+    rows: sync(animation.rows),
+    after: sync(animation.after),
+  }
+}
+
 const startTreeAnimation = async (
   direction: TreeAnimation['direction'],
   parent: TreeNodeData,
@@ -741,7 +758,7 @@ const startWorker = () => {
       size: number
       listHeight: number
       rows: TreeNodeData[]
-      checkedIds: string[]
+      checkedIds?: string[]
       mutation?: unknown
       metrics?: {
         structuralBatches: number
@@ -752,6 +769,13 @@ const startWorker = () => {
       }
     }
     if (snapshot.type === 'boot' || snapshot.type === 'ready') return
+    if (snapshot.type === 'checked') {
+      if (snapshot.checkedIds !== undefined) {
+        workerCheckedIds = snapshot.checkedIds
+        emitCheckedResult()
+      }
+      return
+    }
     if (snapshot.type === 'fatal') {
       console.error('VueGiantTree worker failed', (snapshot as any).error)
       worker?.terminate()
@@ -778,7 +802,8 @@ const startWorker = () => {
       workerMetrics.lastBatchSize = snapshot.metrics.lastBatchSize
     }
     if (snapshot.revision < workerRevision) return
-    workerCheckedIds = snapshot.checkedIds
+    const hasCheckedResult = snapshot.checkedIds !== undefined
+    if (snapshot.checkedIds !== undefined) workerCheckedIds = snapshot.checkedIds
     workerTreeSize = snapshot.size
     isTreeReady = true
     listHeight.value = snapshot.listHeight
@@ -786,6 +811,7 @@ const startWorker = () => {
       ...row,
       extendData: inputNodeById.get(row.id),
     }))
+    syncWorkerAnimationRows()
     if (
       pendingWorkerCollapse &&
       snapshot.revision >= pendingWorkerCollapse.revision
@@ -803,7 +829,7 @@ const startWorker = () => {
       }
     }
     applyWorkerMutation(snapshot.mutation)
-    emitCheckedResult()
+    if (hasCheckedResult) emitCheckedResult()
   }
   worker.onerror = event => {
     console.error('VueGiantTree worker failed', event.message)

@@ -59,6 +59,20 @@ describe('worker tree mode', () => {
       await nextPaint()
     }
 
+    // The settled animation plan keeps DOM stable; Worker selection snapshots
+    // must still update its checkbox state rather than only the v-model value.
+    const checkA = host.querySelector('[aria-label="选择 Worker A"]') as HTMLElement
+    expect(checkA.getAttribute('aria-checked')).toBe('false')
+    checkA.click()
+    const checkDeadline = performance.now() + 10_000
+    while (
+      performance.now() < checkDeadline &&
+      checkA.getAttribute('aria-checked') !== 'true'
+    ) {
+      await nextPaint()
+    }
+    expect(checkA.getAttribute('aria-checked')).toBe('true')
+
     expect(treeRef.value?.updateNode('A', { name: 'Edited A' })).toBe(true)
     expect(treeRef.value?.addNode({ id: 'A2', name: 'Worker A2', parentId: 'A' })).toBe(true)
     const mutationDeadline = performance.now() + 10_000
