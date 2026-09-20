@@ -96,6 +96,8 @@ const search = (keyword: string) => treeRef.value?.fuzzySearch(keyword)
 | `addNode(node)`                           | 在根或已有父节点下新增节点                  |
 | `removeNode(id)`                          | 删除节点及其全部子树                       |
 
+`preorderedInput` 默认是 `false`。当输入严格按深度优先前序排列（父节点在前，且节点的整个子树连续）时可设为 `true`，首次构建会跳过通用父子分组；若数据不符合该顺序，组件会自动回退到通用构建。
+
 `getWorkerMetrics()` 仅在启用 `workerMode` 时有实际数据。可用它区分主线程感知的往返时间（`lastRoundTripMs`）、Worker 处理等待/计算时间（`lastWorkerResponseMs`）、可视行序列化时间（`lastWorkerSerializeMs`），以及连续结构操作的合并效果（`structuralBatches`、`structuralOperations`、`lastBatchSize`）。
 
 ### 节点增删改

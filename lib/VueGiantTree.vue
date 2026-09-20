@@ -41,6 +41,8 @@ import {
   getNodeCollapsedStates,
   getInputNodeLayouts,
   clearInputNodeLayouts,
+  setTrackInputLayouts,
+  setUsePreorderedNeighborInput,
 } from '../build/release'
 
 import { debounce } from 'throttle-debounce'
@@ -81,6 +83,8 @@ const props = withDefaults(
     buildBatchSize?: number
     /** 将树算法放入 Web Worker；适合大树或频繁结构变更 */
     workerMode?: boolean
+    /** 输入已按深度优先前序排列时，跳过通用父子分组构建 */
+    preorderedInput?: boolean
   }>(),
   {
     width: '100%',
@@ -97,6 +101,7 @@ const props = withDefaults(
     chunkedBuild: false,
     buildBatchSize: 2_000,
     workerMode: false,
+    preorderedInput: false,
   }
 )
 const emit = defineEmits(['update:modelValue', 'update:tree'])
@@ -717,6 +722,66 @@ const postWorker = (type: string, payload: Record<string, unknown> = {}) => {
   }
 }
 
+const postWorkerTransfer = (
+  type: string,
+  payload: Record<string, unknown>,
+  transfer: Transferable[]
+) => {
+  if (!worker) return undefined
+  try {
+    const revision = ++workerRevision
+    workerCommandStartedAt.set(revision, now())
+    workerMetrics.commandsSent++
+    workerMetrics.pendingCommands = workerCommandStartedAt.size
+    worker.postMessage({ type, revision, ...payload }, transfer)
+    return revision
+  } catch {
+    worker.terminate()
+    worker = undefined
+    workerCommandStartedAt.clear()
+    workerMetrics.pendingCommands = 0
+    workerMetrics.enabled = false
+    void initializeMainTree()
+    return undefined
+  }
+}
+
+const workerConfig = () => ({
+  root: props.root,
+  lineHeight: props.lineHeight,
+  selectType: props.selectType,
+  checkedOutputMode: props.checkedOutputMode,
+  fieldKeys: props.fieldKeys,
+  preorderedInput: props.preorderedInput,
+})
+
+const streamWorkerTree = async () => {
+  if (!worker) return
+  postWorker('stream-start', {
+    config: workerConfig(),
+    scrollTop,
+    scrollHeight,
+  })
+  const size = Math.max(1, Math.floor(props.buildBatchSize))
+  const idField = props.fieldKeys.idField ?? 'id'
+  const nameField = props.fieldKeys.nameField ?? 'name'
+  const parentIdField = props.fieldKeys.parentIdField ?? 'parentId'
+  for (let start = 0; start < props.tree.length; start += size) {
+    if (!worker) return
+    const payload = encodeNeighborBatch(
+      props.tree.slice(start, start + size) as Array<
+        TreeInputItem & Record<string, unknown>
+      >,
+      idField,
+      nameField,
+      parentIdField
+    )
+    postWorkerTransfer('stream-batch', { payload: payload.buffer }, [payload.buffer])
+    if (start + size < props.tree.length) await nextBuildTurn()
+  }
+  postWorker('stream-finish')
+}
+
 const applyWorkerMutation = (mutation: any) => {
   if (!mutation) return
   const idField = props.fieldKeys.idField ?? 'id'
@@ -838,23 +903,16 @@ const startWorker = () => {
     workerMetrics.enabled = false
     void initializeMainTree()
   }
-  postWorker('init', {
-    config: {
-      root: props.root,
-      lineHeight: props.lineHeight,
-      selectType: props.selectType,
-      checkedOutputMode: props.checkedOutputMode,
-      fieldKeys: props.fieldKeys,
-    },
-    tree: props.tree,
-    scrollTop,
-    scrollHeight,
-  })
+  void streamWorkerTree()
   return true
 }
 
 const initializeMainTree = async () => {
   clear(tree)
+  // Input-order layouts are only consumed by refreshChunkedNodesCache().
+  // Avoid allocating/filling an O(N) bridge in the normal build path.
+  setTrackInputLayouts(tree, canUseChunkedBuild())
+  setUsePreorderedNeighborInput(tree, props.preorderedInput)
   isBuilding = true
   resetBuildMetrics()
   buildStartedAt = now()
@@ -1088,6 +1146,8 @@ const reconcileTreeData = async () => {
 
   releaseSettledRenderPlan()
   clear(tree)
+  setTrackInputLayouts(tree, canUseChunkedBuild())
+  setUsePreorderedNeighborInput(tree, props.preorderedInput)
   isBuilding = true
   try {
     if (props.tree.length > 0) await loadTree()

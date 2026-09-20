@@ -362,7 +362,8 @@ export function convertNeighborToMptt(
   neighborTrees: NeighborTree[],
   root: string,
   fullTree: MpttTree[],
-  inputOrderToFullIndex: i32[] | null = null
+  inputOrderToFullIndex: i32[] | null = null,
+  initialShownNodes: MpttTree[] | null = null
 ): i32 {
   const treeMap: Map<string, NeighborTree[]> = new Map()
   for (let i = 0; i < neighborTrees.length; i++) {
@@ -377,9 +378,77 @@ export function convertNeighborToMptt(
     treeMap,
     root,
     fullTree,
-    inputOrderToFullIndex
+    inputOrderToFullIndex,
+    initialShownNodes
   )
   treeMap.clear()
+  return shownCount
+}
+
+/**
+ * Fast path for preorder adjacency input: every subtree is contiguous and a
+ * parent precedes all of its descendants. It avoids the parent→children Map
+ * used by the general converter. Returns -1 when the declared order is not
+ * preorder so callers can safely fall back to convertNeighborToMptt().
+ */
+export function convertPreorderedNeighborToMptt(
+  neighborTrees: NeighborTree[],
+  root: string,
+  fullTree: MpttTree[],
+  inputOrderToFullIndex: i32[] | null = null,
+  initialShownNodes: MpttTree[] | null = null
+): i32 {
+  const stack: MpttTree[] = []
+  let next: i32 = 0
+  let shownCount: i32 = 0
+
+  for (let i: i32 = 0; i < neighborTrees.length; i++) {
+    const nt = neighborTrees[i]
+    while (
+      stack.length > 0 &&
+      stack[stack.length - 1].id !== nt.parentId
+    ) {
+      const completed = stack.pop()
+      completed.rightNode = next
+      next = completed.rightNode + 1
+    }
+    if (nt.parentId !== root && stack.length === 0) {
+      fullTree.splice(0)
+      return -1
+    }
+    const parent = stack.length > 0 ? stack[stack.length - 1] : null
+    if (nt.parentId !== root && (parent === null || parent.id !== nt.parentId)) {
+      fullTree.splice(0)
+      return -1
+    }
+
+    const mptt = new MpttTree()
+    mptt.id = nt.id
+    mptt.name = nt.name
+    mptt.parentId = nt.parentId
+    mptt.disabled = nt.disabled || (parent !== null && parent.disabled)
+    mptt.extendData = nt.extendData
+    mptt.leftNode = next
+    mptt.deep = stack.length
+    fullTree.push(mptt)
+    if (
+      inputOrderToFullIndex !== null &&
+      nt.inputIndex >= 0 && nt.inputIndex < inputOrderToFullIndex.length
+    ) inputOrderToFullIndex[nt.inputIndex] = fullTree.length - 1
+    if (nt.parentId === root) {
+      mptt.shown = true
+      shownCount++
+      if (initialShownNodes !== null)
+        (initialShownNodes as MpttTree[]).push(mptt)
+    }
+    next++
+    stack.push(mptt)
+  }
+  while (stack.length > 0) {
+    const completed = stack.pop()
+    completed.rightNode = next
+    next = completed.rightNode + 1
+  }
   return shownCount
 }
 
@@ -420,7 +489,8 @@ function _iterativeAssembly(
   treeMap: Map<string, NeighborTree[]>,
   root: string,
   fullTree: MpttTree[],
-  inputOrderToFullIndex: i32[] | null
+  inputOrderToFullIndex: i32[] | null,
+  initialShownNodes: MpttTree[] | null
 ): i32 {
   if (!treeMap.has(root)) return 0
 
@@ -443,6 +513,8 @@ function _iterativeAssembly(
         if (parent.parentId === root) {
           parent.shown = true
           shownCount++
+          if (initialShownNodes !== null)
+            (initialShownNodes as MpttTree[]).push(parent)
         }
         lNode = parent.rightNode + 1
       }
@@ -484,6 +556,8 @@ function _iterativeAssembly(
       if (mptt.parentId === root) {
         mptt.shown = true
         shownCount++
+        if (initialShownNodes !== null)
+          (initialShownNodes as MpttTree[]).push(mptt)
       }
       lNode = mptt.rightNode + 1
     }

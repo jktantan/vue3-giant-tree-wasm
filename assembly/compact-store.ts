@@ -40,6 +40,7 @@ export class CompactNodeStore {
     this.childChecked = new Int32Array(size)
     this.childHalf = new Int32Array(size)
     const stack: i32[] = []
+    const open: i32[] = []
     this.shownIndices = new Int32Array(0)
     this.shownLength = 0
     for (let i = 0; i < size; i++) {
@@ -53,6 +54,13 @@ export class CompactNodeStore {
       this.shown[i] = node.shown ? 1 : 0
       this.disabled[i] = node.disabled ? 1 : 0
       this.disabledPrefix[i + 1] = this.disabledPrefix[i] + this.disabled[i]
+
+      // Preorder MPTT boundaries let us finalize completed subtrees while
+      // loading node fields, avoiding a second full traversal below.
+      while (
+        open.length > 0 &&
+        this.right[open[open.length - 1]] <= this.left[i]
+      ) this.subtreeEnd[open.pop()] = i
       while (
         stack.length > 0 &&
         this.depth[stack[stack.length - 1]] >= this.depth[i]
@@ -65,18 +73,6 @@ export class CompactNodeStore {
           this.childChecked[this.parent[i]]++
       }
       stack.push(i)
-    }
-
-    // MPTT nodes are preorder-sorted. Each index enters and leaves this stack
-    // once, so subtree end positions are built in O(N), not per-node scans.
-    const open: i32[] = []
-    for (let i: i32 = 0; i < size; i++) {
-      while (
-        open.length > 0 &&
-        this.right[open[open.length - 1]] <= this.left[i]
-      ) {
-        this.subtreeEnd[open.pop()] = i
-      }
       open.push(i)
     }
     while (open.length > 0) this.subtreeEnd[open.pop()] = size

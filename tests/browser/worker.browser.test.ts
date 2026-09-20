@@ -24,6 +24,7 @@ describe('worker tree mode', () => {
           root: 'root',
           modelValue: [],
           workerMode: true,
+          preorderedInput: true,
           height: '300px',
           'onUpdate:tree': (tree: typeof source.value) => {
             treeUpdateCount++

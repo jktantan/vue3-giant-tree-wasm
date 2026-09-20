@@ -31,6 +31,7 @@ export const {
   setUseCompactSelection,
   setUseLazyCheckboxRanges,
   setUseSearchCandidateIndex,
+  setUsePreorderedNeighborInput,
   getShownIndices,
   getNodeSelectionStates,
   getNodeLayouts,

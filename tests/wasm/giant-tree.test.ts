@@ -20,6 +20,7 @@ import {
   setUseCompactSelection,
   setUseLazyCheckboxRanges,
   setUseSearchCandidateIndex,
+  setUsePreorderedNeighborInput,
   getShownHeight,
   getCheckedNodes,
   getCheckedIds,
@@ -43,6 +44,30 @@ import {
 } from '../wasm-bridge'
 
 describe('giant-tree: 集成测试', () => {
+  it('前序邻接表快速构建与通用构建一致，并在乱序时自动回退', () => {
+    const fast = newTree('root', 26, SelectType.CHECKBOX)
+    const normal = newTree('root', 26, SelectType.CHECKBOX)
+    setUsePreorderedNeighborInput(fast, true)
+    const ids = ['A', 'A1', 'A2', 'B']
+    const parents = ['root', 'A', 'A', 'root']
+    for (let i = 0; i < ids.length; i++) {
+      pushNeighborNode(fast, ids[i], ids[i], parents[i])
+      pushNeighborNode(normal, ids[i], ids[i], parents[i])
+    }
+    popNeighbor(fast)
+    popNeighbor(normal)
+    expect(getAllNodes(fast)).toBe(getAllNodes(normal))
+
+    const fallback = newTree('root', 26, SelectType.CHECKBOX)
+    setUsePreorderedNeighborInput(fallback, true)
+    // A child after its parent's subtree is no longer contiguous: fall back.
+    pushNeighborNode(fallback, 'A', 'A', 'root')
+    pushNeighborNode(fallback, 'B', 'B', 'root')
+    pushNeighborNode(fallback, 'A1', 'A1', 'A')
+    popNeighbor(fallback)
+    expect(getSize(fallback)).toBe(3)
+  })
+
   it('结构编辑批次支持新增节点作为后续新增的父节点', () => {
     const tree = newTree('root', 26, SelectType.CHECKBOX)
     pushNeighborNode(tree, 'A', 'A', 'root')

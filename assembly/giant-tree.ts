@@ -11,6 +11,7 @@ import {
   parseTreeFromJson,
   parseMpttTreeFromJson,
   convertNeighborToMptt,
+  convertPreorderedNeighborToMptt,
   buildIdIndex,
   sortByLeftNode,
 } from './tree-builder'
@@ -139,6 +140,18 @@ export class GiantTree {
   tmpTree: NeighborTree[] = []
   /** Short-lived mapping for the opt-in chunked input cache bridge. */
   inputOrderToFullIndex: i32[] = []
+  /** Worker builds do not expose input layouts, so skip this O(N) scratch map. */
+  trackInputLayouts: bool = true
+  usePreorderedNeighborInput: bool = false
+
+  setTrackInputLayouts(value: bool): void {
+    this.trackInputLayouts = value
+    if (!value) this.inputOrderToFullIndex.splice(0)
+  }
+
+  setUsePreorderedNeighborInput(value: bool): void {
+    this.usePreorderedNeighborInput = value
+  }
   /** 完整 MPTT 树数组，按 leftNode 升序 / Full MPTT tree array, sorted by leftNode ascending / Полный массив дерева MPTT, отсортирован по leftNode */
   fullTree: MpttTree[] = []
   /** 搜索结果树 / Search result tree / Дерево результатов поиска */
@@ -210,6 +223,19 @@ export class GiantTree {
     this._invalidateSearchCandidates()
     this._invalidateCache()
     return true
+  }
+
+  /** Returns a node and every descendant in preorder for Worker-side deletes. */
+  getSubtreeIds(id: string): string[] {
+    const ids: string[] = []
+    if (!this.idToIndex.has(id)) return ids
+    const start = this.idToIndex.get(id)
+    const right = this.fullTree[start].rightNode
+    for (let i = start; i < this.fullTree.length; i++) {
+      if (this.fullTree[i].leftNode >= right) break
+      ids.push(this.fullTree[i].id)
+    }
+    return ids
   }
 
   /** Begins a structural-edit transaction. Calls may be nested. */
@@ -366,19 +392,31 @@ export class GiantTree {
    * Внутренний метод преобразования списка смежности → MPTT
    */
   _convertToMpttTree(neighborTrees: NeighborTree[]): void {
-    this.inputOrderToFullIndex = new Array<i32>(neighborTrees.length)
-    this.inputOrderToFullIndex.fill(-1)
-    convertNeighborToMptt(
-      neighborTrees,
-      this.root,
-      this.fullTree,
-      this.inputOrderToFullIndex
-    )
+    if (this.trackInputLayouts) {
+      this.inputOrderToFullIndex = new Array<i32>(neighborTrees.length)
+      this.inputOrderToFullIndex.fill(-1)
+    } else this.inputOrderToFullIndex.splice(0)
+    this._shownNodes.splice(0)
+    const layouts = this.trackInputLayouts ? this.inputOrderToFullIndex : null
+    let converted: i32 = this.usePreorderedNeighborInput
+      ? convertPreorderedNeighborToMptt(
+          neighborTrees, this.root, this.fullTree, layouts, this._shownNodes
+        )
+      : -1
+    if (converted < 0) {
+      this.fullTree.splice(0)
+      this._shownNodes.splice(0)
+      converted = convertNeighborToMptt(
+        neighborTrees, this.root, this.fullTree, layouts, this._shownNodes
+      )
+    }
     this.idToIndex = buildIdIndex(this.fullTree)
     this.compactStore.load(this.fullTree)
     this._clearLazyCheckboxRanges()
     this._invalidateSearchCandidates()
-    this._rebuildShownNodes()
+    this.shownCount = this._shownNodes.length as i32
+    this._syncCompactShownIndices()
+    this._invalidateCache()
   }
 
   /**

@@ -4,6 +4,7 @@ type Input = Record<string, unknown>
 let wasm: any
 let tree: any
 let input: Input[] = []
+let inputReady = false
 let config: any
 let scrollTop = 0
 let scrollHeight = 0
@@ -78,34 +79,47 @@ const rebuild = (next: Input[]) => {
   tree = Object.keys(k).length
     ? wasm.newTreeWithKeys(config.root, config.lineHeight, config.selectType, k.idField ?? 'id', k.nameField ?? 'name', k.parentIdField ?? 'parentId', k.leftNodeField ?? 'leftNode', k.rightNodeField ?? 'rightNode', false)
     : wasm.newTree(config.root, config.lineHeight, config.selectType, false)
+  wasm.setTrackInputLayouts(tree, false)
+  wasm.setUsePreorderedNeighborInput(tree, config.preorderedInput === true)
   wasm.setNeighborTree(tree, JSON.stringify(input))
   wasm.setCheckedOutputMode(tree, config.checkedOutputMode)
 }
-const removeInputSubtree = (id: string) => {
-  const removed = new Set([id]); let changed = true
-  while (changed) {
-    changed = false
-    for (const node of input) {
-      if (removed.has(String(node[parentField()] ?? '')) && !removed.has(idOf(node))) {
-        removed.add(idOf(node)); changed = true
-      }
-    }
-  }
-  return removed
+const createEmptyTree = () => {
+  const k = config.fieldKeys
+  tree = Object.keys(k).length
+    ? wasm.newTreeWithKeys(config.root, config.lineHeight, config.selectType, k.idField ?? 'id', k.nameField ?? 'name', k.parentIdField ?? 'parentId', k.leftNodeField ?? 'leftNode', k.rightNodeField ?? 'rightNode', false)
+    : wasm.newTree(config.root, config.lineHeight, config.selectType, false)
+  wasm.setTrackInputLayouts(tree, false)
+  wasm.setUsePreorderedNeighborInput(tree, config.preorderedInput === true)
+  wasm.setCheckedOutputMode(tree, config.checkedOutputMode)
+}
+const ensureInput = () => {
+  if (inputReady) return
+  const nameField = config.fieldKeys.nameField ?? 'name'
+  input = JSON.parse(wasm.getAllNodes(tree)).map((node: any) => ({
+    [idField()]: node.id,
+    [nameField]: node.name,
+    [parentField()]: node.parentId,
+    disabled: node.disabled === true,
+  }))
+  inputReady = true
 }
 const applyStructure = (m: any) => {
   if (m.type === 'add') {
     const parentId = String(m.node[parentField()] ?? '')
     const nameField = config.fieldKeys.nameField ?? 'name'
-    if (idOf(m.node) && !input.some(node => idOf(node) === idOf(m.node)) && wasm.appendChild(tree, idOf(m.node), String(m.node[nameField] ?? idOf(m.node)), parentId, m.node.disabled === true)) {
-      input.push(m.node)
+    if (idOf(m.node) && wasm.appendChild(tree, idOf(m.node), String(m.node[nameField] ?? idOf(m.node)), parentId, m.node.disabled === true)) {
+      if (inputReady) input.push(m.node)
       return { type: 'add', node: m.node }
     }
   } else if (m.type === 'remove') {
-    const removed = removeInputSubtree(m.id)
+    const removed = wasm.getSubtreeIds(tree, m.id) as string[]
     if (wasm.removeSubtree(tree, m.id)) {
-      input = input.filter(node => !removed.has(idOf(node)))
-      return { type: 'remove', ids: [...removed] }
+      if (inputReady) {
+        const removedSet = new Set(removed)
+        input = input.filter(node => !removedSet.has(idOf(node)))
+      }
+      return { type: 'remove', ids: removed }
     }
   }
   return undefined
@@ -145,8 +159,22 @@ const handle = (m: any) => {
   commandsHandled++
   lastCommandStartedAt = performance.now()
   const revision = Number(m.revision ?? 0)
+  if (m.type === 'stream-start') {
+    config = m.config; scrollTop = m.scrollTop ?? 0; scrollHeight = m.scrollHeight ?? 0
+    input = []; inputReady = false; createEmptyTree(); return
+  }
+  if (m.type === 'stream-batch') {
+    if (!tree) return
+    const payload = new Uint8Array(m.payload)
+    wasm.pushNeighborNodesUtf8(tree, payload)
+    return
+  }
+  if (m.type === 'stream-finish') {
+    if (!tree) return
+    wasm.popNeighbor(tree); snapshot(revision); scheduleCheckedResult(revision); return
+  }
   if (m.type === 'init' || m.type === 'replace') {
-    config = m.config; scrollTop = m.scrollTop ?? 0; scrollHeight = m.scrollHeight ?? 0; rebuild(m.tree); snapshot(revision); scheduleCheckedResult(revision); return
+    config = m.config; scrollTop = m.scrollTop ?? 0; scrollHeight = m.scrollHeight ?? 0; rebuild(m.tree); inputReady = true; snapshot(revision); scheduleCheckedResult(revision); return
   }
   if (!tree) return
   if (m.type === 'add' || m.type === 'remove') { enqueueStructure(m); return }
@@ -163,13 +191,15 @@ const handle = (m: any) => {
   else if (m.type === 'set-output') wasm.setCheckedOutputMode(tree, m.mode)
   else if (m.type === 'search') wasm.fuzzyTree(tree, m.keyword)
   else if (m.type === 'update') {
-    const index = input.findIndex(node => idOf(node) === m.id)
-    if (index >= 0) {
+    const nameField = config.fieldKeys.nameField ?? 'name'
+    const structural = parentField() in m.patch || 'disabled' in m.patch
+    if (structural) {
+      ensureInput()
+      const index = input.findIndex(node => idOf(node) === m.id)
+      if (index < 0) { snapshot(revision); return }
       input[index] = { ...input[index], ...m.patch }
-      const nameField = config.fieldKeys.nameField ?? 'name'
-      const structural = parentField() in m.patch || 'disabled' in m.patch
-      if (structural) rebuild(input)
-      else if (nameField in m.patch) wasm.updateNodeName(tree, m.id, String(m.patch[nameField]))
+      rebuild(input)
+    } else if (nameField in m.patch && wasm.updateNodeName(tree, m.id, String(m.patch[nameField]))) {
       snapshot(revision, { type: 'update', id: m.id, patch: m.patch }); return
     }
   }

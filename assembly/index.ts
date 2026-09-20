@@ -186,6 +186,17 @@ export function clearInputNodeLayouts(target: GiantTree): void {
   target.clearInputNodeLayouts()
 }
 
+export function setTrackInputLayouts(target: GiantTree, value: bool): void {
+  target.setTrackInputLayouts(value)
+}
+
+export function setUsePreorderedNeighborInput(
+  target: GiantTree,
+  value: bool
+): void {
+  target.setUsePreorderedNeighborInput(value)
+}
+
 export function getCheckedNodes(target: GiantTree): string {
   return target.getCheckedNodes()
 }
@@ -207,6 +218,10 @@ export function setCheckedOutputMode(
 
 export function updateNodeName(target: GiantTree, id: string, name: string): bool {
   return target.updateNodeName(id, name)
+}
+
+export function getSubtreeIds(target: GiantTree, id: string): string[] {
+  return target.getSubtreeIds(id)
 }
 
 export function appendChild(target: GiantTree, id: string, name: string, parentId: string, disabled: bool = false): bool {

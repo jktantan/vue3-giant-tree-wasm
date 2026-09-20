@@ -727,6 +727,7 @@ const switchDisplay = (type: DisplayType) => {
             :filter-fn="filterFn"
             :node-icon="nodeIcon"
             :worker-mode="true"
+            :preordered-input="true"
             v-model="checkedResult"
           >
             <template v-if="useNodeSlot" #node="{ node }">
