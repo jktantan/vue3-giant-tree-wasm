@@ -986,6 +986,11 @@ const itemClick = (id: string) => {
 }
 /** 展开/折叠节点 / Expand/collapse node / Развернуть/свернуть узел */
 const setAllCollapsed = (collapsed: boolean) => {
+  // A completed branch animation intentionally keeps stable rows mounted.
+  // Global visibility changes replace the entire viewport, so that stale plan
+  // must be released before applying the Worker/main-tree result.
+  if (isTreeAnimating()) return
+  releaseSettledRenderPlan()
   if (isUsingWorker()) {
     postWorker('collapse-all', { collapsed })
     return

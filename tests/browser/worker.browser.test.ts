@@ -60,6 +60,19 @@ describe('worker tree mode', () => {
       await nextPaint()
     }
 
+    treeRef.value?.expandAll()
+    const expandAllDeadline = performance.now() + 10_000
+    while (performance.now() < expandAllDeadline && host.querySelectorAll('.tree-item').length !== 3) {
+      await nextPaint()
+    }
+    expect(host.querySelectorAll('.tree-item')).toHaveLength(3)
+    treeRef.value?.collapseAll()
+    const collapseAllDeadline = performance.now() + 10_000
+    while (performance.now() < collapseAllDeadline && host.querySelectorAll('.tree-item').length !== 2) {
+      await nextPaint()
+    }
+    expect(host.querySelectorAll('.tree-item')).toHaveLength(2)
+
     // The settled animation plan keeps DOM stable; Worker selection snapshots
     // must still update its checkbox state rather than only the v-model value.
     const checkA = host.querySelector('[aria-label="选择 Worker A"]') as HTMLElement
