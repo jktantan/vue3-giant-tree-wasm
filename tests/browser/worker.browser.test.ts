@@ -60,6 +60,54 @@ describe('worker tree mode', () => {
       await nextPaint()
     }
 
+    // Once the expand transition settles, it intentionally retains the old
+    // row plan. A structural worker snapshot must replace that plan, otherwise
+    // edits appear but adds/removes are visually stuck until the next scroll.
+    expect(treeRef.value?.addNode({ id: 'A0', name: 'Worker A0', parentId: 'A' })).toBe(true)
+    const settledAddDeadline = performance.now() + 10_000
+    while (
+      performance.now() < settledAddDeadline &&
+      (!source.value.some(node => node.id === 'A0') ||
+        !host.textContent?.includes('Worker A0'))
+    ) {
+      await nextPaint()
+    }
+    expect(source.value.some(node => node.id === 'A0')).toBe(true)
+    expect(host.textContent).toContain('Worker A0')
+
+    expect(treeRef.value?.removeNode('A0')).toBe(true)
+    const settledRemoveDeadline = performance.now() + 10_000
+    while (
+      performance.now() < settledRemoveDeadline &&
+      (source.value.some(node => node.id === 'A0') ||
+        host.textContent?.includes('Worker A0'))
+    ) {
+      await nextPaint()
+    }
+    expect(host.textContent).not.toContain('Worker A0')
+
+    // A leaf that gains a child must receive fresh MPTT boundaries in the
+    // Worker snapshot so TreeItem switches from its spacer to an expand arrow.
+    expect(treeRef.value?.addNode({ id: 'B0', name: 'Worker B0', parentId: 'B' })).toBe(true)
+    const leafToBranchDeadline = performance.now() + 10_000
+    while (
+      performance.now() < leafToBranchDeadline &&
+      !host.querySelector('[aria-label="展开 Worker B"]')
+    ) {
+      await nextPaint()
+    }
+    expect(host.querySelector('[aria-label="展开 Worker B"]')).toBeTruthy()
+
+    expect(treeRef.value?.removeNode('B0')).toBe(true)
+    const branchToLeafDeadline = performance.now() + 10_000
+    while (
+      performance.now() < branchToLeafDeadline &&
+      host.querySelector('[aria-label="展开 Worker B"]')
+    ) {
+      await nextPaint()
+    }
+    expect(host.querySelector('[aria-label="展开 Worker B"]')).toBeNull()
+
     treeRef.value?.expandAll()
     const expandAllDeadline = performance.now() + 10_000
     while (performance.now() < expandAllDeadline && host.querySelectorAll('.tree-item').length !== 3) {

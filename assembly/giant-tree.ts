@@ -292,12 +292,17 @@ export class GiantTree {
         insertIndex < this.fullTree.length &&
         this.fullTree[insertIndex].leftNode < parent.rightNode
       ) insertIndex++
-      left = parent.rightNode - 1
+      // Insert at the parent's closing boundary. This makes a new child a
+      // sibling of every existing child, and also expands a leaf parent from
+      // `[left, left + 1]` into a branch.
+      left = parent.rightNode
       depth = parent.deep + 1
     }
     for (let i: i32 = 0; i < this.fullTree.length; i++) {
       const node = this.fullTree[i]
       if (node.leftNode >= left) node.leftNode += 2
+      // The parent closes at `left`, so its right boundary must move as well.
+      // A preceding sibling has `rightNode < left` and is left unchanged.
       if (node.rightNode >= left) node.rightNode += 2
     }
     const node = new MpttTree()
@@ -326,14 +331,18 @@ export class GiantTree {
     const index = this.idToIndex.get(id)
     const target = this.fullTree[index]
     const right = target.rightNode
-    const width = target.rightNode - target.leftNode
+    // Boundaries are inclusive: even a leaf occupies its opening and closing
+    // positions, so removing it must reclaim two slots rather than one.
+    const width = target.rightNode - target.leftNode + 1
     let end = index
     while (end < this.fullTree.length && this.fullTree[end].leftNode < right) end++
     for (let i = index; i < end; i++) this.idToIndex.delete(this.fullTree[i].id)
     this.fullTree.splice(index, end - index)
     for (let i: i32 = 0; i < this.fullTree.length; i++) {
       const node = this.fullTree[i]
-      if (node.leftNode >= right) node.leftNode -= width
+      // The removed subtree owns both endpoints through `right`. Every
+      // surviving boundary strictly after that closing endpoint shifts left.
+      if (node.leftNode > right) node.leftNode -= width
       if (node.rightNode > right) node.rightNode -= width
     }
     for (let i = index; i < this.fullTree.length; i++)

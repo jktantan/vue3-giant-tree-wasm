@@ -866,7 +866,12 @@ const startWorker = () => {
       workerMetrics.structuralOperations = snapshot.metrics.structuralOperations
       workerMetrics.lastBatchSize = snapshot.metrics.lastBatchSize
     }
-    if (snapshot.revision < workerRevision) return
+    // A structural reply also carries the controlled `update:tree` echo.
+    // Do not drop that echo merely because a later boundary command has
+    // already incremented the local revision; the later snapshot has no
+    // mutation payload to replay it. Ordinary stale viewport snapshots remain
+    // safely discardable.
+    if (snapshot.revision < workerRevision && !snapshot.mutation) return
     const hasCheckedResult = snapshot.checkedIds !== undefined
     if (snapshot.checkedIds !== undefined) workerCheckedIds = snapshot.checkedIds
     workerTreeSize = snapshot.size
@@ -876,6 +881,12 @@ const startWorker = () => {
       ...row,
       extendData: inputNodeById.get(row.id),
     }))
+    // A settled expand/collapse plan deliberately keeps its old row set mounted
+    // to avoid a visual flash. It is only valid while the tree structure is
+    // unchanged: otherwise an added or removed row can never enter/leave that
+    // retained plan. Content edits still rebind safely below, but structural
+    // mutations must immediately return to the live virtual-list rows.
+    if (snapshot.mutation) releaseSettledRenderPlan()
     syncWorkerAnimationRows()
     if (
       pendingWorkerCollapse &&
@@ -1232,6 +1243,10 @@ const addNode = (node: TreeMutationItem): boolean => {
   ) {
     return false
   }
+  // A settled branch animation owns a fixed row set. Structural commands must
+  // give the regular virtual list ownership again before their async Worker
+  // snapshot arrives, otherwise that snapshot can only rebind stale rows.
+  releaseSettledRenderPlan()
   if (isUsingWorker()) {
     postWorker('add', { node })
     return true
@@ -1247,6 +1262,8 @@ const removeNode = (id: string): boolean => {
   const parentIdField = props.fieldKeys.parentIdField ?? 'parentId'
   const input = props.tree as TreeMutationItem[]
   if (!input.some(item => String(item[idField] ?? '') === id)) return false
+  // See addNode: retained animation rows are not valid after a topology edit.
+  releaseSettledRenderPlan()
   if (isUsingWorker()) {
     postWorker('remove', { id })
     return true

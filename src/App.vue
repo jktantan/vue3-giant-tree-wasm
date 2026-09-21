@@ -39,6 +39,7 @@ const wasmTreeSize = ref(0)
 const workerMetrics = ref<Record<string, number | boolean>>({})
 const treeRef = ref<InstanceType<typeof VueGiantTree>>()
 const useNodeSlot = ref(false)
+const showMpttBoundaries = ref(true)
 const useActionsSlot = ref(false)
 const lastNodeAction = ref('')
 const enableDisabled = ref(true)
@@ -455,6 +456,10 @@ const switchDisplay = (type: DisplayType) => {
               启用节点内容插槽
             </label>
             <label class="toggle-label">
+              <input type="checkbox" v-model="showMpttBoundaries" />
+              显示 MPTT 边界（L/R）
+            </label>
+            <label class="toggle-label">
               <input type="checkbox" v-model="useActionsSlot" />
               启用操作插槽
             </label>
@@ -730,10 +735,19 @@ const switchDisplay = (type: DisplayType) => {
             :preordered-input="true"
             v-model="checkedResult"
           >
-            <template v-if="useNodeSlot" #node="{ node }">
+            <template #node="{ node }">
               <span>{{ node.name }}</span>
-              <span class="custom-badge">D{{ node.deep }}</span>
-              <span v-if="node.disabled" class="custom-disabled-tag">禁用</span>
+              <span
+                v-if="showMpttBoundaries"
+                class="mptt-boundary-badge"
+                :title="`leftNode: ${node.leftNode}, rightNode: ${node.rightNode}`"
+              >
+                L{{ node.leftNode }} / R{{ node.rightNode }}
+              </span>
+              <template v-if="useNodeSlot">
+                <span class="custom-badge">D{{ node.deep }}</span>
+                <span v-if="node.disabled" class="custom-disabled-tag">禁用</span>
+              </template>
             </template>
             <template v-if="useActionsSlot" #actions="{ node }">
               <button
@@ -1100,6 +1114,20 @@ input[type='range'] {
   background: #e6f4ff;
   color: #1677ff;
   border: 1px solid #bae0ff;
+}
+
+.mptt-boundary-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 5px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+  line-height: 16px;
+  color: #5c3b00;
+  background: #fff7e6;
+  border: 1px solid #ffd591;
+  border-radius: 3px;
+  white-space: nowrap;
 }
 
 .custom-disabled-tag {

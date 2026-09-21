@@ -93,14 +93,39 @@ describe('giant-tree: 集成测试', () => {
     expect(updateNodeName(tree, 'A2', 'Renamed A2')).toBe(true)
     const afterAdd = JSON.parse(getAllNodes(tree))
     const a = afterAdd.find((node: { id: string }) => node.id === 'A')
+    const a1 = afterAdd.find((node: { id: string }) => node.id === 'A1')
     const a2 = afterAdd.find((node: { id: string }) => node.id === 'A2')
     expect(a2.name).toBe('Renamed A2')
     expect(a2.leftNode).toBeGreaterThan(a.leftNode)
     expect(a2.rightNode).toBeLessThan(a.rightNode)
+    // A newly appended child is a sibling of the previous last child, not
+    // its descendant. This also keeps it visible when that sibling is closed.
+    expect(a1.rightNode).toBeLessThanOrEqual(a2.leftNode)
 
     expect(removeSubtree(tree, 'A')).toBe(true)
     expect(getSize(tree)).toBe(1)
     expect(JSON.parse(getAllNodes(tree)).map((node: { id: string }) => node.id)).toEqual(['B'])
+  })
+
+  it('向叶节点新增子节点会将该叶节点变为可展开的父节点', () => {
+    const tree = newTree('root', 26, SelectType.CHECKBOX)
+    pushNeighborNode(tree, 'A', 'A', 'root')
+    popNeighbor(tree)
+
+    expect(appendChild(tree, 'A1', 'A1', 'A')).toBe(true)
+    const nodes = JSON.parse(getAllNodes(tree)) as Array<{
+      id: string
+      leftNode: number
+      rightNode: number
+    }>
+    const parent = nodes.find(node => node.id === 'A')!
+    expect(parent.rightNode - parent.leftNode).toBeGreaterThan(1)
+
+    expect(removeSubtree(tree, 'A1')).toBe(true)
+    const leafAgain = (JSON.parse(getAllNodes(tree)) as typeof nodes).find(
+      node => node.id === 'A'
+    )!
+    expect(leafAgain.rightNode - leafAgain.leftNode).toBe(1)
   })
 
   it('批量邻接表输入与逐条输入保持树、禁用和搜索语义一致', () => {
