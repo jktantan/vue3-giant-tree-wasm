@@ -651,9 +651,15 @@ const startTreeAnimation = async (
   // Collapse begins open and closes; expansion follows the inverse sequence.
   animationOpen.value = direction === 'collapse'
   await nextTick()
+  // A single rAF still runs before the browser paints the freshly mounted
+  // `height: 0` expansion layer, so Chromium can coalesce it with the target
+  // height and make expansion appear instant. Let that initial state reach a
+  // frame first, then make the transition change on the following frame.
   requestAnimationFrame(() => {
-    if (!isTreeAnimating()) return
-    animationOpen.value = direction === 'expand'
+    requestAnimationFrame(() => {
+      if (!isTreeAnimating()) return
+      animationOpen.value = direction === 'expand'
+    })
   })
   // transitionend is not guaranteed (e.g. a tab is backgrounded), so the
   // timeout always returns the component to normal virtual rendering.
