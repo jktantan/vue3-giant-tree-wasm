@@ -26,6 +26,7 @@
 - **WASM 加速** — 树构建、遍历、搜索、选中等核心运算在 WebAssembly 中执行
 - **虚拟滚动** — 仅渲染可视区域内的节点，DOM 占用极低
 - **MPTT 算法** — O(1) 子树判定，O(k) 视口切片，O(subtree + log N) 展开/折叠
+- **平滑展开/收起动画** — 在不渲染完整子树的前提下，为视口内分支提供流畅过渡；自动遵循系统“减少动态效果”偏好
 - **三种选择模式** — 多选 (Checkbox)、单选 (Radio)、点击选中 (Select)
 - **模糊搜索** — 关键词过滤并自动补全祖先链；搜索视图支持独立展开/收起，不影响主树状态
 - **批量展开/收起** — 通过组件实例 API 一键展开或收起当前视图
@@ -33,6 +34,8 @@
 - **统一树构建** — 无论输入是邻接表还是 MPTT 格式，始终自动重建 MPTT，避免 stale leftNode/rightNode
 - **JSON 缓存** — 滚动位置不变时直接返回缓存，避免重复序列化
 - **TypeScript 类型支持** — 完整的类型定义导出
+
+展开或收起节点时，组件仅为当前视口中已有的分支行创建短暂的过渡层，不会因此将整棵子树加入 DOM。动画时长为约 220ms；为保持过渡稳定，滚动会在动画完成前暂时冻结。
 
 ### 安装
 
@@ -377,6 +380,7 @@ See the [performance-gate archive](docs/performance-gate-2026-09-19.md) for meth
 - **WASM-Accelerated** — Tree building, traversal, search, and check operations run in WebAssembly
 - **Virtual Scrolling** — Only renders nodes within the visible viewport, minimal DOM footprint
 - **MPTT Algorithm** — O(1) subtree checks, O(k) viewport slicing, O(subtree + log N) expand/collapse
+- **Smooth Expand/Collapse Animation** — Animates branches already in the viewport without materializing entire subtrees; respects the system reduced-motion preference
 - **Three Selection Modes** — Checkbox (multi-select), Radio (single-select), Click-to-Select
 - **Fuzzy Search** — Keyword filtering with automatic ancestor chain completion; search-view expand/collapse state is independent from the main tree
 - **Expand/Collapse All** — Component instance APIs expand or collapse the current view in one operation
@@ -384,6 +388,8 @@ See the [performance-gate archive](docs/performance-gate-2026-09-19.md) for meth
 - **Unified Tree Building** — Always rebuilds MPTT from parentId regardless of input format, avoiding stale leftNode/rightNode
 - **JSON Caching** — Returns cached results when scroll position is unchanged
 - **TypeScript Support** — Full type definitions exported
+
+When a node expands or collapses, the component creates a short-lived transition layer only for branch rows already in the viewport; it never adds the entire subtree to the DOM for animation. The transition lasts about 220ms, and scrolling is temporarily frozen until it completes to keep the animation stable.
 
 ### Installation
 
@@ -664,12 +670,15 @@ pnpm lib:build
 - **Ускорение через WASM** — Построение дерева, обход, поиск и выбор выполняются в WebAssembly
 - **Виртуальная прокрутка** — Рендерятся только узлы в видимой области, минимальное использование DOM
 - **Алгоритм MPTT** — Проверка поддерева за O(1), срез viewport за O(k), развёртывание/свёртывание за O(поддерево + log N)
+- **Плавная анимация развёртывания/свёртывания** — Анимирует ветви в текущей области просмотра, не добавляя в DOM всё поддерево; учитывает системное предпочтение уменьшения анимации
 - **Три режима выбора** — Чекбокс (множественный), Радиокнопка (одиночный), Выбор по клику
 - **Нечёткий поиск** — Фильтрация по ключевому слову с автоматическим дополнением цепочки предков
 - **Настраиваемые ключи полей** — Сопоставление пользовательских имён полей JSON (id / name / parentId / leftNode / rightNode)
 - **Единое построение дерева** — Всегда перестраивает MPTT из parentId независимо от формата входных данных, избегая устаревших leftNode/rightNode
 - **Кэширование JSON** — При неизменной позиции прокрутки возвращается кэшированный результат
 - **Поддержка TypeScript** — Полные определения типов
+
+При развёртывании или свёртывании компонента создаётся кратковременный слой перехода только для строк ветви, уже находящихся в области просмотра; всё поддерево не добавляется в DOM ради анимации. Переход длится около 220 мс, а прокрутка временно блокируется до его завершения для стабильности анимации.
 
 ### Установка
 
