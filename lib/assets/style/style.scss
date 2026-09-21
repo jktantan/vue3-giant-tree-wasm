@@ -97,6 +97,11 @@
       justify-content: center;
     }
     .item-text {
+      // Slot content often combines text, badges and small controls. Treat it
+      // as one inline row so all custom children stay vertically centred with
+      // the tree controls instead of aligning by independent text baselines.
+      display: flex;
+      align-items: center;
       flex: 1 1 0;
       min-width: 0;
       text-align: start;
