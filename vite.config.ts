@@ -3,7 +3,7 @@ import vue from '@vitejs/plugin-vue'
 import vueJsx from '@vitejs/plugin-vue-jsx'
 import loadVersion from 'vite-plugin-package-version'
 import { fileURLToPath, URL } from 'node:url'
-import assemblyscriptPlugin from './vite-plugin-assemblyscript'
+import assemblyscriptPlugin from './vite-plugin-assemblyscript.ts'
 
 // https://vite.dev/config/
 export default defineConfig(({ command }) => {

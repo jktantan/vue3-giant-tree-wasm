@@ -4,7 +4,7 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import vueJsx from '@vitejs/plugin-vue-jsx'
 import loadVersion from 'vite-plugin-package-version'
-import assemblyscriptPlugin from './vite-plugin-assemblyscript'
+import assemblyscriptPlugin from './vite-plugin-assemblyscript.ts'
 
 // https://vitejs.dev/config/
 export default defineConfig(() => ({

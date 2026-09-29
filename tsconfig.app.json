@@ -5,7 +5,6 @@
 
     /* Linting */
     "strict": true,
-    "baseUrl": ".",
     "paths": {
       "@lib/*": ["./lib/*"]
     },
