@@ -24,6 +24,7 @@ import {
   getShownHeight,
   getCheckedNodes,
   getCheckedIds,
+  getCheckedIdList,
   setCheckedOutputMode,
   setBoundary,
   clear,
@@ -105,6 +106,57 @@ describe('giant-tree: 集成测试', () => {
     expect(removeSubtree(tree, 'A')).toBe(true)
     expect(getSize(tree)).toBe(1)
     expect(JSON.parse(getAllNodes(tree)).map((node: { id: string }) => node.id)).toEqual(['B'])
+  })
+
+  it('删除中间的已选节点后保留剩余 checkbox 状态并更新父节点', () => {
+    for (const lazy of [false, true]) {
+      const tree = newTree('root', 26, SelectType.CHECKBOX)
+      setUseLazyCheckboxRanges(tree, lazy)
+      for (const [id, parentId] of [
+        ['A', 'root'],
+        ['A1', 'A'],
+        ['A2', 'A'],
+        ['A3', 'A'],
+        ['B', 'root'],
+      ])
+        pushNeighborNode(tree, id, id, parentId)
+      popNeighbor(tree)
+      setCheckedOutputMode(tree, CheckedOutputMode.RootOnly)
+      checkNode(tree, 'A', CheckType.CHECKED)
+      expect(removeSubtree(tree, 'A2')).toBe(true)
+      expect(getCheckedIdList(tree)).toEqual(['A'])
+      checkNode(tree, 'A3', CheckType.UNCHECKED)
+      expect(getCheckedIdList(tree)).toEqual(['A1'])
+      const nodes = JSON.parse(getAllNodes(tree)) as Array<{
+        id: string
+        checked: number
+      }>
+      expect(nodes.find(node => node.id === 'A')?.checked).toBe(
+        CheckType.HALF_CHECKED
+      )
+      checkNode(tree, 'A3', CheckType.CHECKED)
+      expect(getCheckedIdList(tree)).toEqual(['A'])
+    }
+  })
+
+  it('删除已选子节点后父节点按剩余子节点重新聚合', () => {
+    const tree = newTree('root', 26, SelectType.CHECKBOX)
+    for (const id of ['A', 'A1', 'A2'])
+      pushNeighborNode(tree, id, id, id === 'A' ? 'root' : 'A')
+    popNeighbor(tree)
+    checkNode(tree, 'A1', CheckType.CHECKED)
+    expect(removeSubtree(tree, 'A2')).toBe(true)
+    expect(getCheckedIdList(tree)).toEqual(['A', 'A1'])
+  })
+
+  it('删除前面的节点后单选索引仍指向原节点', () => {
+    const tree = newTree('root', 26, SelectType.RADIO)
+    for (const id of ['A', 'B', 'C']) pushNeighborNode(tree, id, id, 'root')
+    popNeighbor(tree)
+    checkNode(tree, 'B', CheckType.CHECKED)
+    expect(removeSubtree(tree, 'A')).toBe(true)
+    checkNode(tree, 'C', CheckType.CHECKED)
+    expect(getCheckedIdList(tree)).toEqual(['C'])
   })
 
   it('向叶节点新增子节点会将该叶节点变为可展开的父节点', () => {

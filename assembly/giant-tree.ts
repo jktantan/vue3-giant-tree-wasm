@@ -240,6 +240,7 @@ export class GiantTree {
 
   /** Begins a structural-edit transaction. Calls may be nested. */
   beginStructureBatch(): void {
+    if (this._structureBatchDepth === 0) this._materializeLazyCheckboxRanges()
     this._structureBatchDepth++
   }
 
@@ -270,6 +271,32 @@ export class GiantTree {
     this._invalidateSearchCandidates()
     resetShownFlags(this.fullTree)
     this.compactStore.load(this.fullTree)
+    this.compactStore.syncSelection(this.fullTree)
+    if (this.selectType === SelectType.CHECKBOX) {
+      // A removed or appended child changes the aggregate state of every
+      // ancestor above it. Recompute branches from leaves toward the root.
+      for (let i: i32 = this.fullTree.length - 1; i >= 0; i--) {
+        if (this.compactStore.childTotal[i] === 0) continue
+        const previous = this.compactStore.checked[i]
+        const next = this.compactStore.getAggregateState(i)
+        this.compactStore.checked[i] = next
+        this.fullTree[i].checked = next as CheckType
+        this.compactStore.updateChildState(
+          this.compactStore.parent[i],
+          previous,
+          next
+        )
+      }
+    } else {
+      this._radioCheckedIdx = -1
+      this._selectSelectedIdx = -1
+      for (let i: i32 = 0; i < this.fullTree.length; i++) {
+        if (this.fullTree[i].checked === CheckType.CHECKED)
+          this._radioCheckedIdx = i
+        if (this.fullTree[i].selected === CheckType.CHECKED)
+          this._selectSelectedIdx = i
+      }
+    }
     this._hasSearchCache = false
     if (searchKeyword.length > 0) this.fuzzySearch(searchKeyword)
     else this._rebuildShownNodes()
@@ -277,6 +304,7 @@ export class GiantTree {
 
   appendChild(id: string, name: string, parentId: string, disabled: bool = false): bool {
     if (!id.length || this.idToIndex.has(id)) return false
+    this._materializeLazyCheckboxRanges()
     let insertIndex = this.fullTree.length
     let left = this.fullTree.length > 0 ? this.fullTree[this.fullTree.length - 1].rightNode : 1
     let depth: i32 = 0
@@ -328,6 +356,7 @@ export class GiantTree {
 
   removeSubtree(id: string): bool {
     if (!this.idToIndex.has(id)) return false
+    this._materializeLazyCheckboxRanges()
     const index = this.idToIndex.get(id)
     const target = this.fullTree[index]
     const right = target.rightNode
