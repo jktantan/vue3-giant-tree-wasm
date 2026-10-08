@@ -118,6 +118,8 @@ type TreeAnimation = {
   direction: 'expand' | 'collapse'
   /** settled keeps stable sibling DOM in place after the transition. */
   phase: 'running' | 'settled'
+  /** 正在展开/折叠的父节点；这一行的 DOM 会被重建，箭头需要补播过渡。 */
+  parentId: string
   before: TreeNodeData[]
   rows: TreeNodeData[]
   after: TreeNodeData[]
@@ -620,6 +622,22 @@ const syncWorkerAnimationRows = () => {
   }
 }
 
+/**
+ * 分支展开/折叠的过渡计划。
+ *
+ * 成因：动画层与普通虚拟列表是互斥的两个模板分支，动画层从「无」变「有」时
+ * 整块视口行会被重新挂载（实测：首次展开同 id 行 same element = false，
+ * 动画层已存在时为 true）。这是当前实现换取「过渡容器能插在正确 DOM 位置」的
+ * 代价：before/rows/after 复制了整个视口。
+ * 副作用：未变化的行也会重建，丢掉 hover / 焦点 / 子组件内部状态，靠 CSS
+ * transition 驱动的视觉也会失效 —— 箭头的 arrowAnimation prop 就是为此补播
+ * 一次过渡（见 TreeItem.vue）。
+ *
+ * 重构思路（待办，未实施）：普通列表照常按 currentTreeList 渲染，只把 rows 抽进
+ * 一个绝对定位的过渡容器（自行按父节点位置设 transform/offset）；before 与 after
+ * 随即不再需要，未变化的行就能复用 DOM。代价是要自己算过渡容器的纵向偏移，
+ * 并与虚拟滚动的 translate3d 保持一致。
+ */
 const startTreeAnimation = async (
   direction: TreeAnimation['direction'],
   parent: TreeNodeData,
@@ -642,6 +660,7 @@ const startTreeAnimation = async (
   treeAnimation.value = {
     direction,
     phase: 'running',
+    parentId: parent.id,
     before: afterChange.slice(0, parentIndex + 1),
     rows,
     after,
@@ -1386,6 +1405,11 @@ defineExpose({
       :style="{ height: listHeight + 'px' }"
     ></div>
     <div class="infinite-list" :style="{ transform: transformOffset }">
+      <!--
+        动画层与下面的普通列表互斥：它从「无」变「有」时整块视口行会被重新挂载
+        （成因与重构思路见 startTreeAnimation 的注释）。所以 before 里那个正在
+        变化的父节点要拿到 arrowAnimation，由 TreeItem 补播一次箭头过渡。
+      -->
       <template v-if="treeAnimation">
         <tree-item
           v-for="item in treeAnimation.before"
@@ -1397,6 +1421,11 @@ defineExpose({
           :select-type="selectType"
           :filter-fn="filterFn"
           :node-icon="nodeIcon"
+          :arrow-animation="
+            item.id === treeAnimation.parentId
+              ? treeAnimation.direction
+              : undefined
+          "
           @check-click="checkClick"
           @item-click="itemClick"
         >

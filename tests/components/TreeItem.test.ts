@@ -107,12 +107,16 @@ describe('TreeItem: 节点组件', () => {
     expect(
       mount(TreeItem, {
         props: { ...baseProps, item: makeItem({ id: 'hidden' }) },
-      }).find('.giant-tree__node-icon').exists()
+      })
+        .find('.giant-tree__node-icon')
+        .exists()
     ).toBe(false)
     expect(
       mount(TreeItem, {
         props: { ...baseProps, item: makeItem({ id: 'file' }) },
-      }).find('.app-icon-file').exists()
+      })
+        .find('.app-icon-file')
+        .exists()
     ).toBe(true)
     expect(
       mount(TreeItem, {
@@ -120,7 +124,9 @@ describe('TreeItem: 节点组件', () => {
           ...baseProps,
           item: makeItem({ leftNode: 0, rightNode: 5, collapsed: false }),
         },
-      }).find('.app-icon-folder-open').exists()
+      })
+        .find('.app-icon-folder-open')
+        .exists()
     ).toBe(true)
   })
 
@@ -256,5 +262,68 @@ describe('TreeItem: 节点组件', () => {
     expect(wrapper.find('.item-actions').text()).toBe('编辑')
     await wrapper.find('.edit-action').trigger('click')
     expect(wrapper.emitted('item-click')).toBeFalsy()
+  })
+})
+
+describe('TreeItem: 箭头动画', () => {
+  /**
+   * 箭头在第二帧才切到目标角度（第一帧用于让旧角度进入样式计算），
+   * 所以这里需要等两帧。
+   */
+  const nextFrames = async () => {
+    await new Promise(resolve => requestAnimationFrame(() => resolve(null)))
+    await new Promise(resolve => requestAnimationFrame(() => resolve(null)))
+  }
+
+  const mountBranch = (options: {
+    collapsed: boolean
+    arrowAnimation?: 'expand' | 'collapse'
+  }) =>
+    mount(TreeItem, {
+      props: {
+        item: makeItem({
+          leftNode: 0,
+          rightNode: 5,
+          collapsed: options.collapsed,
+        }),
+        fontSize: '14px',
+        selectType: SelectType.CHECKBOX,
+        arrowAnimation: options.arrowAnimation,
+      },
+    })
+
+  it('expand 动画的行先渲染旧角度，再切到展开角度', async () => {
+    const wrapper = mountBranch({ collapsed: false, arrowAnimation: 'expand' })
+    // 新元素若一出生就是目标角度，CSS transition 就没有起点可过渡
+    expect(wrapper.find('.giant-tree__icon-arrow-right').exists()).toBe(true)
+    await nextFrames()
+    await wrapper.vm.$nextTick()
+    expect(wrapper.find('.giant-tree__icon-arrow-down').exists()).toBe(true)
+    expect(wrapper.find('.giant-tree__icon-arrow-right').exists()).toBe(false)
+  })
+
+  it('collapse 动画的行先渲染旧角度，再切到折叠角度', async () => {
+    const wrapper = mountBranch({
+      collapsed: true,
+      arrowAnimation: 'collapse',
+    })
+    expect(wrapper.find('.giant-tree__icon-arrow-down').exists()).toBe(true)
+    await nextFrames()
+    await wrapper.vm.$nextTick()
+    expect(wrapper.find('.giant-tree__icon-arrow-right').exists()).toBe(true)
+    expect(wrapper.find('.giant-tree__icon-arrow-down').exists()).toBe(false)
+  })
+
+  it('未参与动画的行直接渲染目标角度', () => {
+    expect(
+      mountBranch({ collapsed: false })
+        .find('.giant-tree__icon-arrow-down')
+        .exists()
+    ).toBe(true)
+    expect(
+      mountBranch({ collapsed: true })
+        .find('.giant-tree__icon-arrow-right')
+        .exists()
+    ).toBe(true)
   })
 })

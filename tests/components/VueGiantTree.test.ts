@@ -411,4 +411,42 @@ describe('VueGiantTree: 主组件', () => {
     await flushPromises()
     expect(wrapper.find('.giant-tree').exists()).toBe(true)
   })
+
+  it('首次展开：箭头先从旧角度起步，下一帧才切到展开角度', async () => {
+    const wrapper = mount(VueGiantTree, {
+      props: {
+        modelValue: [],
+        tree: makeTreeData(),
+        root: 'root',
+      },
+    })
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.find('.giant-tree__icon-arrow-right').exists()).toBe(true)
+
+    await wrapper.findAll('.item-icon')[0].trigger('click')
+    await wrapper.vm.$nextTick()
+
+    // 展开会重建整块视口 DOM。新箭头若直接渲染成展开角度，CSS transition
+    // 没有起点可过渡，就是用户看到的「第一次展开箭头不动」。
+    expect(
+      wrapper
+        .findAll('.tree-item')[0]
+        .find('.giant-tree__icon-arrow-right')
+        .exists()
+    ).toBe(true)
+
+    // 箭头在第二帧才切到目标角度（第一帧让旧角度进入样式计算）
+    await new Promise(resolve => requestAnimationFrame(() => resolve(null)))
+    await new Promise(resolve => requestAnimationFrame(() => resolve(null)))
+    await wrapper.vm.$nextTick()
+
+    expect(
+      wrapper
+        .findAll('.tree-item')[0]
+        .find('.giant-tree__icon-arrow-down')
+        .exists()
+    ).toBe(true)
+  })
 })
