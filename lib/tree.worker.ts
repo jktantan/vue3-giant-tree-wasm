@@ -14,7 +14,7 @@ let pendingSnapshotRevision = -1
 let snapshotScheduled = false
 let pendingCheckedResultRevision = -1
 let checkedResultScheduled = false
-let pendingStructure: any[] = []
+const pendingStructure: any[] = []
 let structureFlushScheduled = false
 let commandsHandled = 0
 let snapshotsSent = 0
@@ -28,8 +28,12 @@ const idField = () => config.fieldKeys.idField ?? 'id'
 const parentField = () => config.fieldKeys.parentIdField ?? 'parentId'
 const idOf = (node: Input) => String(node[idField()] ?? '')
 const workerMetrics = () => ({
-  commandsHandled, snapshotsSent, structuralBatches, structuralOperations,
-  lastBatchSize, lastResponseMs: performance.now() - lastCommandStartedAt,
+  commandsHandled,
+  snapshotsSent,
+  structuralBatches,
+  structuralOperations,
+  lastBatchSize,
+  lastResponseMs: performance.now() - lastCommandStartedAt,
   lastSerializeMs,
 })
 const scheduleCheckedResult = (revision: number) => {
@@ -52,10 +56,20 @@ const snapshot = (revision: number, mutation?: any) => {
   if (mutation) {
     const serializeStartedAt = performance.now()
     wasm.setBoundary(tree, scrollTop, scrollHeight)
-    const size = wasm.getSize(tree), listHeight = wasm.getShownHeight(tree), rows = JSON.parse(wasm.getShownNodes(tree))
+    const size = wasm.getSize(tree),
+      listHeight = wasm.getShownHeight(tree),
+      rows = JSON.parse(wasm.getShownNodes(tree))
     lastSerializeMs = performance.now() - serializeStartedAt
     snapshotsSent++
-    self.postMessage({ type: 'snapshot', revision, size, listHeight, rows, mutation, metrics: workerMetrics() })
+    self.postMessage({
+      type: 'snapshot',
+      revision,
+      size,
+      listHeight,
+      rows,
+      mutation,
+      metrics: workerMetrics(),
+    })
     return
   }
   pendingSnapshotRevision = revision
@@ -67,17 +81,36 @@ const snapshot = (revision: number, mutation?: any) => {
     if (!tree) return
     const serializeStartedAt = performance.now()
     wasm.setBoundary(tree, scrollTop, scrollHeight)
-    const size = wasm.getSize(tree), listHeight = wasm.getShownHeight(tree), rows = JSON.parse(wasm.getShownNodes(tree))
+    const size = wasm.getSize(tree),
+      listHeight = wasm.getShownHeight(tree),
+      rows = JSON.parse(wasm.getShownNodes(tree))
     lastSerializeMs = performance.now() - serializeStartedAt
     snapshotsSent++
-    self.postMessage({ type: 'snapshot', revision: nextRevision, size, listHeight, rows, metrics: workerMetrics() })
+    self.postMessage({
+      type: 'snapshot',
+      revision: nextRevision,
+      size,
+      listHeight,
+      rows,
+      metrics: workerMetrics(),
+    })
   }, 0)
 }
 const rebuild = (next: Input[]) => {
   input = next
   const k = config.fieldKeys
   tree = Object.keys(k).length
-    ? wasm.newTreeWithKeys(config.root, config.lineHeight, config.selectType, k.idField ?? 'id', k.nameField ?? 'name', k.parentIdField ?? 'parentId', k.leftNodeField ?? 'leftNode', k.rightNodeField ?? 'rightNode', false)
+    ? wasm.newTreeWithKeys(
+        config.root,
+        config.lineHeight,
+        config.selectType,
+        k.idField ?? 'id',
+        k.nameField ?? 'name',
+        k.parentIdField ?? 'parentId',
+        k.leftNodeField ?? 'leftNode',
+        k.rightNodeField ?? 'rightNode',
+        false
+      )
     : wasm.newTree(config.root, config.lineHeight, config.selectType, false)
   wasm.setTrackInputLayouts(tree, false)
   wasm.setUsePreorderedNeighborInput(tree, config.preorderedInput === true)
@@ -87,7 +120,17 @@ const rebuild = (next: Input[]) => {
 const createEmptyTree = () => {
   const k = config.fieldKeys
   tree = Object.keys(k).length
-    ? wasm.newTreeWithKeys(config.root, config.lineHeight, config.selectType, k.idField ?? 'id', k.nameField ?? 'name', k.parentIdField ?? 'parentId', k.leftNodeField ?? 'leftNode', k.rightNodeField ?? 'rightNode', false)
+    ? wasm.newTreeWithKeys(
+        config.root,
+        config.lineHeight,
+        config.selectType,
+        k.idField ?? 'id',
+        k.nameField ?? 'name',
+        k.parentIdField ?? 'parentId',
+        k.leftNodeField ?? 'leftNode',
+        k.rightNodeField ?? 'rightNode',
+        false
+      )
     : wasm.newTree(config.root, config.lineHeight, config.selectType, false)
   wasm.setTrackInputLayouts(tree, false)
   wasm.setUsePreorderedNeighborInput(tree, config.preorderedInput === true)
@@ -108,7 +151,16 @@ const applyStructure = (m: any) => {
   if (m.type === 'add') {
     const parentId = String(m.node[parentField()] ?? '')
     const nameField = config.fieldKeys.nameField ?? 'name'
-    if (idOf(m.node) && wasm.appendChild(tree, idOf(m.node), String(m.node[nameField] ?? idOf(m.node)), parentId, m.node.disabled === true)) {
+    if (
+      idOf(m.node) &&
+      wasm.appendChild(
+        tree,
+        idOf(m.node),
+        String(m.node[nameField] ?? idOf(m.node)),
+        parentId,
+        m.node.disabled === true
+      )
+    ) {
       if (inputReady) input.push(m.node)
       return { type: 'add', node: m.node }
     }
@@ -143,8 +195,7 @@ const flushStructure = () => {
   if (mutations.length > 0) {
     snapshot(revision, { type: 'batch', mutations })
     scheduleCheckedResult(revision)
-  }
-  else snapshot(revision)
+  } else snapshot(revision)
 }
 const enqueueStructure = (m: any) => {
   pendingStructure.push(m)
@@ -160,8 +211,13 @@ const handle = (m: any) => {
   lastCommandStartedAt = performance.now()
   const revision = Number(m.revision ?? 0)
   if (m.type === 'stream-start') {
-    config = m.config; scrollTop = m.scrollTop ?? 0; scrollHeight = m.scrollHeight ?? 0
-    input = []; inputReady = false; createEmptyTree(); return
+    config = m.config
+    scrollTop = m.scrollTop ?? 0
+    scrollHeight = m.scrollHeight ?? 0
+    input = []
+    inputReady = false
+    createEmptyTree()
+    return
   }
   if (m.type === 'stream-batch') {
     if (!tree) return
@@ -171,18 +227,33 @@ const handle = (m: any) => {
   }
   if (m.type === 'stream-finish') {
     if (!tree) return
-    wasm.popNeighbor(tree); snapshot(revision); scheduleCheckedResult(revision); return
+    wasm.popNeighbor(tree)
+    snapshot(revision)
+    scheduleCheckedResult(revision)
+    return
   }
   if (m.type === 'init' || m.type === 'replace') {
-    config = m.config; scrollTop = m.scrollTop ?? 0; scrollHeight = m.scrollHeight ?? 0; rebuild(m.tree); inputReady = true; snapshot(revision); scheduleCheckedResult(revision); return
+    config = m.config
+    scrollTop = m.scrollTop ?? 0
+    scrollHeight = m.scrollHeight ?? 0
+    rebuild(m.tree)
+    inputReady = true
+    snapshot(revision)
+    scheduleCheckedResult(revision)
+    return
   }
   if (!tree) return
-  if (m.type === 'add' || m.type === 'remove') { enqueueStructure(m); return }
+  if (m.type === 'add' || m.type === 'remove') {
+    enqueueStructure(m)
+    return
+  }
   // Preserve command order: a check/collapse/search after an add or delete
   // must observe that structural change, even before the timer fires.
   flushStructure()
-  if (m.type === 'boundary') { scrollTop = m.scrollTop; scrollHeight = m.scrollHeight }
-  else if (m.type === 'collapse') wasm.collapseTree(tree, m.id, m.collapsed)
+  if (m.type === 'boundary') {
+    scrollTop = m.scrollTop
+    scrollHeight = m.scrollHeight
+  } else if (m.type === 'collapse') wasm.collapseTree(tree, m.id, m.collapsed)
   else if (m.type === 'collapse-all') wasm.collapseAll(tree, m.collapsed)
   else if (m.type === 'check') wasm.checkNode(tree, m.id, m.checked)
   else if (m.type === 'clear-check') wasm.clearCheckedNodes(tree)
@@ -196,20 +267,40 @@ const handle = (m: any) => {
     if (structural) {
       ensureInput()
       const index = input.findIndex(node => idOf(node) === m.id)
-      if (index < 0) { snapshot(revision); return }
+      if (index < 0) {
+        snapshot(revision)
+        return
+      }
       input[index] = { ...input[index], ...m.patch }
       rebuild(input)
-    } else if (nameField in m.patch && wasm.updateNodeName(tree, m.id, String(m.patch[nameField]))) {
-      snapshot(revision, { type: 'update', id: m.id, patch: m.patch }); return
+    } else if (
+      nameField in m.patch &&
+      wasm.updateNodeName(tree, m.id, String(m.patch[nameField]))
+    ) {
+      snapshot(revision, { type: 'update', id: m.id, patch: m.patch })
+      return
     }
   }
   snapshot(revision)
   if (
-    m.type === 'check' || m.type === 'clear-check' ||
-    m.type === 'set-check' || m.type === 'set-checks' ||
+    m.type === 'check' ||
+    m.type === 'clear-check' ||
+    m.type === 'set-check' ||
+    m.type === 'set-checks' ||
     m.type === 'set-output'
-  ) scheduleCheckedResult(revision)
+  )
+    scheduleCheckedResult(revision)
 }
-self.onmessage = e => { if (ready) handle(e.data); else queue.push(e.data) }
+self.onmessage = e => {
+  if (ready) handle(e.data)
+  else queue.push(e.data)
+}
 self.postMessage({ type: 'boot' })
-void import('../build/release').then(module => { wasm = module; ready = true; self.postMessage({ type: 'ready' }); for (const m of queue.splice(0)) handle(m) }).catch(error => self.postMessage({ type: 'fatal', error: String(error) }))
+void import('../build/release')
+  .then(module => {
+    wasm = module
+    ready = true
+    self.postMessage({ type: 'ready' })
+    for (const m of queue.splice(0)) handle(m)
+  })
+  .catch(error => self.postMessage({ type: 'fatal', error: String(error) }))

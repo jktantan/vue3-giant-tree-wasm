@@ -60,7 +60,8 @@ export class CompactNodeStore {
       while (
         open.length > 0 &&
         this.right[open[open.length - 1]] <= this.left[i]
-      ) this.subtreeEnd[open.pop()] = i
+      )
+        this.subtreeEnd[open.pop()] = i
       while (
         stack.length > 0 &&
         this.depth[stack[stack.length - 1]] >= this.depth[i]

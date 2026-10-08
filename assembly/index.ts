@@ -8,7 +8,7 @@ import {
   CheckedOutputMode,
   DisplayType,
   SelectType,
-  TreeFieldKeys,
+  // TreeFieldKeys,
 } from './models'
 import { GiantTree } from './giant-tree'
 import { LazyCheckRangeStore } from './lazy-check-range-store'
@@ -216,7 +216,11 @@ export function setCheckedOutputMode(
   target.setCheckedOutputMode(mode)
 }
 
-export function updateNodeName(target: GiantTree, id: string, name: string): bool {
+export function updateNodeName(
+  target: GiantTree,
+  id: string,
+  name: string
+): bool {
   return target.updateNodeName(id, name)
 }
 
@@ -224,7 +228,13 @@ export function getSubtreeIds(target: GiantTree, id: string): string[] {
   return target.getSubtreeIds(id)
 }
 
-export function appendChild(target: GiantTree, id: string, name: string, parentId: string, disabled: bool = false): bool {
+export function appendChild(
+  target: GiantTree,
+  id: string,
+  name: string,
+  parentId: string,
+  disabled: bool = false
+): bool {
   return target.appendChild(id, name, parentId, disabled)
 }
 

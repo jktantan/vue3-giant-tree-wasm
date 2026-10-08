@@ -160,9 +160,17 @@ type WorkerMetrics = {
   visibleRows: number
 }
 let workerMetrics: WorkerMetrics = {
-  enabled: false, pendingCommands: 0, commandsSent: 0, snapshotsReceived: 0,
-  lastRoundTripMs: 0, lastWorkerResponseMs: 0, lastWorkerSerializeMs: 0,
-  structuralBatches: 0, structuralOperations: 0, lastBatchSize: 0, visibleRows: 0,
+  enabled: false,
+  pendingCommands: 0,
+  commandsSent: 0,
+  snapshotsReceived: 0,
+  lastRoundTripMs: 0,
+  lastWorkerResponseMs: 0,
+  lastWorkerSerializeMs: 0,
+  structuralBatches: 0,
+  structuralOperations: 0,
+  lastBatchSize: 0,
+  visibleRows: 0,
 }
 const workerCommandStartedAt = new Map<number, number>()
 // Worker replies can arrive before Vue has propagated the preceding v-model
@@ -550,8 +558,7 @@ const preventScrollWhileAnimating = (event: Event) => {
 
 const rowsInside = (items: TreeNodeData[], parent: TreeNodeData) =>
   items.filter(
-    item =>
-      item.leftNode > parent.leftNode && item.leftNode < parent.rightNode
+    item => item.leftNode > parent.leftNode && item.leftNode < parent.rightNode
   )
 
 const finishTreeAnimation = () => {
@@ -704,7 +711,8 @@ const refreshInputNodeById = (items: TreeMutationItem[]) => {
 
 // Vue props may be reactive proxies, which the structured-clone algorithm used
 // by Worker.postMessage rejects. Tree input is JSON-shaped by contract.
-const cloneForWorker = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T
+const cloneForWorker = <T,>(value: T): T =>
+  JSON.parse(JSON.stringify(value)) as T
 
 const postWorker = (type: string, payload: Record<string, unknown> = {}) => {
   if (!worker) return undefined
@@ -713,9 +721,7 @@ const postWorker = (type: string, payload: Record<string, unknown> = {}) => {
     workerCommandStartedAt.set(revision, now())
     workerMetrics.commandsSent++
     workerMetrics.pendingCommands = workerCommandStartedAt.size
-    worker.postMessage(
-      cloneForWorker({ type, revision, ...payload })
-    )
+    worker.postMessage(cloneForWorker({ type, revision, ...payload }))
     return revision
   } catch {
     worker.terminate()
@@ -782,7 +788,9 @@ const streamWorkerTree = async () => {
       nameField,
       parentIdField
     )
-    postWorkerTransfer('stream-batch', { payload: payload.buffer }, [payload.buffer])
+    postWorkerTransfer('stream-batch', { payload: payload.buffer }, [
+      payload.buffer,
+    ])
     if (start + size < props.tree.length) await nextBuildTurn()
   }
   postWorker('stream-finish')
@@ -792,12 +800,15 @@ const applyWorkerMutation = (mutation: any) => {
   if (!mutation) return
   const idField = props.fieldKeys.idField ?? 'id'
   let next = workerInput
-  const mutations = mutation.type === 'batch' ? mutation.mutations ?? [] : [mutation]
+  const mutations =
+    mutation.type === 'batch' ? (mutation.mutations ?? []) : [mutation]
   let changed = false
   for (const item of mutations) {
     if (item.type === 'update') {
       next = next.map(node =>
-        String(node[idField] ?? '') === item.id ? { ...node, ...item.patch } : node
+        String(node[idField] ?? '') === item.id
+          ? { ...node, ...item.patch }
+          : node
       )
       changed = true
     } else if (item.type === 'add') {
@@ -879,7 +890,8 @@ const startWorker = () => {
     // safely discardable.
     if (snapshot.revision < workerRevision && !snapshot.mutation) return
     const hasCheckedResult = snapshot.checkedIds !== undefined
-    if (snapshot.checkedIds !== undefined) workerCheckedIds = snapshot.checkedIds
+    if (snapshot.checkedIds !== undefined)
+      workerCheckedIds = snapshot.checkedIds
     workerTreeSize = snapshot.size
     isTreeReady = true
     listHeight.value = snapshot.listHeight
@@ -1211,7 +1223,9 @@ const updateNode = (id: string, patch: TreeNodePatch): boolean => {
       ? {
           ...node,
           name:
-            nameField in patch ? String(patch[nameField] ?? node.name) : node.name,
+            nameField in patch
+              ? String(patch[nameField] ?? node.name)
+              : node.name,
           extendData: next[index],
         }
       : node

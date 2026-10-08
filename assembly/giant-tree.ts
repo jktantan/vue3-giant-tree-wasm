@@ -34,7 +34,7 @@ import { fuzzySearchTree } from './tree-search'
 import { LazyCheckRangeStore } from './lazy-check-range-store'
 import {
   serializeShownSlice,
-  serializeShownSliceCompact,
+  // serializeShownSliceCompact,
   serializeShownIndicesCompact,
   serializeMpttArray,
   serializeMpttArrayCompact,
@@ -263,7 +263,8 @@ export class GiantTree {
   }
 
   private _syncAfterStructureMutation(): void {
-    const searchKeyword = this.tree === this.searchTree ? this._lastSearchKeyword : ''
+    const searchKeyword =
+      this.tree === this.searchTree ? this._lastSearchKeyword : ''
     this.idToIndex = buildIdIndex(this.fullTree)
     this.tree = this.fullTree
     this.searchTree.splice(0)
@@ -302,11 +303,19 @@ export class GiantTree {
     else this._rebuildShownNodes()
   }
 
-  appendChild(id: string, name: string, parentId: string, disabled: bool = false): bool {
+  appendChild(
+    id: string,
+    name: string,
+    parentId: string,
+    disabled: bool = false
+  ): bool {
     if (!id.length || this.idToIndex.has(id)) return false
     this._materializeLazyCheckboxRanges()
     let insertIndex = this.fullTree.length
-    let left = this.fullTree.length > 0 ? this.fullTree[this.fullTree.length - 1].rightNode : 1
+    let left =
+      this.fullTree.length > 0
+        ? this.fullTree[this.fullTree.length - 1].rightNode
+        : 1
     let depth: i32 = 0
     if (parentId !== this.root) {
       if (!this.idToIndex.has(parentId)) return false
@@ -319,7 +328,8 @@ export class GiantTree {
       while (
         insertIndex < this.fullTree.length &&
         this.fullTree[insertIndex].leftNode < parent.rightNode
-      ) insertIndex++
+      )
+        insertIndex++
       // Insert at the parent's closing boundary. This makes a new child a
       // sibling of every existing child, and also expands a leaf parent from
       // `[left, left + 1]` into a branch.
@@ -364,7 +374,8 @@ export class GiantTree {
     // positions, so removing it must reclaim two slots rather than one.
     const width = target.rightNode - target.leftNode + 1
     let end = index
-    while (end < this.fullTree.length && this.fullTree[end].leftNode < right) end++
+    while (end < this.fullTree.length && this.fullTree[end].leftNode < right)
+      end++
     for (let i = index; i < end; i++) this.idToIndex.delete(this.fullTree[i].id)
     this.fullTree.splice(index, end - index)
     for (let i: i32 = 0; i < this.fullTree.length; i++) {
@@ -438,14 +449,22 @@ export class GiantTree {
     const layouts = this.trackInputLayouts ? this.inputOrderToFullIndex : null
     let converted: i32 = this.usePreorderedNeighborInput
       ? convertPreorderedNeighborToMptt(
-          neighborTrees, this.root, this.fullTree, layouts, this._shownNodes
+          neighborTrees,
+          this.root,
+          this.fullTree,
+          layouts,
+          this._shownNodes
         )
       : -1
     if (converted < 0) {
       this.fullTree.splice(0)
       this._shownNodes.splice(0)
       converted = convertNeighborToMptt(
-        neighborTrees, this.root, this.fullTree, layouts, this._shownNodes
+        neighborTrees,
+        this.root,
+        this.fullTree,
+        layouts,
+        this._shownNodes
       )
     }
     this.idToIndex = buildIdIndex(this.fullTree)
@@ -493,7 +512,7 @@ export class GiantTree {
     id: string,
     name: string,
     parentId: string,
-    disabled: boolean = false
+    disabled: bool = false
   ): void {
     const nt: NeighborTree = new NeighborTree()
     nt.id = id
