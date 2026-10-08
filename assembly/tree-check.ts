@@ -105,11 +105,9 @@ export function getParentNodeCheckType(
         } else {
           unCheckedNum += 1
         }
-        // 提前退出：已有混合状态 → HALF_CHECKED
-        if (
-          (checkedNum > 0 && (unCheckedNum > 0 || halfCheckedNum > 0)) ||
-          (unCheckedNum > 0 && halfCheckedNum > 0)
-        ) {
+        // 提前退出：只要出现半选子节点，或同时存在已选中与未选中，父节点就
+        // 必然是半选（这样也覆盖了「所有直接子节点都是半选」的情况）。
+        if (halfCheckedNum > 0 || (checkedNum > 0 && unCheckedNum > 0)) {
           return CheckType.HALF_CHECKED
         }
       }
@@ -197,72 +195,6 @@ export function setCheckedNodesInTree(
 }
 
 /**
- * 设置单个节点选中（RADIO/SELECT 简化版本）
- * Sets single node checked (simplified RADIO/SELECT version)
- * Устанавливает один узел выбранным (упрощённая версия RADIO/SELECT)
- *
- * @param fullTree - 完整树数组 / Full tree array / Полный массив дерева
- * @param id - 目标节点ID / Target node ID / ID целевого узла
- * @param selectType - 选择模式 / Selection mode / Режим выбора
- */
-export function setCheckedNodeInTree(
-  fullTree: MpttTree[],
-  id: string,
-  selectType: SelectType,
-  idToIndex: Map<string, i32> | null = null,
-  prevRadioIdx: i32 = -1,
-  prevSelectIdx: i32 = -1
-): i32 {
-  if (idToIndex !== null && (idToIndex as Map<string, i32>).has(id)) {
-    const idx: i32 = (idToIndex as Map<string, i32>).get(id)
-    if (fullTree[idx].disabled) return -1
-    if (selectType === SelectType.RADIO) {
-      if (prevRadioIdx >= 0 && prevRadioIdx !== idx) {
-        fullTree[prevRadioIdx].checked = CheckType.UNCHECKED
-      }
-      fullTree[idx].checked = CheckType.CHECKED
-      return idx
-    } else if (selectType === SelectType.SELECT) {
-      if (prevSelectIdx >= 0 && prevSelectIdx !== idx) {
-        fullTree[prevSelectIdx].selected = CheckType.UNCHECKED
-      }
-      fullTree[idx].selected = CheckType.CHECKED
-      return idx
-    }
-    return -1
-  }
-  // fallback: O(N) 扫描（无 idToIndex 时）
-  if (selectType === SelectType.RADIO) {
-    let targetDisabled = false
-    for (let i = 0; i < fullTree.length; i++) {
-      if (fullTree[i].id === id && fullTree[i].disabled) {
-        targetDisabled = true
-        break
-      }
-    }
-    if (targetDisabled) return -1
-    for (let i = 0; i < fullTree.length; i++) {
-      fullTree[i].checked =
-        fullTree[i].id !== id ? CheckType.UNCHECKED : CheckType.CHECKED
-    }
-  } else if (selectType === SelectType.SELECT) {
-    let targetDisabled = false
-    for (let i = 0; i < fullTree.length; i++) {
-      if (fullTree[i].id === id && fullTree[i].disabled) {
-        targetDisabled = true
-        break
-      }
-    }
-    if (targetDisabled) return -1
-    for (let i = 0; i < fullTree.length; i++) {
-      fullTree[i].selected =
-        fullTree[i].id !== id ? CheckType.UNCHECKED : CheckType.CHECKED
-    }
-  }
-  return -1
-}
-
-/**
  * 获取所有已选中节点的 ID（仅返回 ID，不包含完整数据）
  * Gets IDs of all checked/selected nodes (ID only, no full data)
  * Получает ID всех выбранных узлов (только ID, без полных данных)
@@ -303,7 +235,8 @@ export function getCheckedIdsFromTree(
   }
   if (ids.length === 0) return '[]'
   const escaped: string[] = []
-  for (let i = 0; i < ids.length; i++) escaped.push('"' + escapeString(ids[i]) + '"')
+  for (let i = 0; i < ids.length; i++)
+    escaped.push('"' + escapeString(ids[i]) + '"')
   return '[' + escaped.join(',') + ']'
 }
 

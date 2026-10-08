@@ -24,7 +24,6 @@ import {
 import {
   checkNodeInTree,
   setCheckedNodesInTree,
-  setCheckedNodeInTree,
   getCheckedNodesFromTree,
   getCheckedIdListFromTree,
   getCheckedIdsFromTree,
@@ -34,7 +33,6 @@ import { fuzzySearchTree } from './tree-search'
 import { LazyCheckRangeStore } from './lazy-check-range-store'
 import {
   serializeShownSlice,
-  // serializeShownSliceCompact,
   serializeShownIndicesCompact,
   serializeMpttArray,
   serializeMpttArrayCompact,
@@ -431,10 +429,6 @@ export class GiantTree {
     this.setTree(jsonTree)
   }
 
-  setPreserveExtendData(value: bool): void {
-    this.preserveExtendData = value
-  }
-
   /**
    * 邻接表→MPTT 转换内部方法
    * Internal method for adjacency list → MPTT conversion
@@ -687,31 +681,6 @@ export class GiantTree {
       if (this.idToIndex.has(node.id)) indices.push(this.idToIndex.get(node.id))
     }
     this.compactStore.setShownIndices(indices)
-  }
-
-  private _rebuildCompactShownIndicesFromState(): void {
-    const indices: i32[] = []
-    const boundaries: i32[] = []
-    for (let i: i32 = 0; i < this.fullTree.length; i++) {
-      const left = this.compactStore.left[i]
-      while (boundaries.length > 0 && left >= boundaries[boundaries.length - 1])
-        boundaries.pop()
-      const visible = boundaries.length === 0
-      this.compactStore.shown[i] = visible ? 1 : 0
-      this.fullTree[i].shown = visible
-      if (!visible) continue
-      indices.push(i)
-      if (
-        this.compactStore.collapsed[i] !== 0 &&
-        this.compactStore.right[i] - left > 1
-      )
-        boundaries.push(this.compactStore.right[i])
-    }
-    boundaries.splice(0)
-    this.compactStore.setShownIndices(indices)
-    this._shownNodes.splice(0)
-    for (let i: i32 = 0; i < indices.length; i++)
-      this._shownNodes.push(this.fullTree[indices[i]])
   }
 
   private _clearLazyCheckboxRanges(): void {
@@ -1396,20 +1365,6 @@ export class GiantTree {
       if (this.useCompactSelection)
         this.compactStore.setSelected(targetIdx, CheckType.CHECKED as u8)
       this._selectSelectedIdx = targetIdx
-    } else {
-      const resultIdx = setCheckedNodeInTree(
-        this.fullTree,
-        id,
-        this.selectType,
-        this.idToIndex,
-        this._radioCheckedIdx,
-        this._selectSelectedIdx
-      )
-      if (this.selectType === SelectType.RADIO) {
-        this._radioCheckedIdx = resultIdx
-      } else if (this.selectType === SelectType.SELECT) {
-        this._selectSelectedIdx = resultIdx
-      }
     }
   }
 

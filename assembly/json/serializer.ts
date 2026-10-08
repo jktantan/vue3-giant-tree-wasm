@@ -107,26 +107,6 @@ export class JsonEncoder {
   }
 
   /**
-   * 设置 null 字段
-   * Sets a null field
-   * Устанавливает поле null
-   */
-  setNull(name: string | null): void {
-    this.writeKey(name)
-    this._parts.push('null')
-  }
-
-  /**
-   * 设置浮点数字段
-   * Sets a float field
-   * Устанавливает поле с плавающей точкой
-   */
-  setFloat(name: string | null, value: f64): void {
-    this.writeKey(name)
-    this._parts.push(value.toString())
-  }
-
-  /**
    * 开始一个 JSON 数组
    * Starts a JSON array
    * Начинает JSON-массив

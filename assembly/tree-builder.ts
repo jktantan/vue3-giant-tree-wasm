@@ -20,16 +20,97 @@ function skipWs(src: string, pos: i32, len: i32): i32 {
  */
 // @ts-ignore: decorator
 @inline
+function hexValue(c: i32): i32 {
+  if (c >= 0x30 && c <= 0x39) return c - 0x30 // 0-9
+  if (c >= 0x61 && c <= 0x66) return c - 0x61 + 10 // a-f
+  if (c >= 0x41 && c <= 0x46) return c - 0x41 + 10 // A-F
+  return -1
+}
+
+/**
+ * 解码 JSON 字符串中的转义序列：\" \\ \/ \b \f \n \r \t 和 \uXXXX。
+ * 只有真的出现反斜杠时才会走到这里，普通字段仍走零分配快路径。
+ *
+ * Decodes JSON string escapes. Reached only when a backslash is present, so
+ * ordinary fields keep the zero-allocation fast path.
+ */
+function decodeEscaped(raw: string): string {
+  let result: string = ''
+  let segmentStart: i32 = 0
+  for (let i: i32 = 0; i < raw.length; i++) {
+    if (raw.charCodeAt(i) !== 0x5c) continue
+    result += raw.substring(segmentStart, i)
+    const next = i + 1 < raw.length ? raw.charCodeAt(i + 1) : 0
+    if (next === 0x22) {
+      result += '"'
+      i += 1
+    } else if (next === 0x5c) {
+      result += '\\'
+      i += 1
+    } else if (next === 0x2f) {
+      result += '/'
+      i += 1
+    } else if (next === 0x62) {
+      result += '\b'
+      i += 1
+    } else if (next === 0x66) {
+      result += '\f'
+      i += 1
+    } else if (next === 0x6e) {
+      result += '\n'
+      i += 1
+    } else if (next === 0x72) {
+      result += '\r'
+      i += 1
+    } else if (next === 0x74) {
+      result += '\t'
+      i += 1
+    } else if (next === 0x75 && i + 5 < raw.length) {
+      const h2 = hexValue(raw.charCodeAt(i + 2))
+      const h3 = hexValue(raw.charCodeAt(i + 3))
+      const h4 = hexValue(raw.charCodeAt(i + 4))
+      const h5 = hexValue(raw.charCodeAt(i + 5))
+      if (h2 >= 0 && h3 >= 0 && h4 >= 0 && h5 >= 0) {
+        result += String.fromCharCode((h2 << 12) | (h3 << 8) | (h4 << 4) | h5)
+        i += 5
+      } else {
+        result += '\\'
+      }
+    } else {
+      // 未知转义：保留反斜杠，避免丢字符
+      result += '\\'
+    }
+    segmentStart = i + 1
+  }
+  result += raw.substring(segmentStart)
+  return result
+}
+
+/**
+ * 读取 JSON 字符串内容（解码转义），pos 必须在开引号 " 处
+ * Read a JSON string value (decoding escapes), pos must be at opening quote "
+ * Чтение значения строки JSON (с декодированием экранирования), pos должен быть на открывающей кавычке "
+ */
+// @ts-ignore: decorator
+@inline
 function readStringContent(src: string, pos: i32, len: i32): string {
   pos++ // skip opening "
   const start = pos
+  let escaped = false
   while (pos < len) {
     const c = src.charCodeAt(pos)
     if (c === 0x22) {
       // quote
-      return src.substring(start, pos)
+      return escaped
+        ? decodeEscaped(src.substring(start, pos))
+        : src.substring(start, pos)
     }
-    if (c === 0x5c) pos++ // backslash: skip next char
+    if (c === 0x5c) {
+      // backslash: the next character is escaped, never the closing quote
+      escaped = true
+      pos += 2
+      continue
+    }
     pos++
   }
   return ''
@@ -404,10 +485,7 @@ export function convertPreorderedNeighborToMptt(
 
   for (let i: i32 = 0; i < neighborTrees.length; i++) {
     const nt = neighborTrees[i]
-    while (
-      stack.length > 0 &&
-      stack[stack.length - 1].id !== nt.parentId
-    ) {
+    while (stack.length > 0 && stack[stack.length - 1].id !== nt.parentId) {
       const completed = stack.pop()
       completed.rightNode = next
       next = completed.rightNode + 1
@@ -417,7 +495,10 @@ export function convertPreorderedNeighborToMptt(
       return -1
     }
     const parent = stack.length > 0 ? stack[stack.length - 1] : null
-    if (nt.parentId !== root && (parent === null || parent.id !== nt.parentId)) {
+    if (
+      nt.parentId !== root &&
+      (parent === null || parent.id !== nt.parentId)
+    ) {
       fullTree.splice(0)
       return -1
     }
@@ -433,8 +514,10 @@ export function convertPreorderedNeighborToMptt(
     fullTree.push(mptt)
     if (
       inputOrderToFullIndex !== null &&
-      nt.inputIndex >= 0 && nt.inputIndex < inputOrderToFullIndex.length
-    ) inputOrderToFullIndex[nt.inputIndex] = fullTree.length - 1
+      nt.inputIndex >= 0 &&
+      nt.inputIndex < inputOrderToFullIndex.length
+    )
+      inputOrderToFullIndex[nt.inputIndex] = fullTree.length - 1
     if (nt.parentId === root) {
       mptt.shown = true
       shownCount++

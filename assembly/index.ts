@@ -95,10 +95,6 @@ export function setNeighborTree(target: GiantTree, tree: string): void {
   target.setNeighborTree(tree)
 }
 
-export function setPreserveExtendData(target: GiantTree, value: bool): void {
-  target.setPreserveExtendData(value)
-}
-
 export function setUseCompactSelection(target: GiantTree, value: bool): void {
   target.setUseCompactSelection(value)
 }

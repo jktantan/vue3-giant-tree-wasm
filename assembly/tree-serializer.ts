@@ -52,7 +52,12 @@ function nodeToJson(node: MpttTree, comma: bool): string {
 }
 
 /** Serialize a visible node while sourcing numeric state from the compact store. */
-function nodeToJsonCompact(node: MpttTree, index: i32, store: CompactNodeStore, comma: bool): string {
+function nodeToJsonCompact(
+  node: MpttTree,
+  index: i32,
+  store: CompactNodeStore,
+  comma: bool
+): string {
   let s: string = comma ? ',{"id":"' : '{"id":"'
   s += escapeString(node.id)
   s += '","name":"'
@@ -120,28 +125,6 @@ export function serializeShownSlice(
   return parts.join('')
 }
 
-export function serializeShownSliceCompact(
-  shownNodes: MpttTree[],
-  indices: Int32Array,
-  store: CompactNodeStore,
-  scrollTop: f32,
-  scrollHeight: f32,
-  lineHeight: f32
-): string {
-  const startIdx: i32 = <i32>Math.floor(scrollTop / lineHeight)
-  const endIdx: i32 = <i32>Math.ceil((scrollTop + scrollHeight) / lineHeight) + 1
-  const from: i32 = startIdx < 0 ? 0 : startIdx >= shownNodes.length ? shownNodes.length : startIdx
-  const to: i32 = endIdx < from ? from : endIdx > shownNodes.length ? shownNodes.length : endIdx
-  if (from >= to) return '[]'
-  let result: string = '['
-  for (let i: i32 = from; i < to; i++) {
-    const fullIndex = indices[i]
-    result += nodeToJsonCompact(shownNodes[i], fullIndex, store, i > from)
-  }
-  result += ']'
-  return result
-}
-
 /** Serializes a virtual-list slice directly from compact full-tree indices. */
 export function serializeShownIndicesCompact(
   tree: MpttTree[],
@@ -153,9 +136,12 @@ export function serializeShownIndicesCompact(
   lineHeight: f32
 ): string {
   const startIdx: i32 = <i32>Math.floor(scrollTop / lineHeight)
-  const endIdx: i32 = <i32>Math.ceil((scrollTop + scrollHeight) / lineHeight) + 1
-  const from: i32 = startIdx < 0 ? 0 : startIdx >= shownLength ? shownLength : startIdx
-  const to: i32 = endIdx < from ? from : endIdx > shownLength ? shownLength : endIdx
+  const endIdx: i32 =
+    <i32>Math.ceil((scrollTop + scrollHeight) / lineHeight) + 1
+  const from: i32 =
+    startIdx < 0 ? 0 : startIdx >= shownLength ? shownLength : startIdx
+  const to: i32 =
+    endIdx < from ? from : endIdx > shownLength ? shownLength : endIdx
   if (from >= to) return '[]'
   let result = '['
   for (let i: i32 = from; i < to; i++) {
@@ -297,34 +283,6 @@ export function serializeCheckedNode(node: MpttTree): string {
   encoder.setInteger('selected', node.selected)
   encoder.setBoolean('collapsed', node.collapsed)
   encoder.setBoolean('disabled', node.disabled)
-  encoder.popObject()
-  return encoder.toString()
-}
-
-/**
- * 将单个 MpttTree 节点序列化为 JSON 字符串（使用 JsonEncoder）
- * Serializes a single MpttTree node to a JSON string (using JsonEncoder)
- * Сериализует один узел MpttTree в строку JSON (используя JsonEncoder)
- *
- * @param node - 待序列化的节点 / Node to serialize / Узел для сериализации
- * @returns JSON 字符串 / JSON string / Строка JSON
- */
-export function serializeMpttNode(node: MpttTree): string {
-  const encoder = new JsonEncoder()
-  encoder.pushObject(null)
-  encoder.setString('id', node.id)
-  encoder.setString('name', node.name)
-  encoder.setString('parentId', node.parentId)
-  encoder.setInteger('leftNode', node.leftNode)
-  encoder.setInteger('rightNode', node.rightNode)
-  encoder.setInteger('deep', node.deep)
-  encoder.setInteger('checked', node.checked)
-  encoder.setInteger('selected', node.selected)
-  encoder.setBoolean('collapsed', node.collapsed)
-  encoder.setBoolean('disabled', node.disabled)
-  if (node.extendData.length > 0) {
-    encoder.setRawJson('extendData', node.extendData)
-  }
   encoder.popObject()
   return encoder.toString()
 }

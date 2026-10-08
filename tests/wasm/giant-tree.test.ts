@@ -36,6 +36,7 @@ import {
   updateNodeName,
   appendChild,
   removeSubtree,
+  setNeighborTree,
   beginStructureBatch,
   endStructureBatch,
   SelectType,
@@ -45,6 +46,58 @@ import {
 } from '../wasm-bridge'
 
 describe('giant-tree: 集成测试', () => {
+  it('解析含 JSON 转义字符的 id 与 name', () => {
+    const tree = newTree('root', 26, SelectType.CHECKBOX)
+    const input = [
+      {
+        id: 'id-"quote"-\\slash',
+        name: 'line\nbreak\ttab\u0041',
+        parentId: 'root',
+      },
+    ]
+    setNeighborTree(tree, JSON.stringify(input))
+
+    // 转义必须被解码：否则 id 与原数据不一致，按 id 的查找/展开/选中会全部失配
+    expect(getAllNodeIds(tree)).toEqual([input[0].id])
+    const parsed = JSON.parse(getAllNodes(tree)) as Array<{ name: string }>
+    expect(parsed[0].name).toBe(input[0].name)
+  })
+
+  it('所有直接子节点都是半选时父节点保持半选', () => {
+    // true 走 compactStore，false 走 tree-check.ts 里的 fallback 实现
+    for (const compact of [true, false]) {
+      const tree = newTree('root', 26, SelectType.CHECKBOX)
+      setUseCompactSelection(tree, compact)
+      for (const [id, parentId] of [
+        ['P', 'root'],
+        ['A', 'P'],
+        ['A1', 'A'],
+        ['A2', 'A'],
+        ['B', 'P'],
+        ['B1', 'B'],
+        ['B2', 'B'],
+      ])
+        pushNeighborNode(tree, id, id, parentId)
+      popNeighbor(tree)
+
+      checkNode(tree, 'A1', CheckType.CHECKED)
+      checkNode(tree, 'B1', CheckType.CHECKED)
+
+      const states = Object.fromEntries(
+        (
+          JSON.parse(getAllNodes(tree)) as Array<{
+            id: string
+            checked: number
+          }>
+        ).map(node => [node.id, node.checked])
+      )
+      expect(states.A).toBe(CheckType.HALF_CHECKED)
+      expect(states.B).toBe(CheckType.HALF_CHECKED)
+      // A 与 B 都是半选，父节点 P 也必须是半选，而不是未选中
+      expect(states.P).toBe(CheckType.HALF_CHECKED)
+    }
+  })
+
   it('前序邻接表快速构建与通用构建一致，并在乱序时自动回退', () => {
     const fast = newTree('root', 26, SelectType.CHECKBOX)
     const normal = newTree('root', 26, SelectType.CHECKBOX)
@@ -80,7 +133,9 @@ describe('giant-tree: 集成测试', () => {
     expect(removeSubtree(tree, 'B')).toBe(true)
     endStructureBatch(tree)
 
-    expect(JSON.parse(getAllNodes(tree)).map((node: { id: string }) => node.id)).toEqual(['A'])
+    expect(
+      JSON.parse(getAllNodes(tree)).map((node: { id: string }) => node.id)
+    ).toEqual(['A'])
   })
 
   it('增量新增、编辑和删除维护 MPTT 子树范围', () => {
@@ -105,7 +160,9 @@ describe('giant-tree: 集成测试', () => {
 
     expect(removeSubtree(tree, 'A')).toBe(true)
     expect(getSize(tree)).toBe(1)
-    expect(JSON.parse(getAllNodes(tree)).map((node: { id: string }) => node.id)).toEqual(['B'])
+    expect(
+      JSON.parse(getAllNodes(tree)).map((node: { id: string }) => node.id)
+    ).toEqual(['B'])
   })
 
   it('删除中间的已选节点后保留剩余 checkbox 状态并更新父节点', () => {
@@ -206,53 +263,14 @@ describe('giant-tree: 集成测试', () => {
     popNeighbor(tree)
 
     expect(getNodeLayouts(tree, ['B', 'A1', 'missing'])).toEqual([
-      2,
-      4,
-      5,
-      0,
-      0,
-      1,
-      1,
-      2,
-      1,
-      1,
-      -1,
-      0,
-      0,
-      0,
-      0,
+      2, 4, 5, 0, 0, 1, 1, 2, 1, 1, -1, 0, 0, 0, 0,
     ])
     expect(getAllNodeIds(tree)).toEqual(['A', 'A1', 'B'])
     expect(getAllNodeLayouts(tree)).toEqual([
-      0,
-      3,
-      0,
-      1,
-      1,
-      2,
-      1,
-      1,
-      4,
-      5,
-      0,
-      0,
+      0, 3, 0, 1, 1, 2, 1, 1, 4, 5, 0, 0,
     ])
     expect(getInputNodeLayouts(tree)).toEqual([
-      0,
-      0,
-      3,
-      0,
-      1,
-      1,
-      1,
-      2,
-      1,
-      1,
-      2,
-      4,
-      5,
-      0,
-      0,
+      0, 0, 3, 0, 1, 1, 1, 2, 1, 1, 2, 4, 5, 0, 0,
     ])
     clearInputNodeLayouts(tree)
     expect(getInputNodeLayouts(tree)).toEqual([])
