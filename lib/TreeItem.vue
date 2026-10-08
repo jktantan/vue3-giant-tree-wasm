@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { SelectType, CheckType } from '../build/release'
 import type { FilterFn, NodeIconResolver, TreeNodeData } from './types'
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed } from 'vue'
 
 const props = defineProps<{
   item: TreeNodeData
@@ -9,11 +9,6 @@ const props = defineProps<{
   selectType: SelectType
   filterFn?: FilterFn
   nodeIcon?: boolean | NodeIconResolver
-  /**
-   * 行因分支展开/折叠动画而重建 DOM 时，箭头必须先渲染旧角度再切到目标角度，
-   * 否则新元素一出生就是目标角度，CSS transition 不会播放（首次展开箭头不动）。
-   */
-  arrowAnimation?: 'expand' | 'collapse'
 }>()
 
 const emit = defineEmits(['collapse-click', 'check-click', 'item-click'])
@@ -44,34 +39,6 @@ const nodeIconClass = computed<string | undefined>(() => {
     ? icon.collapsed
     : (icon.expanded ?? icon.collapsed)
 })
-/**
- * 箭头展示状态。分支动画会重建整块视口 DOM，新建的箭头元素一开始就是目标角度，
- * 所以这里让它先用旧角度渲染一帧，再切到目标角度，给 CSS transition 一个起点。
- */
-const arrowSettled = ref(false)
-let arrowRafId = 0
-onMounted(() => {
-  if (!props.arrowAnimation) {
-    arrowSettled.value = true
-    return
-  }
-  // 必须等到第二帧：第一帧让旧角度真正进入样式计算并绘制，第二帧才切到
-  // 目标角度。否则浏览器只看到最终状态，新元素依然不会播放 transition。
-  arrowRafId = requestAnimationFrame(() => {
-    arrowRafId = requestAnimationFrame(() => {
-      arrowRafId = 0
-      arrowSettled.value = true
-    })
-  })
-})
-onUnmounted(() => {
-  if (arrowRafId) cancelAnimationFrame(arrowRafId)
-})
-const arrowCollapsed = computed(() =>
-  !arrowSettled.value && props.arrowAnimation
-    ? props.arrowAnimation === 'expand'
-    : props.item.collapsed
-)
 const collapsedClick = () => {
   emit('collapse-click', props.item.id, !props.item.collapsed)
 }
@@ -118,7 +85,7 @@ const itemClick = () => {
         :style="{ width: fontSize, height: fontSize }"
         class="giant-tree__mask-button"
         :class="
-          arrowCollapsed
+          item.collapsed
             ? 'giant-tree__icon-arrow-right'
             : 'giant-tree__icon-arrow-down'
         "

@@ -116,13 +116,10 @@ const currentTreeList = ref<TreeNodeData[]>([])
  */
 type TreeAnimation = {
   direction: 'expand' | 'collapse'
-  /** settled keeps stable sibling DOM in place after the transition. */
-  phase: 'running' | 'settled'
-  /** 正在展开/折叠的父节点；这一行的 DOM 会被重建，箭头需要补播过渡。 */
+  /** 正在展开/折叠的父节点：过渡容器插在这一行之后。 */
   parentId: string
-  before: TreeNodeData[]
+  /** 参与高度过渡的行：展开时是新出现的子行，折叠时是即将消失的子行。 */
   rows: TreeNodeData[]
-  after: TreeNodeData[]
   height: number
 }
 const treeAnimation = ref<TreeAnimation>()
@@ -134,9 +131,15 @@ let pendingResizeHeight: number | undefined
 let pendingWorkerCollapse:
   | { revision: number; id: string; collapsed: boolean; before: TreeNodeData[] }
   | undefined
-const isTreeAnimating = () => treeAnimation.value?.phase === 'running'
-const releaseSettledRenderPlan = () => {
-  if (treeAnimation.value?.phase === 'settled') treeAnimation.value = undefined
+const isTreeAnimating = () => treeAnimation.value !== undefined
+/** 立即结束并释放当前过渡：容器消失，rows 交回普通列表。 */
+const releaseTreeAnimation = () => {
+  if (animationTimer !== undefined) {
+    clearTimeout(animationTimer)
+    animationTimer = undefined
+  }
+  animationOpen.value = false
+  treeAnimation.value = undefined
 }
 let allNodesCache: TreeNodeData[] = []
 let isTreeReady = false
@@ -239,7 +242,6 @@ const ro = new ResizeObserver((entries: ResizeObserverEntry[]) => {
     pendingResizeHeight = height
     return
   }
-  releaseSettledRenderPlan()
   scrollHeight = height
   if (resizeRefreshTimer !== undefined) return
   // Keep DOM updates out of the observer callback to avoid Chromium resize loops.
@@ -533,7 +535,6 @@ const scrollEvent = (event: Event) => {
     if (target.scrollTop !== frozenScrollTop) target.scrollTop = frozenScrollTop
     return
   }
-  releaseSettledRenderPlan()
   if (scrollRafId) return
   scrollRafId = requestAnimationFrame(() => {
     scrollRafId = 0
@@ -556,19 +557,30 @@ const rowsInside = (items: TreeNodeData[], parent: TreeNodeData) =>
     item => item.leftNode > parent.leftNode && item.leftNode < parent.rightNode
   )
 
+/** 过渡容器正在承载的行：普通列表要跳过这些 id，避免同一 key 渲染两次。 */
+const animationRowIds = computed(
+  () => new Set(treeAnimation.value?.rows.map(row => row.id) ?? [])
+)
+/** 过渡容器插在哪一行之后（正在展开/折叠的父节点）。 */
+const animationParentId = computed(() => treeAnimation.value?.parentId)
+/** 容器里渲染的行。 */
+const transitionRows = computed(() => treeAnimation.value?.rows ?? [])
+/** 容器方向，仅用于挂 CSS 类。 */
+const transitionDirection = computed(
+  () => treeAnimation.value?.direction ?? 'expand'
+)
+/** 过渡容器的高度：展开到 rows 总高、折叠到 0。 */
+const branchTransitionHeight = computed(() =>
+  animationOpen.value ? (treeAnimation.value?.height ?? 0) : 0
+)
+
 const finishTreeAnimation = () => {
-  const animation = treeAnimation.value
-  if (!animation || animation.phase !== 'running') return
-  if (animationTimer !== undefined) {
-    clearTimeout(animationTimer)
-    animationTimer = undefined
-  }
-  // Do not switch back to the normal v-for here: that would remount every
-  // stable row around the branch and produces a visible flash. For collapse,
-  // the transition div simply disappears. For expansion, only its own rows
-  // are promoted to ordinary rows; before/after rows retain their DOM.
-  treeAnimation.value = { ...animation, phase: 'settled' }
-  animationOpen.value = false
+  if (!treeAnimation.value) return
+  // 过渡一结束就释放：容器随之消失。展开时 rows 交回普通列表（它们本来就该常驻），
+  // 折叠时 rows 不在 currentTreeList 里，于是随容器一起离开 DOM —— 否则一个
+  // height:0 的容器会把已经收起的行留在可聚焦、可读的 DOM 里。
+  // 普通行全程由 currentTreeList 渲染，不参与这次交接。
+  releaseTreeAnimation()
 
   const resizeHeight = pendingResizeHeight
   if (resizeHeight !== undefined) {
@@ -578,8 +590,6 @@ const finishTreeAnimation = () => {
   if (isUsingWorker()) {
     // The worker has already supplied the final viewport rows. Returning to
     // normal rendering must not consult the dormant main-thread WASM tree.
-    // Keep the settled render plan, just like main-thread mode: replacing it
-    // immediately remounts all surrounding virtual rows and causes a flash.
     if (resizeHeight !== undefined)
       postWorker('boundary', { scrollTop, scrollHeight })
     return
@@ -589,54 +599,41 @@ const finishTreeAnimation = () => {
   refreshTree()
 }
 
-/** Selection can still be changed during an animation. Rebind the temporary
+/** Selection can still be changed during an animation. Rebind the transition
  * rows to the refreshed cache so their controls do not show stale state. */
 const syncAnimationRows = () => {
   const animation = treeAnimation.value
   if (!animation) return
   const latestById = new Map(allNodesCache.map(item => [item.id, item]))
-  const sync = (rows: TreeNodeData[]) =>
-    rows.map(item => latestById.get(item.id) ?? item)
   treeAnimation.value = {
     ...animation,
-    before: sync(animation.before),
-    rows: sync(animation.rows),
-    after: sync(animation.after),
+    rows: animation.rows.map(item => latestById.get(item.id) ?? item),
   }
 }
 
-/** Worker snapshots update the ordinary virtual list first. If a completed
- * branch animation is still holding stable DOM, rebind those same DOM rows to
- * the fresh snapshot rather than dropping the plan (which would flash). */
+/** Worker snapshots update the ordinary virtual list first. The transition rows
+ * must be rebound to that same snapshot, otherwise they keep stale state. */
 const syncWorkerAnimationRows = () => {
   const animation = treeAnimation.value
   if (!animation) return
   const latestById = new Map(currentTreeList.value.map(item => [item.id, item]))
-  const sync = (rows: TreeNodeData[]) =>
-    rows.map(item => latestById.get(item.id) ?? item)
   treeAnimation.value = {
     ...animation,
-    before: sync(animation.before),
-    rows: sync(animation.rows),
-    after: sync(animation.after),
+    rows: animation.rows.map(item => latestById.get(item.id) ?? item),
   }
 }
 
 /**
  * 分支展开/折叠的过渡计划。
  *
- * 成因：动画层与普通虚拟列表是互斥的两个模板分支，动画层从「无」变「有」时
- * 整块视口行会被重新挂载（实测：首次展开同 id 行 same element = false，
- * 动画层已存在时为 true）。这是当前实现换取「过渡容器能插在正确 DOM 位置」的
- * 代价：before/rows/after 复制了整个视口。
- * 副作用：未变化的行也会重建，丢掉 hover / 焦点 / 子组件内部状态，靠 CSS
- * transition 驱动的视觉也会失效 —— 箭头的 arrowAnimation prop 就是为此补播
- * 一次过渡（见 TreeItem.vue）。
- *
- * 重构思路（待办，未实施）：普通列表照常按 currentTreeList 渲染，只把 rows 抽进
- * 一个绝对定位的过渡容器（自行按父节点位置设 transform/offset）；before 与 after
- * 随即不再需要，未变化的行就能复用 DOM。代价是要自己算过渡容器的纵向偏移，
- * 并与虚拟滚动的 translate3d 保持一致。
+ * 只有「参与过渡的子行」被抽进过渡容器，容器按顺序插在父节点行之后；其余行继续
+ * 由 currentTreeList 常驻渲染。未变化的行（以及它们的箭头、焦点、子组件状态）因此
+ * 不会被重新挂载，靠 CSS transition 驱动的视觉（比如箭头旋转）也就能正常播放。
+ * - 展开：容器从 0 长到 rows 总高，后面的行顺次下移；
+ * - 折叠：容器从 rows 总高收到 0，后面的行顺次上移；
+ * - 过渡结束后 finishTreeAnimation 立即释放：rows 交回普通列表（展开），或随容器
+ *   一起离开 DOM（折叠）。容器之所以不能常驻，是折叠后 height:0 会把已收起的行
+ *   留在可聚焦、可读的 DOM 里。
  */
 const startTreeAnimation = async (
   direction: TreeAnimation['direction'],
@@ -644,8 +641,8 @@ const startTreeAnimation = async (
   beforeChange: TreeNodeData[],
   afterChange: TreeNodeData[]
 ) => {
-  const parentIndex = afterChange.findIndex(item => item.id === parent.id)
-  if (parentIndex < 0) return
+  // 父节点必须在当前视口内，否则过渡容器无处可插。
+  if (!afterChange.some(item => item.id === parent.id)) return
 
   const rows =
     direction === 'expand'
@@ -653,17 +650,10 @@ const startTreeAnimation = async (
       : rowsInside(beforeChange, parent)
   if (rows.length === 0) return
 
-  const after =
-    direction === 'expand'
-      ? afterChange.slice(parentIndex + rows.length + 1)
-      : afterChange.slice(parentIndex + 1)
   treeAnimation.value = {
     direction,
-    phase: 'running',
     parentId: parent.id,
-    before: afterChange.slice(0, parentIndex + 1),
     rows,
-    after,
     height: rows.length * props.lineHeight,
   }
   frozenScrollTop = scrollTop
@@ -920,12 +910,10 @@ const startWorker = () => {
       ...row,
       extendData: inputNodeById.get(row.id),
     }))
-    // A settled expand/collapse plan deliberately keeps its old row set mounted
-    // to avoid a visual flash. It is only valid while the tree structure is
-    // unchanged: otherwise an added or removed row can never enter/leave that
-    // retained plan. Content edits still rebind safely below, but structural
-    // mutations must immediately return to the live virtual-list rows.
-    if (snapshot.mutation) releaseSettledRenderPlan()
+    // A structural mutation invalidates the transition rows: a row that was added
+    // or removed can never enter or leave that fixed set. Content edits still
+    // rebind safely below.
+    if (snapshot.mutation) releaseTreeAnimation()
     syncWorkerAnimationRows()
     if (
       pendingWorkerCollapse &&
@@ -1036,11 +1024,9 @@ const itemClick = (id: string) => {
 }
 /** 展开/折叠节点 / Expand/collapse node / Развернуть/свернуть узел */
 const setAllCollapsed = (collapsed: boolean) => {
-  // A completed branch animation intentionally keeps stable rows mounted.
-  // Global visibility changes replace the entire viewport, so that stale plan
-  // must be released before applying the Worker/main-tree result.
+  // A running branch animation owns the viewport rows; a global visibility
+  // change replaces them all, so wait for it to finish first.
   if (isTreeAnimating()) return
-  releaseSettledRenderPlan()
   if (isUsingWorker()) {
     postWorker('collapse-all', { collapsed })
     return
@@ -1065,7 +1051,6 @@ const collapseClick = (id: string, isCollapse: boolean) => {
     return
   }
   if (isTreeAnimating()) return
-  releaseSettledRenderPlan()
   const beforeChange = currentTreeList.value.slice()
   const parent = beforeChange.find(item => item.id === id)
   collapseTree(tree, id, isCollapse)
@@ -1199,7 +1184,7 @@ const reconcileTreeData = async () => {
     .map(node => node.id)
   const checkedIds = (getCheckedIdList(tree) as string[]).slice()
 
-  releaseSettledRenderPlan()
+  releaseTreeAnimation()
   clear(tree)
   setTrackInputLayouts(tree, canUseChunkedBuild())
   setUsePreorderedNeighborInput(tree, props.preorderedInput)
@@ -1255,9 +1240,7 @@ const updateNode = (id: string, patch: TreeNodePatch): boolean => {
   if (treeAnimation.value) {
     treeAnimation.value = {
       ...treeAnimation.value,
-      before: treeAnimation.value.before.map(updatePresentation),
       rows: treeAnimation.value.rows.map(updatePresentation),
-      after: treeAnimation.value.after.map(updatePresentation),
     }
   }
   refreshInputNodeById(next)
@@ -1284,10 +1267,6 @@ const addNode = (node: TreeMutationItem): boolean => {
   ) {
     return false
   }
-  // A settled branch animation owns a fixed row set. Structural commands must
-  // give the regular virtual list ownership again before their async Worker
-  // snapshot arrives, otherwise that snapshot can only rebind stale rows.
-  releaseSettledRenderPlan()
   if (isUsingWorker()) {
     postWorker('add', { node })
     return true
@@ -1303,8 +1282,6 @@ const removeNode = (id: string): boolean => {
   const parentIdField = props.fieldKeys.parentIdField ?? 'parentId'
   const input = props.tree as TreeMutationItem[]
   if (!input.some(item => String(item[idField] ?? '') === id)) return false
-  // See addNode: retained animation rows are not valid after a topology edit.
-  releaseSettledRenderPlan()
   if (isUsingWorker()) {
     postWorker('remove', { id })
     return true
@@ -1406,14 +1383,13 @@ defineExpose({
     ></div>
     <div class="infinite-list" :style="{ transform: transformOffset }">
       <!--
-        动画层与下面的普通列表互斥：它从「无」变「有」时整块视口行会被重新挂载
-        （成因与重构思路见 startTreeAnimation 的注释）。所以 before 里那个正在
-        变化的父节点要拿到 arrowAnimation，由 TreeItem 补播一次箭头过渡。
+        普通行由 currentTreeList 常驻渲染，只有参与过渡的子行被抽进下面这个容器，
+        容器按顺序插在父节点行之后。所以未变化的行——以及它们的箭头、焦点、子组件
+        状态——不会因为展开/折叠动画被重新挂载。
       -->
-      <template v-if="treeAnimation">
+      <template v-for="item in currentTreeList" :key="item.id">
         <tree-item
-          v-for="item in treeAnimation.before"
-          :key="item.id"
+          v-if="!animationRowIds.has(item.id)"
           :style="{ height: lineHeight + 'px' }"
           :item="item"
           :fontSize="fontSize"
@@ -1421,11 +1397,6 @@ defineExpose({
           :select-type="selectType"
           :filter-fn="filterFn"
           :node-icon="nodeIcon"
-          :arrow-animation="
-            item.id === treeAnimation.parentId
-              ? treeAnimation.direction
-              : undefined
-          "
           @check-click="checkClick"
           @item-click="itemClick"
         >
@@ -1437,19 +1408,17 @@ defineExpose({
           </template>
         </tree-item>
         <div
-          v-if="treeAnimation.phase === 'running'"
+          v-if="animationParentId === item.id"
           class="giant-tree__branch-transition"
-          :class="`giant-tree__branch-transition--${treeAnimation.direction}`"
-          :style="{
-            height: (animationOpen ? treeAnimation.height : 0) + 'px',
-          }"
+          :class="`giant-tree__branch-transition--${transitionDirection}`"
+          :style="{ height: branchTransitionHeight + 'px' }"
           @transitionend.self="finishTreeAnimation"
         >
           <tree-item
-            v-for="item in treeAnimation.rows"
-            :key="item.id"
+            v-for="row in transitionRows"
+            :key="row.id"
             :style="{ height: lineHeight + 'px' }"
-            :item="item"
+            :item="row"
             :fontSize="fontSize"
             @collapse-click="collapseClick"
             :select-type="selectType"
@@ -1466,73 +1435,6 @@ defineExpose({
             </template>
           </tree-item>
         </div>
-        <!-- On expansion, replace only the completed wrapper with its normal
-             rows. A completed collapse intentionally renders nothing here. -->
-        <template
-          v-else-if="treeAnimation.direction === 'expand'"
-          v-for="item in treeAnimation.rows"
-          :key="item.id"
-        >
-          <tree-item
-            :style="{ height: lineHeight + 'px' }"
-            :item="item"
-            :fontSize="fontSize"
-            @collapse-click="collapseClick"
-            :select-type="selectType"
-            :filter-fn="filterFn"
-            :node-icon="nodeIcon"
-            @check-click="checkClick"
-            @item-click="itemClick"
-          >
-            <template v-if="$slots.node" #node="slotProps">
-              <slot name="node" v-bind="slotProps" />
-            </template>
-            <template v-if="$slots.actions" #actions="slotProps">
-              <slot name="actions" v-bind="slotProps" />
-            </template>
-          </tree-item>
-        </template>
-        <tree-item
-          v-for="item in treeAnimation.after"
-          :key="item.id"
-          :style="{ height: lineHeight + 'px' }"
-          :item="item"
-          :fontSize="fontSize"
-          @collapse-click="collapseClick"
-          :select-type="selectType"
-          :filter-fn="filterFn"
-          :node-icon="nodeIcon"
-          @check-click="checkClick"
-          @item-click="itemClick"
-        >
-          <template v-if="$slots.node" #node="slotProps">
-            <slot name="node" v-bind="slotProps" />
-          </template>
-          <template v-if="$slots.actions" #actions="slotProps">
-            <slot name="actions" v-bind="slotProps" />
-          </template>
-        </tree-item>
-      </template>
-      <template v-for="item in currentTreeList" :key="item.id">
-        <tree-item
-          v-if="!treeAnimation"
-          :style="{ height: lineHeight + 'px' }"
-          :item="item"
-          :fontSize="fontSize"
-          @collapse-click="collapseClick"
-          :select-type="selectType"
-          :filter-fn="filterFn"
-          :node-icon="nodeIcon"
-          @check-click="checkClick"
-          @item-click="itemClick"
-        >
-          <template v-if="$slots.node" #node="slotProps">
-            <slot name="node" v-bind="slotProps" />
-          </template>
-          <template v-if="$slots.actions" #actions="slotProps">
-            <slot name="actions" v-bind="slotProps" />
-          </template>
-        </tree-item>
       </template>
     </div>
   </div>

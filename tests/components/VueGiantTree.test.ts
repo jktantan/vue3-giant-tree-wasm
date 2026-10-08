@@ -412,7 +412,7 @@ describe('VueGiantTree: 主组件', () => {
     expect(wrapper.find('.giant-tree').exists()).toBe(true)
   })
 
-  it('首次展开：箭头先从旧角度起步，下一帧才切到展开角度', async () => {
+  it('首次展开不重建未变化的行（箭头 DOM 被复用，过渡才能播放）', async () => {
     const wrapper = mount(VueGiantTree, {
       props: {
         modelValue: [],
@@ -423,30 +423,44 @@ describe('VueGiantTree: 主组件', () => {
     await flushPromises()
     await wrapper.vm.$nextTick()
 
-    expect(wrapper.find('.giant-tree__icon-arrow-right').exists()).toBe(true)
+    const arrowBefore = wrapper.find(
+      '.tree-item .giant-tree__mask-button'
+    ).element
+    expect(arrowBefore.className).toContain('giant-tree__icon-arrow-right')
 
     await wrapper.findAll('.item-icon')[0].trigger('click')
     await wrapper.vm.$nextTick()
 
-    // 展开会重建整块视口 DOM。新箭头若直接渲染成展开角度，CSS transition
-    // 没有起点可过渡，就是用户看到的「第一次展开箭头不动」。
-    expect(
-      wrapper
-        .findAll('.tree-item')[0]
-        .find('.giant-tree__icon-arrow-right')
-        .exists()
-    ).toBe(true)
+    const arrowAfter = wrapper.find(
+      '.tree-item .giant-tree__mask-button'
+    ).element
+    // 同一个 DOM 节点：浏览器只看到 class 变化，CSS transition 因此能播放。
+    // 若这里被换成了新元素（重建），箭头就会直接跳到目标角度、动画消失。
+    expect(arrowAfter).toBe(arrowBefore)
+    expect(arrowAfter.className).toContain('giant-tree__icon-arrow-down')
+  })
 
-    // 箭头在第二帧才切到目标角度（第一帧让旧角度进入样式计算）
-    await new Promise(resolve => requestAnimationFrame(() => resolve(null)))
-    await new Promise(resolve => requestAnimationFrame(() => resolve(null)))
+  it('展开与折叠完成后过渡容器都已释放，折叠的行离开 DOM', async () => {
+    const wrapper = mount(VueGiantTree, {
+      props: {
+        modelValue: [],
+        tree: makeTreeData(),
+        root: 'root',
+      },
+    })
+    await flushPromises()
     await wrapper.vm.$nextTick()
 
-    expect(
-      wrapper
-        .findAll('.tree-item')[0]
-        .find('.giant-tree__icon-arrow-down')
-        .exists()
-    ).toBe(true)
+    await wrapper.findAll('.item-icon')[0].trigger('click')
+    await waitForBranchAnimation(wrapper)
+    // 过渡结束即释放容器；展开出来的行由普通列表常驻渲染
+    expect(wrapper.find('.giant-tree__branch-transition').exists()).toBe(false)
+    expect(wrapper.text()).toContain('NodeA1')
+
+    await wrapper.findAll('.item-icon')[0].trigger('click')
+    await waitForBranchAnimation(wrapper)
+    expect(wrapper.find('.giant-tree__branch-transition').exists()).toBe(false)
+    // 被收起的行必须真的离开 DOM，否则它们仍可被 Tab 聚焦、被读屏读出来
+    expect(wrapper.text()).not.toContain('NodeA1')
   })
 })
