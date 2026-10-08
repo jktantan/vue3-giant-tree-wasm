@@ -22,7 +22,6 @@ import {
   collapseTree,
   collapseAll,
   checkNode,
-  getCheckedIds,
   getCheckedIdList,
   CheckType,
   DisplayType,
@@ -33,7 +32,6 @@ import {
   setCheckedNode,
   setCheckedNodes,
   setCheckedOutputMode,
-  getAllNodes,
   getAllNodeIds,
   getAllNodeLayouts,
   getShownIndices,
@@ -300,39 +298,34 @@ const refreshAllNodesCache = () => {
   // Read the compact MPTT layout directly and rebuild the presentation cache
   // from the original input data. This avoids a large synchronous
   // serialize/parse round-trip when switching to a large tree.
-  {
-    const ids = getAllNodeIds(tree) as string[]
-    const layouts = getAllNodeLayouts(tree) as number[]
-    const idField = props.fieldKeys.idField ?? 'id'
-    const nameField = props.fieldKeys.nameField ?? 'name'
-    const parentIdField = props.fieldKeys.parentIdField ?? 'parentId'
-    const inputById = new Map<string, TreeInputItem & Record<string, unknown>>()
-    for (const item of props.tree as Array<
-      TreeInputItem & Record<string, unknown>
-    >) {
-      inputById.set(String(item[idField] ?? ''), item)
-    }
-    allNodesCache = ids.map((id, index) => {
-      const item = inputById.get(id)
-      const offset = index * 4
-      return {
-        id,
-        name: String(item?.[nameField] ?? id),
-        parentId: String(item?.[parentIdField] ?? ''),
-        leftNode: layouts[offset],
-        rightNode: layouts[offset + 1],
-        deep: layouts[offset + 2],
-        checked: CheckType.UNCHECKED,
-        selected: CheckType.UNCHECKED,
-        collapsed: true,
-        disabled: layouts[offset + 3] !== 0,
-        extendData: item,
-      }
-    })
-    refreshTree()
-    return
+  const ids = getAllNodeIds(tree) as string[]
+  const layouts = getAllNodeLayouts(tree) as number[]
+  const idField = props.fieldKeys.idField ?? 'id'
+  const nameField = props.fieldKeys.nameField ?? 'name'
+  const parentIdField = props.fieldKeys.parentIdField ?? 'parentId'
+  const inputById = new Map<string, TreeInputItem & Record<string, unknown>>()
+  for (const item of props.tree as Array<
+    TreeInputItem & Record<string, unknown>
+  >) {
+    inputById.set(String(item[idField] ?? ''), item)
   }
-  allNodesCache = JSON.parse(getAllNodes(tree)) as TreeNodeData[]
+  allNodesCache = ids.map((id, index) => {
+    const item = inputById.get(id)
+    const offset = index * 4
+    return {
+      id,
+      name: String(item?.[nameField] ?? id),
+      parentId: String(item?.[parentIdField] ?? ''),
+      leftNode: layouts[offset],
+      rightNode: layouts[offset + 1],
+      deep: layouts[offset + 2],
+      checked: CheckType.UNCHECKED,
+      selected: CheckType.UNCHECKED,
+      collapsed: true,
+      disabled: layouts[offset + 3] !== 0,
+      extendData: item,
+    }
+  })
   refreshTree()
 }
 // A macrotask yields the main thread for rendering without relying on rAF.
@@ -510,8 +503,11 @@ const emitCheckedResult = () => {
     // Custom mode: get full node data, filter with filterFn, then decide ID or JSON output
     // Пользовательский режим: получить полные данные узлов, отфильтровать filterFn, затем решить, выводить ID или JSON
     // getCheckedNodes 返回的是 extendData 原始 JSON（非 TreeNodeData 结构），直接传给 filterFn
+    const idField = props.fieldKeys.idField ?? 'id'
     const filtered = records.filter(item => props.filterFn!(item))
-    const result = props.outputIdOnly ? filtered.map(item => item.id) : filtered
+    const result = props.outputIdOnly
+      ? filtered.map(item => item[idField])
+      : filtered
     emit('update:modelValue', result)
   } else if (!props.outputIdOnly) {
     emit(
@@ -519,14 +515,11 @@ const emitCheckedResult = () => {
       props.selectType === SelectType.CHECKBOX ? records : (records[0] ?? null)
     )
   } else {
+    // 走到这里 outputIdOnly 恒为 true：CHECKBOX 输出 ID 数组，RADIO/SELECT 输出单个 ID（无选中为 null）
+    // Reaching this branch means outputIdOnly is always true: CHECKBOX emits
+    // the ID array, RADIO/SELECT emits a single ID (null when nothing is selected).
     const result =
-      props.outputIdOnly && props.selectType === SelectType.CHECKBOX
-        ? ids
-        : props.outputIdOnly
-          ? isUsingWorker()
-            ? (ids[0] ?? '')
-            : JSON.parse(getCheckedIds(tree))
-          : records
+      props.selectType === SelectType.CHECKBOX ? ids : (ids[0] ?? null)
     emit('update:modelValue', result)
   }
 }
@@ -737,7 +730,7 @@ const postWorker = (type: string, payload: Record<string, unknown> = {}) => {
 const postWorkerTransfer = (
   type: string,
   payload: Record<string, unknown>,
-  transfer: Transferable[]
+  transfer: ArrayBuffer[]
 ) => {
   if (!worker) return undefined
   try {
@@ -796,7 +789,15 @@ const streamWorkerTree = async () => {
   postWorker('stream-finish')
 }
 
-const applyWorkerMutation = (mutation: any) => {
+/** Worker 侧回传的结构变更：单条操作或一批操作。 */
+type WorkerMutationOp =
+  | { type: 'update'; id: string; patch: TreeNodePatch }
+  | { type: 'add'; node: TreeMutationItem }
+  | { type: 'remove'; ids: string[] }
+type WorkerMutation =
+  { type: 'batch'; mutations?: WorkerMutationOp[] } | WorkerMutationOp
+
+const applyWorkerMutation = (mutation: WorkerMutation | undefined) => {
   if (!mutation) return
   const idField = props.fieldKeys.idField ?? 'id'
   let next = workerInput
@@ -841,7 +842,8 @@ const startWorker = () => {
       listHeight: number
       rows: TreeNodeData[]
       checkedIds?: string[]
-      mutation?: unknown
+      mutation?: WorkerMutation
+      error?: unknown
       metrics?: {
         structuralBatches: number
         structuralOperations: number
@@ -859,7 +861,7 @@ const startWorker = () => {
       return
     }
     if (snapshot.type === 'fatal') {
-      console.error('VueGiantTree worker failed', (snapshot as any).error)
+      console.error('VueGiantTree worker failed', snapshot.error)
       worker?.terminate()
       worker = undefined
       workerMetrics.enabled = false
