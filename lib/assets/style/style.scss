@@ -33,6 +33,12 @@
       transition: height 220ms cubic-bezier(0.22, 0.72, 0.2, 1);
       will-change: height;
 
+      // 展开是「内容进入」：基础曲线的起步太陡（约 33ms 就走完一半位移），
+      // 视觉上像内容突然冒出来。这里单独换成起步更缓的 ease-out。
+      &--expand {
+        transition-timing-function: cubic-bezier(0.33, 0, 0.2, 1);
+      }
+
       @media (prefers-reduced-motion: reduce) {
         transition-duration: 1ms;
       }
@@ -47,7 +53,7 @@
     &:hover {
       background-color: $giant-tree__color-primary;
     }
-    &.checked{
+    &.checked {
       background-color: $giant-tree__color-primary;
     }
 
@@ -113,6 +119,5 @@
       gap: 4px;
       margin-left: auto;
     }
-
   }
 }
