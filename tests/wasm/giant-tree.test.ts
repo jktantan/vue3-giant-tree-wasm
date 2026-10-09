@@ -447,7 +447,7 @@ describe('giant-tree: 集成测试', () => {
     pushNeighborNode(tree, 'A', 'A', '')
     pushNeighborNode(tree, 'B', 'B', '')
     popNeighbor(tree)
-    expect(getCompactMemoryBytes(tree)).toBe(94)
+    expect(getCompactMemoryBytes(tree)).toBe(86)
     expect(getCompactMirrorBytes(tree)).toBe(34)
     expect(getObjectStringPayloadBytes(tree)).toBe(8)
   })

@@ -132,7 +132,7 @@ export class MpttTree extends NeighborTree {
   /**
    * 本节点在所属 fullTree 数组中的索引（-1=未知）。
    * 由 buildIdIndex 在每次重建 fullTree 后统一回填，供需要 fullTree 下标、
-   * 又不想做 id 字符串哈希查找的热路径直接读取（如 _syncCompactShownIndices）。
+   * 又不想做 id 字符串哈希查找的热路径直接读取。
    * Index of this node in its owning fullTree array (-1=unknown). Filled by
    * buildIdIndex whenever fullTree is rebuilt, so hot paths that need the
    * fullTree index can read it without an O(1)-but-costly id string hash.

@@ -143,11 +143,9 @@ export function serializeShownSlice(
   return parts.join('')
 }
 
-/** Serializes a virtual-list slice directly from compact full-tree indices. */
-export function serializeShownIndicesCompact(
-  tree: MpttTree[],
-  indices: Int32Array,
-  shownLength: i32,
+/** Serializes a virtual-list slice directly from the visible node array. */
+export function serializeShownNodesCompact(
+  shownNodes: MpttTree[],
   store: CompactNodeStore,
   scrollTop: f32,
   scrollHeight: f32,
@@ -157,6 +155,7 @@ export function serializeShownIndicesCompact(
   const startIdx: i32 = <i32>Math.floor(scrollTop / lineHeight)
   const endIdx: i32 =
     <i32>Math.ceil((scrollTop + scrollHeight) / lineHeight) + 1
+  const shownLength: i32 = shownNodes.length
   const from: i32 =
     startIdx < 0 ? 0 : startIdx >= shownLength ? shownLength : startIdx
   const to: i32 =
@@ -164,9 +163,10 @@ export function serializeShownIndicesCompact(
   if (from >= to) return '[]'
   let result = '['
   for (let i: i32 = from; i < to; i++) {
-    const fullIndex = indices[i]
+    const node = shownNodes[i]
+    const fullIndex = node.fullIndex
     result += nodeToJsonCompact(
-      tree[fullIndex],
+      node,
       fullIndex,
       store,
       i > from,

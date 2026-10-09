@@ -33,7 +33,7 @@ import { fuzzySearchTree } from './tree-search'
 import { LazyCheckRangeStore } from './lazy-check-range-store'
 import {
   serializeShownSlice,
-  serializeShownIndicesCompact,
+  serializeShownNodesCompact,
   serializeMpttArray,
   serializeMpttArrayCompact,
   serializeCheckedArrayCompact,
@@ -466,7 +466,6 @@ export class GiantTree {
     this._clearLazyCheckboxRanges()
     this._invalidateSearchCandidates()
     this.shownCount = this._shownNodes.length as i32
-    this._syncCompactShownIndices()
     this._invalidateCache()
   }
 
@@ -642,7 +641,6 @@ export class GiantTree {
   _rebuildShownNodes(): void {
     this._shownNodes = rebuildShownNodes(this.tree)
     this.shownCount = this._shownNodes.length as i32
-    this._syncCompactShownIndices()
     this._syncLazyShownStates()
     this._invalidateCache()
   }
@@ -672,18 +670,6 @@ export class GiantTree {
 
   private _ensureSearchCandidates(): void {
     if (!this._searchCandidateIndexReady) this._buildSearchCandidates()
-  }
-
-  _syncCompactShownIndices(): void {
-    // fullIndex is mirrored by buildIdIndex on every fullTree rebuild, so this
-    // is a plain int read: the old idToIndex.has/get pair cost a string hash per
-    // visible node (~1M on a large tree) and dominated collapse/expand time.
-    const indices: i32[] = []
-    for (let i: i32 = 0; i < this._shownNodes.length; i++) {
-      const index = this._shownNodes[i].fullIndex
-      if (index >= 0) indices.push(index)
-    }
-    this.compactStore.setShownIndices(indices)
   }
 
   private _clearLazyCheckboxRanges(): void {
@@ -753,8 +739,9 @@ export class GiantTree {
 
   private _syncLazyShownStates(): void {
     if (!this._hasLazyCheckboxRanges) return
-    for (let i: i32 = 0; i < this.compactStore.shownLength; i++) {
-      const index = this.compactStore.shownIndices[i]
+    for (let i: i32 = 0; i < this._shownNodes.length; i++) {
+      const index = this._shownNodes[i].fullIndex
+      if (index < 0) continue
       const value = this.lazyCheckRanges.getPoint(this.compactStore.left[index])
       if (value >= 0) {
         this.compactStore.checked[index] = value as u8
@@ -826,7 +813,6 @@ export class GiantTree {
         }
       }
       boundaries.splice(0)
-      this._syncCompactShownIndices()
       this._syncLazyShownStates()
     } else {
       this._hasSearchCache = false
@@ -855,7 +841,6 @@ export class GiantTree {
         !collapsed
       )
       this.shownCount += delta
-      this._syncCompactShownIndices()
       this._syncLazyShownStates()
     }
     this._invalidateCache()
@@ -893,7 +878,6 @@ export class GiantTree {
             boundaries.push(node.rightNode)
         }
       }
-      this._syncCompactShownIndices()
       this._syncLazyShownStates()
       this._invalidateCache()
       return
@@ -914,7 +898,6 @@ export class GiantTree {
         this.shownCount++
       }
     }
-    this._syncCompactShownIndices()
     this._syncLazyShownStates()
     this._invalidateCache()
   }
@@ -964,10 +947,8 @@ export class GiantTree {
     }
 
     const json: string = this.useCompactSelection
-      ? serializeShownIndicesCompact(
-          this.fullTree,
-          this.compactStore.shownIndices,
-          this.compactStore.shownLength,
+      ? serializeShownNodesCompact(
+          this._shownNodes,
           this.compactStore,
           this.scrollTop,
           this.scrollHeight,
@@ -1040,7 +1021,12 @@ export class GiantTree {
         : endIdx > this._shownNodes.length
           ? this._shownNodes.length
           : endIdx
-    return this.compactStore.getShownIndices(clampedStart, clampedEnd)
+    const result: i32[] = []
+    for (let i: i32 = clampedStart; i < clampedEnd; i++) {
+      const index = this._shownNodes[i].fullIndex
+      if (index >= 0) result.push(index)
+    }
+    return result
   }
 
   /**
@@ -1568,7 +1554,6 @@ export class GiantTree {
       for (let i: i32 = 0; i < this.searchTree.length; i++) {
         this._shownNodes.push(this.searchTree[i])
       }
-      this._syncCompactShownIndices()
       this._syncLazyShownStates()
       this._invalidateCache()
       return serializeShownSlice(
@@ -1624,7 +1609,6 @@ export class GiantTree {
     this._invalidateSearchCandidates()
     this._clearLazyCheckboxRanges()
     this._shownNodes.splice(0)
-    this.compactStore.setShownIndices([])
     this._radioCheckedIdx = -1
     this._selectSelectedIdx = -1
     this._invalidateCache()

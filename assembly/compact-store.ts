@@ -19,8 +19,6 @@ export class CompactNodeStore {
   childTotal: Int32Array = new Int32Array(0)
   childChecked: Int32Array = new Int32Array(0)
   childHalf: Int32Array = new Int32Array(0)
-  shownIndices: Int32Array = new Int32Array(0)
-  shownLength: i32 = 0
 
   load(tree: MpttTree[]): void {
     const size = tree.length
@@ -41,8 +39,6 @@ export class CompactNodeStore {
     this.childHalf = new Int32Array(size)
     const stack: i32[] = []
     const open: i32[] = []
-    this.shownIndices = new Int32Array(0)
-    this.shownLength = 0
     for (let i = 0; i < size; i++) {
       const node = tree[i]
       this.left[i] = node.leftNode
@@ -77,27 +73,6 @@ export class CompactNodeStore {
       open.push(i)
     }
     while (open.length > 0) this.subtreeEnd[open.pop()] = size
-  }
-
-  setShownIndices(indices: i32[]): void {
-    if (this.shownIndices.length < indices.length) {
-      let capacity =
-        this.shownIndices.length > 0 ? this.shownIndices.length : indices.length
-      while (capacity < indices.length) capacity *= 2
-      this.shownIndices = new Int32Array(capacity)
-    }
-    this.shownLength = indices.length
-    for (let i = 0; i < indices.length; i++) this.shownIndices[i] = indices[i]
-  }
-
-  getShownIndices(start: i32, end: i32): i32[] {
-    const from =
-      start < 0 ? 0 : start >= this.shownLength ? this.shownLength : start
-    const to =
-      end < from ? from : end > this.shownLength ? this.shownLength : end
-    const result: i32[] = []
-    for (let i = from; i < to; i++) result.push(this.shownIndices[i])
-    return result
   }
 
   setChecked(index: i32, value: u8): void {
@@ -213,7 +188,6 @@ export class CompactNodeStore {
       this.selected.byteLength +
       this.collapsed.byteLength +
       this.shown.byteLength +
-      this.shownIndices.byteLength +
       this.disabled.byteLength +
       this.parent.byteLength +
       this.subtreeEnd.byteLength +
