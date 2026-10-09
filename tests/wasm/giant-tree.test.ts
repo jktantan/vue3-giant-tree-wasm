@@ -322,6 +322,32 @@ describe('giant-tree: 集成测试', () => {
     expect(() => getShownNodes(tree)).not.toThrow()
   })
 
+  it('搜索结果中折叠节点后序列化输出正确 collapsed，且可再次展开', () => {
+    const tree = newTree('root', 26, SelectType.CHECKBOX)
+    clear(tree)
+    pushNeighborNode(tree, 'A', 'Alpha', 'root')
+    pushNeighborNode(tree, 'A1', 'AlphaChild1', 'A')
+    pushNeighborNode(tree, 'A2', 'AlphaChild2', 'A')
+    pushNeighborNode(tree, 'B', 'Beta', 'root')
+    popNeighbor(tree)
+    setBoundary(tree, 0, 5000)
+
+    fuzzyTree(tree, 'Alpha')
+    collapseTree(tree, 'A', false)
+    let rows = JSON.parse(getShownNodes(tree)) as any[]
+    expect(rows.map(r => r.id)).toEqual(['A', 'A1', 'A2'])
+
+    collapseTree(tree, 'A', true)
+    rows = JSON.parse(getShownNodes(tree)) as any[]
+    expect(rows.map(r => r.id)).toEqual(['A'])
+    expect(rows[0].collapsed).toBe(true)
+
+    collapseTree(tree, 'A', false)
+    rows = JSON.parse(getShownNodes(tree)) as any[]
+    expect(rows.map(r => r.id)).toEqual(['A', 'A1', 'A2'])
+    expect(rows.find(r => r.id === 'A')?.collapsed).toBe(false)
+  })
+
   it('选中→搜索→取消搜索后选中状态保持', () => {
     const tree = newTree('', 26, SelectType.CHECKBOX)
     clear(tree)

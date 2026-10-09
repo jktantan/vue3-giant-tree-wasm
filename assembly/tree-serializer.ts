@@ -22,7 +22,11 @@ function itoa(n: i32): string {
 
 // @ts-ignore: decorator
 @inline
-function nodeToJson(node: MpttTree, comma: bool): string {
+function nodeToJson(
+  node: MpttTree,
+  comma: bool,
+  collapsedIds: Set<string> | null = null
+): string {
   let s: string = comma ? ',{"id":"' : '{"id":"'
   s += escapeString(node.id)
   s += '","name":"'
@@ -40,7 +44,11 @@ function nodeToJson(node: MpttTree, comma: bool): string {
   s += ',"selected":'
   s += itoa(node.selected)
   s += ',"collapsed":'
-  s += node.collapsed ? 'true' : 'false'
+  s += (
+    collapsedIds !== null ? collapsedIds.has(node.id) : node.collapsed
+  )
+    ? 'true'
+    : 'false'
   s += ',"disabled":'
   s += node.disabled ? 'true' : 'false'
   if (node.extendData.length > 0) {
@@ -56,7 +64,8 @@ function nodeToJsonCompact(
   node: MpttTree,
   index: i32,
   store: CompactNodeStore,
-  comma: bool
+  comma: bool,
+  collapsedIds: Set<string> | null = null
 ): string {
   let s: string = comma ? ',{"id":"' : '{"id":"'
   s += escapeString(node.id)
@@ -75,7 +84,11 @@ function nodeToJsonCompact(
   s += ',"selected":'
   s += itoa(store.selected[index])
   s += ',"collapsed":'
-  s += store.collapsed[index] !== 0 ? 'true' : 'false'
+  s += (
+    collapsedIds !== null ? collapsedIds.has(node.id) : store.collapsed[index] !== 0
+  )
+    ? 'true'
+    : 'false'
   s += ',"disabled":'
   s += store.disabled[index] !== 0 ? 'true' : 'false'
   if (node.extendData.length > 0) {
@@ -99,7 +112,8 @@ export function serializeShownSlice(
   shownNodes: MpttTree[],
   scrollTop: f32,
   scrollHeight: f32,
-  lineHeight: f32
+  lineHeight: f32,
+  collapsedIds: Set<string> | null = null
 ): string {
   const startIdx: i32 = <i32>Math.floor(scrollTop / lineHeight)
   const endIdx: i32 =
@@ -119,7 +133,11 @@ export function serializeShownSlice(
   const parts: string[] = new Array<string>(clampedEnd - clampedStart + 2)
   parts[0] = '['
   for (let i: i32 = clampedStart; i < clampedEnd; i++) {
-    parts[i - clampedStart + 1] = nodeToJson(shownNodes[i], i > clampedStart)
+    parts[i - clampedStart + 1] = nodeToJson(
+      shownNodes[i],
+      i > clampedStart,
+      collapsedIds
+    )
   }
   parts[clampedEnd - clampedStart + 1] = ']'
   return parts.join('')
@@ -133,7 +151,8 @@ export function serializeShownIndicesCompact(
   store: CompactNodeStore,
   scrollTop: f32,
   scrollHeight: f32,
-  lineHeight: f32
+  lineHeight: f32,
+  collapsedIds: Set<string> | null = null
 ): string {
   const startIdx: i32 = <i32>Math.floor(scrollTop / lineHeight)
   const endIdx: i32 =
@@ -146,7 +165,13 @@ export function serializeShownIndicesCompact(
   let result = '['
   for (let i: i32 = from; i < to; i++) {
     const fullIndex = indices[i]
-    result += nodeToJsonCompact(tree[fullIndex], fullIndex, store, i > from)
+    result += nodeToJsonCompact(
+      tree[fullIndex],
+      fullIndex,
+      store,
+      i > from,
+      collapsedIds
+    )
   }
   return result + ']'
 }

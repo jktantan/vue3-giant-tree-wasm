@@ -968,13 +968,15 @@ export class GiantTree {
           this.compactStore,
           this.scrollTop,
           this.scrollHeight,
-          this.lineHeight
+          this.lineHeight,
+          this.tree === this.searchTree ? this._searchCollapsedIds : null
         )
       : serializeShownSlice(
           this._shownNodes,
           this.scrollTop,
           this.scrollHeight,
-          this.lineHeight
+          this.lineHeight,
+          this.tree === this.searchTree ? this._searchCollapsedIds : null
         )
 
     this._cachedStartIdx = startIdx
