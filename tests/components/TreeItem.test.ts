@@ -1,9 +1,10 @@
 import { describe, it, expect } from 'vitest'
 import { mount } from '@vue/test-utils'
 import TreeItem from '../../lib/TreeItem.vue'
+import type { TreeNodeData } from '../../lib/types'
 import { SelectType, CheckType } from '../wasm-bridge'
 
-function makeItem(overrides: Record<string, any> = {}) {
+function makeItem(overrides: Partial<TreeNodeData> = {}): TreeNodeData {
   return {
     id: 'test-1',
     name: 'Test Node',
@@ -14,6 +15,7 @@ function makeItem(overrides: Record<string, any> = {}) {
     checked: CheckType.UNCHECKED,
     selected: CheckType.UNCHECKED,
     collapsed: true,
+    disabled: false,
     ...overrides,
   }
 }
@@ -261,6 +263,33 @@ describe('TreeItem: 节点组件', () => {
 
     expect(wrapper.find('.item-actions').text()).toBe('编辑')
     await wrapper.find('.edit-action').trigger('click')
+    expect(wrapper.emitted('item-click')).toBeFalsy()
+  })
+
+  it('右键触发 item-contextmenu 并携带节点与原生事件', async () => {
+    const wrapper = mount(TreeItem, {
+      props: {
+        item: makeItem({ id: 'ctx-node' }),
+        fontSize: '14px',
+        selectType: SelectType.CHECKBOX,
+      },
+    })
+    await wrapper.find('.tree-item').trigger('contextmenu')
+    const emitted = wrapper.emitted('item-contextmenu')
+    expect(emitted).toBeTruthy()
+    expect(emitted![0][0]).toMatchObject({ id: 'ctx-node' })
+    expect(emitted![0][1]).toBeInstanceOf(MouseEvent)
+  })
+
+  it('右键不会误触行点击', async () => {
+    const wrapper = mount(TreeItem, {
+      props: {
+        item: makeItem({ id: 'ctx-only' }),
+        fontSize: '14px',
+        selectType: SelectType.CHECKBOX,
+      },
+    })
+    await wrapper.find('.tree-item').trigger('contextmenu')
     expect(wrapper.emitted('item-click')).toBeFalsy()
   })
 })

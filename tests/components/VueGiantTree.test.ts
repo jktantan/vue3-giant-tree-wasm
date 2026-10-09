@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeAll } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import VueGiantTree from '../../lib/VueGiantTree.vue'
+import type { TreeInputItem } from '../../lib/types'
 import { SelectType } from '../wasm-bridge'
 
 beforeAll(() => {
@@ -9,9 +10,13 @@ beforeAll(() => {
     constructor(callback: ResizeObserverCallback) {
       this.callback = callback
     }
-    observe(target: Element) {
+    observe() {
       this.callback(
-        [{ contentBoxSize: [{ blockSize: 500, inlineSize: 300 }] } as any],
+        [
+          {
+            contentBoxSize: [{ blockSize: 500, inlineSize: 300 }],
+          } as unknown as ResizeObserverEntry,
+        ],
         this
       )
     }
@@ -19,6 +24,21 @@ beforeAll(() => {
     unobserve() {}
   }
 })
+
+/** 组件实例公开方法的类型化视图，避免测试里出现 any。 */
+type TreeApi = {
+  updateNode(id: string, patch: Record<string, unknown>): boolean
+  removeNode(id: string): boolean
+  getBuildReady(): boolean
+  getTreeSize(): number
+  expandAll(): void
+  collapseAll(): void
+  fuzzySearchRaw(keyword: string): void
+  setChecked(id: string): void
+  clearAllChecked(): void
+  setCheckedByIds(ids: string[]): void
+}
+const treeApi = (wrapper: { vm: unknown }): TreeApi => wrapper.vm as TreeApi
 
 function makeTreeData() {
   return [
@@ -78,16 +98,30 @@ describe('VueGiantTree: 主组件', () => {
     expect(wrapper.findAll('.node-action')).toHaveLength(2)
   })
 
+  it('行右键把节点与原生事件透传给父组件', async () => {
+    const wrapper = mount(VueGiantTree, {
+      props: { modelValue: [], tree: makeTreeData(), root: 'root' },
+    })
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+
+    await wrapper.findAll('.tree-item')[0].trigger('contextmenu')
+    const emitted = wrapper.emitted('item-contextmenu')
+    expect(emitted).toBeTruthy()
+    expect(emitted![0][0]).toMatchObject({ id: 'A' })
+    expect(emitted![0][1]).toBeInstanceOf(MouseEvent)
+    // 右键不应触发选中
+    expect(wrapper.emitted('item-click')).toBeFalsy()
+  })
+
   it('结构操作通过 update:tree 回写，且不需要重挂载组件', async () => {
     const wrapper = mount(VueGiantTree, {
       props: { modelValue: [], tree: makeTreeData(), root: 'root' },
     })
     await flushPromises()
 
-    expect((wrapper.vm as any).updateNode('A', { name: 'Renamed A' })).toBe(
-      true
-    )
-    const renamedTree = wrapper.emitted('update:tree')![0][0] as any[]
+    expect(treeApi(wrapper).updateNode('A', { name: 'Renamed A' })).toBe(true)
+    const renamedTree = wrapper.emitted('update:tree')![0][0] as TreeInputItem[]
     expect(renamedTree.find(node => node.id === 'A')?.name).toBe('Renamed A')
 
     await wrapper.setProps({ tree: renamedTree })
@@ -95,8 +129,8 @@ describe('VueGiantTree: 主组件', () => {
     await wrapper.vm.$nextTick()
     expect(wrapper.text()).toContain('Renamed A')
 
-    expect((wrapper.vm as any).removeNode('A')).toBe(true)
-    const prunedTree = wrapper.emitted('update:tree')![1][0] as any[]
+    expect(treeApi(wrapper).removeNode('A')).toBe(true)
+    const prunedTree = wrapper.emitted('update:tree')![1][0] as TreeInputItem[]
     expect(prunedTree.map(node => node.id)).toEqual(['B'])
   })
 
@@ -114,10 +148,8 @@ describe('VueGiantTree: 主组件', () => {
         ],
       },
     })
-    await vi.waitFor(() =>
-      expect((wrapper.vm as any).getBuildReady()).toBe(true)
-    )
-    expect((wrapper.vm as any).getTreeSize()).toBe(3)
+    await vi.waitFor(() => expect(treeApi(wrapper).getBuildReady()).toBe(true))
+    expect(treeApi(wrapper).getTreeSize()).toBe(3)
     await wrapper.vm.$nextTick()
     expect(wrapper.findAll('.tree-item')).toHaveLength(2)
     expect(wrapper.text()).toContain('NodeA')
@@ -244,11 +276,11 @@ describe('VueGiantTree: 主组件', () => {
     })
     await flushPromises()
 
-    ;(wrapper.vm as any).expandAll()
+    ;(wrapper.vm as TreeApi).expandAll()
     await wrapper.vm.$nextTick()
     expect(wrapper.findAll('.tree-item')).toHaveLength(3)
 
-    ;(wrapper.vm as any).collapseAll()
+    ;(wrapper.vm as TreeApi).collapseAll()
     await wrapper.vm.$nextTick()
     expect(wrapper.findAll('.tree-item')).toHaveLength(2)
   })
@@ -266,7 +298,7 @@ describe('VueGiantTree: 主组件', () => {
       },
     })
     await flushPromises()
-    ;(wrapper.vm as any).fuzzySearchRaw('match')
+    ;(wrapper.vm as TreeApi).fuzzySearchRaw('match')
     await wrapper.vm.$nextTick()
 
     const parent = wrapper
@@ -297,10 +329,10 @@ describe('VueGiantTree: 主组件', () => {
       },
     })
     await flushPromises()
-    ;(wrapper.vm as any).fuzzySearchRaw('Searchable')
+    ;(wrapper.vm as TreeApi).fuzzySearchRaw('Searchable')
     await wrapper.vm.$nextTick()
     await wrapper.find('.giant-tree__icon-check-unchecked').trigger('click')
-    ;(wrapper.vm as any).fuzzySearchRaw('')
+    ;(wrapper.vm as TreeApi).fuzzySearchRaw('')
     await wrapper.vm.$nextTick()
     await wrapper.find('.giant-tree__icon-arrow-right').trigger('click')
     await wrapper.vm.$nextTick()
@@ -335,7 +367,7 @@ describe('VueGiantTree: 主组件', () => {
     })
     await flushPromises()
 
-    const api = wrapper.vm as any
+    const api = wrapper.vm as TreeApi
     api.setChecked('parent')
     await wrapper.vm.$nextTick()
     await wrapper.find('.giant-tree__icon-arrow-right').trigger('click')
@@ -405,7 +437,8 @@ describe('VueGiantTree: 主组件', () => {
         modelValue: [],
         tree: makeTreeData(),
         root: 'root',
-        'onUpdate:modelValue': (e: any) => wrapper.setProps({ modelValue: e }),
+        'onUpdate:modelValue': (e: unknown) =>
+          wrapper.setProps({ modelValue: e }),
       },
     })
     await flushPromises()

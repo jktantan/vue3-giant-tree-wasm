@@ -169,6 +169,35 @@ const search = (keyword: string) => treeRef.value?.fuzzySearch(keyword)
 </VueGiantTree>
 ```
 
+### 右键菜单 (item-contextmenu)
+
+组件只抛出事件，不内置菜单 UI。在行上右键会触发 `item-contextmenu(node, event)`，`node` 为该行 `TreeNodeData`，`event` 为原生 `MouseEvent`。组件**不会**自动调用 `preventDefault()`，浏览器原生菜单照常弹出；如需替换为自定义菜单，请在回调里自行 `event.preventDefault()`。菜单的渲染、定位与关闭由业务方负责，常见做法是 `Teleport` 到 `body` 并用 `event.clientX/clientY` 定位。右键不会触发行点击/选中。
+
+```vue
+<script setup lang="ts">
+import { ref } from 'vue'
+import type { TreeNodeData } from 'vue3-giant-tree-wasm'
+
+const menu = ref<{ x: number; y: number; node: TreeNodeData } | null>(null)
+
+const onContextMenu = (node: TreeNodeData, event: MouseEvent) => {
+  event.preventDefault()
+  menu.value = { x: event.clientX, y: event.clientY, node }
+}
+</script>
+
+<template>
+  <VueGiantTree :tree="treeData" root="root" v-model="selected" @item-contextmenu="onContextMenu" />
+
+  <Teleport to="body">
+    <ul v-if="menu" class="my-menu" :style="{ left: menu.x + 'px', top: menu.y + 'px' }">
+      <li @click="edit(menu.node)">编辑</li>
+      <li @click="remove(menu.node)">删除</li>
+    </ul>
+  </Teleport>
+</template>
+```
+
 ### 节点图标 (nodeIcon)
 
 `nodeIcon` 默认关闭，因此不会改变现有行布局。设为 `true` 后，父节点收起时显示关闭文件夹、展开时显示打开文件夹，叶子节点显示文件图标。
@@ -502,6 +531,35 @@ Both slots receive `{ node }`, where `node` is the current `TreeNodeData`.
 </VueGiantTree>
 ```
 
+### Context Menu (item-contextmenu)
+
+The component only emits an event; it ships no menu UI. Right-clicking a row emits `item-contextmenu(node, event)`, where `node` is the row's `TreeNodeData` and `event` is the native `MouseEvent`. The component does **not** call `preventDefault()`, so the browser's native menu still opens — call `event.preventDefault()` in your handler to replace it. Rendering, positioning and closing the menu are the consumer's responsibility; a common approach is `Teleport` to `body` positioned with `event.clientX/clientY`. Right-click never triggers row click/selection.
+
+```vue
+<script setup lang="ts">
+import { ref } from 'vue'
+import type { TreeNodeData } from 'vue3-giant-tree-wasm'
+
+const menu = ref<{ x: number; y: number; node: TreeNodeData } | null>(null)
+
+const onContextMenu = (node: TreeNodeData, event: MouseEvent) => {
+  event.preventDefault()
+  menu.value = { x: event.clientX, y: event.clientY, node }
+}
+</script>
+
+<template>
+  <VueGiantTree :tree="treeData" root="root" v-model="selected" @item-contextmenu="onContextMenu" />
+
+  <Teleport to="body">
+    <ul v-if="menu" class="my-menu" :style="{ left: menu.x + 'px', top: menu.y + 'px' }">
+      <li @click="edit(menu.node)">Edit</li>
+      <li @click="remove(menu.node)">Delete</li>
+    </ul>
+  </Teleport>
+</template>
+```
+
 ### CheckedOutputMode
 
 Controls the output of `getCheckedIds` and `getCheckedNodes` in CHECKBOX mode:
@@ -749,6 +807,35 @@ const selected = ref([])
     <button @click="remove(node)">Удалить</button>
   </template>
 </VueGiantTree>
+```
+
+### Контекстное меню (item-contextmenu)
+
+Компонент только испускает событие и не содержит UI меню. Правый клик по строке вызывает `item-contextmenu(node, event)`, где `node` — это `TreeNodeData` строки, а `event` — исходное `MouseEvent`. Компонент **не** вызывает `preventDefault()`, поэтому браузерное меню открывается как обычно; чтобы заменить его, вызовите `event.preventDefault()` в обработчике. Рендеринг, позиционирование и закрытие меню — задача потребителя; типичный подход — `Teleport` в `body` с позицией по `event.clientX/clientY`. Правый клик не вызывает выбор строки.
+
+```vue
+<script setup lang="ts">
+import { ref } from 'vue'
+import type { TreeNodeData } from 'vue3-giant-tree-wasm'
+
+const menu = ref<{ x: number; y: number; node: TreeNodeData } | null>(null)
+
+const onContextMenu = (node: TreeNodeData, event: MouseEvent) => {
+  event.preventDefault()
+  menu.value = { x: event.clientX, y: event.clientY, node }
+}
+</script>
+
+<template>
+  <VueGiantTree :tree="treeData" root="root" v-model="selected" @item-contextmenu="onContextMenu" />
+
+  <Teleport to="body">
+    <ul v-if="menu" class="my-menu" :style="{ left: menu.x + 'px', top: menu.y + 'px' }">
+      <li @click="edit(menu.node)">Изменить</li>
+      <li @click="remove(menu.node)">Удалить</li>
+    </ul>
+  </Teleport>
+</template>
 ```
 
 ### CheckedOutputMode

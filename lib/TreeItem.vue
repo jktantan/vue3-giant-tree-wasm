@@ -11,7 +11,12 @@ const props = defineProps<{
   nodeIcon?: boolean | NodeIconResolver
 }>()
 
-const emit = defineEmits(['collapse-click', 'check-click', 'item-click'])
+const emit = defineEmits([
+  'collapse-click',
+  'check-click',
+  'item-click',
+  'item-contextmenu',
+])
 
 /** RADIO 模式：filterFn 返回 false 则不显示 Radio 框（节点不可选） / RADIO mode: hide radio if filterFn returns false / RADIO: скрыть radio если filterFn возвращает false */
 const showRadio = computed(() => {
@@ -60,6 +65,17 @@ const itemClick = () => {
   if (props.item.disabled) return
   emit('item-click', props.item.id)
 }
+
+/**
+ * 行右键：仅转发节点与原生事件，不阻止浏览器原生菜单（由业务决定是否 preventDefault）。
+ * Row context menu: forwards the node and the native event only; the browser menu is not
+ * prevented — the consumer decides whether to call preventDefault().
+ * Контекстное меню строки: передаёт только узел и исходное событие, не блокирует браузерное
+ * меню — решение о preventDefault() принимает потребитель.
+ */
+const contextMenu = (event: MouseEvent) => {
+  emit('item-contextmenu', props.item, event)
+}
 </script>
 
 <template>
@@ -68,6 +84,7 @@ const itemClick = () => {
     :style="{ fontSize: fontSize }"
     :class="{ selected: item.selected, disabled: item.disabled }"
     @click="itemClick"
+    @contextmenu="contextMenu"
   >
     <div v-for="i in item.deep" :style="{ width: fontSize }" :key="i"></div>
     <div

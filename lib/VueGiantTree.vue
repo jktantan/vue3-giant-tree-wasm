@@ -102,7 +102,11 @@ const props = withDefaults(
     preorderedInput: false,
   }
 )
-const emit = defineEmits(['update:modelValue', 'update:tree'])
+const emit = defineEmits([
+  'update:modelValue',
+  'update:tree',
+  'item-contextmenu',
+])
 /** 组件引用: 滚动容器 DOM / Component ref: scroll container DOM / Ссылка на компонент: DOM контейнера прокрутки */
 const container = ref<HTMLDivElement>()
 /** 可见节点总数，由 WASM 侧 shownCount 驱动 / Total visible node count, driven by WASM shownCount / Общее количество видимых узлов */
@@ -1009,6 +1013,17 @@ onUnmounted(() => {
   }
   if (animationTimer !== undefined) clearTimeout(animationTimer)
 })
+/**
+ * 行右键：把节点与原生事件透传给业务方，便于自行渲染右键菜单。
+ * 折叠动画中的临时行同样适用，因此这里不查 currentTreeList。
+ * Row context menu: forwards the node and the native event so the consumer can render its own
+ * menu. Applies to transient animation rows too, so currentTreeList is deliberately not consulted.
+ * Контекстное меню строки: передаёт узел и исходное событие потребителю для собственного меню.
+ * Работает и для временных строк анимации, поэтому currentTreeList здесь не используется.
+ */
+const contextMenuClick = (node: TreeNodeData, event: MouseEvent) => {
+  emit('item-contextmenu', node, event)
+}
 /** 行点击（SELECT 模式选中节点） / Row click (selects node in SELECT mode) / Клик по строке (выбирает узел в режиме SELECT) */
 const itemClick = (id: string) => {
   if (props.selectType === SelectType.SELECT) {
@@ -1399,6 +1414,7 @@ defineExpose({
           :node-icon="nodeIcon"
           @check-click="checkClick"
           @item-click="itemClick"
+          @item-contextmenu="contextMenuClick"
         >
           <template v-if="$slots.node" #node="slotProps">
             <slot name="node" v-bind="slotProps" />
@@ -1426,6 +1442,7 @@ defineExpose({
             :node-icon="nodeIcon"
             @check-click="checkClick"
             @item-click="itemClick"
+            @item-contextmenu="contextMenuClick"
           >
             <template v-if="$slots.node" #node="slotProps">
               <slot name="node" v-bind="slotProps" />
