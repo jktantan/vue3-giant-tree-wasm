@@ -44,9 +44,7 @@ function nodeToJson(
   s += ',"selected":'
   s += itoa(node.selected)
   s += ',"collapsed":'
-  s += (
-    collapsedIds !== null ? collapsedIds.has(node.id) : node.collapsed
-  )
+  s += (collapsedIds !== null ? collapsedIds.has(node.id) : node.collapsed)
     ? 'true'
     : 'false'
   s += ',"disabled":'
@@ -85,7 +83,9 @@ function nodeToJsonCompact(
   s += itoa(store.selected[index])
   s += ',"collapsed":'
   s += (
-    collapsedIds !== null ? collapsedIds.has(node.id) : store.collapsed[index] !== 0
+    collapsedIds !== null
+      ? collapsedIds.has(node.id)
+      : store.collapsed[index] !== 0
   )
     ? 'true'
     : 'false'
