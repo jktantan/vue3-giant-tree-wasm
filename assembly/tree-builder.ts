@@ -687,6 +687,9 @@ export function parseMpttTreeFromJson(
 export function buildIdIndex(fullTree: MpttTree[]): Map<string, i32> {
   const idToIndex: Map<string, i32> = new Map()
   for (let i: i32 = 0; i < fullTree.length; i++) {
+    // Mirror the array position onto the node while we are already walking the
+    // tree, so downstream code can read it without an id string lookup.
+    fullTree[i].fullIndex = i
     idToIndex.set(fullTree[i].id, i)
   }
   return idToIndex

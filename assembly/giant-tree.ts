@@ -675,10 +675,13 @@ export class GiantTree {
   }
 
   _syncCompactShownIndices(): void {
+    // fullIndex is mirrored by buildIdIndex on every fullTree rebuild, so this
+    // is a plain int read: the old idToIndex.has/get pair cost a string hash per
+    // visible node (~1M on a large tree) and dominated collapse/expand time.
     const indices: i32[] = []
     for (let i: i32 = 0; i < this._shownNodes.length; i++) {
-      const node = this._shownNodes[i]
-      if (this.idToIndex.has(node.id)) indices.push(this.idToIndex.get(node.id))
+      const index = this._shownNodes[i].fullIndex
+      if (index >= 0) indices.push(index)
     }
     this.compactStore.setShownIndices(indices)
   }
