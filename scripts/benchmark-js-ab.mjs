@@ -225,8 +225,13 @@ class JsGiantTree {
 
 // ─── 基准用例 ───
 
-function runWasm(input) {
-  const tree = wasm.newTree('root', LINE_HEIGHT, wasm.SelectType.CHECKBOX, true)
+function runWasm(input, tree) {
+  // 复用同一 tree 实例 + clear()：TLSF 分配器回收复用内存，
+  // 线性内存稳定不涨。每轮 newTree 会让旧实例被 internref 持有无法释放，
+  // 内存只增不减（棘轮效应），多场景累积到 2GB 上限后崩溃。
+  if (!tree) {
+    tree = wasm.newTree('root', LINE_HEIGHT, wasm.SelectType.CHECKBOX, true)
+  }
   wasm.clear(tree)
   const push = timed(() => {
     for (const node of input) {
@@ -261,19 +266,14 @@ for (const shape of shapes) {
     const input = makeTree(size, shape)
     console.log(`\nshape=${shape}, N=${size}`)
 
-    // ── 构建（多轮取中位数）──
+    // ── 构建（多轮取中位数；复用同一 WASM 实例避免内存棘轮）──
     const wasmBuild = []
     const jsBuild = []
     let wasmTree = null
     let jsTree = null
-    // 注意：WASM 线性内存只增不减。同一进程内先跑大场景再跑小场景会因
-    // 累积内存耗尽而崩溃（refcount invalid 报错）。因此推荐单形状单进程：
-    //   BENCH_SHAPES=wide node --expose-gc scripts/benchmark-js-ab.mjs
-    // 或用 run-benchmark-js-ab.sh 逐形状子进程执行。
-    const buildRounds = rounds
-    for (let i = 0; i < buildRounds; i++) {
+    for (let i = 0; i < rounds; i++) {
       if (typeof global.gc === 'function') global.gc()
-      const wasmResult = runWasm(input)
+      const wasmResult = runWasm(input, wasmTree)
       wasmBuild.push(wasmResult.pushMs + wasmResult.popMs)
       wasmTree = wasmResult.tree
       const jsResult = runJs(input)

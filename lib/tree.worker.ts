@@ -98,26 +98,39 @@ const snapshot = (revision: number, mutation?: any) => {
 }
 const rebuild = (next: Input[]) => {
   input = next
-  const k = config.fieldKeys
-  tree = Object.keys(k).length
-    ? wasm.newTreeWithKeys(
-        config.root,
-        config.lineHeight,
-        config.selectType,
-        k.idField ?? 'id',
-        k.nameField ?? 'name',
-        k.parentIdField ?? 'parentId',
-        k.leftNodeField ?? 'leftNode',
-        k.rightNodeField ?? 'rightNode',
-        false
-      )
-    : wasm.newTree(config.root, config.lineHeight, config.selectType, false)
-  wasm.setTrackInputLayouts(tree, false)
-  wasm.setUsePreorderedNeighborInput(tree, config.preorderedInput === true)
+  // 复用 tree 实例：每次 newTree 会让旧实例的线性内存依赖 GC 异步回收，
+  // 高频 replace 时分配速度超过回收速度，形成"内存棘轮"（实测 12 次
+  // replace 20 万节点内存涨至 1980MB）。clear() 后 TLSF 分配器原地复用，
+  // 内存稳定不涨。仅当 root/lineHeight/selectType/fieldKeys 变化时才重建实例。
+  if (tree && !treeConfigMatches()) {
+    tree = null
+  }
+  tree = ensureTree()
+  wasm.clear(tree)
   wasm.setNeighborTree(tree, JSON.stringify(input))
   wasm.setCheckedOutputMode(tree, config.checkedOutputMode)
 }
-const createEmptyTree = () => {
+let treeSignature: string | null = null
+function treeConfigMatches(): boolean {
+  const k = config.fieldKeys
+  const signature = [
+    config.root,
+    config.lineHeight,
+    config.selectType,
+    Object.keys(k).length
+      ? [
+          k.idField ?? 'id',
+          k.nameField ?? 'name',
+          k.parentIdField ?? 'parentId',
+          k.leftNodeField ?? 'leftNode',
+          k.rightNodeField ?? 'rightNode',
+        ].join('\u0000')
+      : '',
+  ].join('\u0001')
+  return treeSignature === signature
+}
+function ensureTree() {
+  if (tree) return tree
   const k = config.fieldKeys
   tree = Object.keys(k).length
     ? wasm.newTreeWithKeys(
@@ -132,8 +145,30 @@ const createEmptyTree = () => {
         false
       )
     : wasm.newTree(config.root, config.lineHeight, config.selectType, false)
+  treeSignature = [
+    config.root,
+    config.lineHeight,
+    config.selectType,
+    Object.keys(k).length
+      ? [
+          k.idField ?? 'id',
+          k.nameField ?? 'name',
+          k.parentIdField ?? 'parentId',
+          k.leftNodeField ?? 'leftNode',
+          k.rightNodeField ?? 'rightNode',
+        ].join('\u0000')
+      : '',
+  ].join('\u0001')
   wasm.setTrackInputLayouts(tree, false)
   wasm.setUsePreorderedNeighborInput(tree, config.preorderedInput === true)
+  return tree
+}
+const createEmptyTree = () => {
+  if (tree && !treeConfigMatches()) {
+    tree = null
+  }
+  tree = ensureTree()
+  wasm.clear(tree)
   wasm.setCheckedOutputMode(tree, config.checkedOutputMode)
 }
 const ensureInput = () => {

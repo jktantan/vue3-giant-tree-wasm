@@ -560,12 +560,16 @@ export class GiantTree {
       const nameEnd = idEnd + nameLength
       const parentIdEnd = nameEnd + parentIdLength
       if (parentIdEnd > payload.length) break
-      this.pushNeighborNode(
-        String.UTF8.decode(payload.slice(cursor, idEnd).buffer),
-        String.UTF8.decode(payload.slice(idEnd, nameEnd).buffer),
-        String.UTF8.decode(payload.slice(nameEnd, parentIdEnd).buffer),
-        disabled
-      )
+      // decodeUnsafe 直接按内存地址+长度解码，零拷贝且精确；
+      // slice 版本每条记录复制 3 段内存再整段扫读，是批量通道的主要开销。
+      const base = payload.dataStart
+      const nt: NeighborTree = new NeighborTree()
+      nt.id = String.UTF8.decodeUnsafe(base + cursor, idLength)
+      nt.name = String.UTF8.decodeUnsafe(base + idEnd, nameLength)
+      nt.parentId = String.UTF8.decodeUnsafe(base + nameEnd, parentIdLength)
+      nt.disabled = disabled
+      nt.inputIndex = this.tmpTree.length
+      this.tmpTree.push(nt)
       cursor = parentIdEnd
     }
   }
