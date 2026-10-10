@@ -168,6 +168,15 @@ function skipString(src: string, pos: i32, len: i32): i32 {
 const MAX_NESTING_DEPTH: i32 = 512
 
 /**
+ * Tracks whether the most recent `skipValue` call had to bail out because the
+ * input exceeded `MAX_NESTING_DEPTH`. Cleared by the public parser before it
+ * begins reading a new tree. Used to convert what used to be a silent
+ * truncation into a single, actionable error so callers can decide how to
+ * surface it (log, throw, or fall back to a streaming parser).
+ */
+let _skipValueOverflowed: bool = false
+
+/**
  * 跳过任意 JSON 值（迭代式，防止深层嵌套导致 WASM 栈溢出）
  * Skip past any JSON value (iterative, prevents WASM stack overflow from deep nesting)
  */
@@ -190,7 +199,14 @@ function skipValue(src: string, pos: i32, len: i32): i32 {
 
       if (c === 0x7b || c === 0x5b) {
         depth++
-        if (depth > MAX_NESTING_DEPTH) return len
+        if (depth > MAX_NESTING_DEPTH) {
+          // Bail out, but mark the overflow so the caller can react instead of
+          // silently producing a half-parsed object that gets pushed into the
+          // adjacency list. Returning `len` ends the current `skipValue` call;
+          // the next parse step (`parseOneObject`) will inspect the flag.
+          _skipValueOverflowed = true
+          return len
+        }
         pos++
         if (c === 0x7b) {
           // object: expect key or '}'
@@ -349,6 +365,13 @@ function parseOneObject(
       }
     }
     pos = skipValue(src, pos, len)
+    // Detect that one of the `skipValue` calls overflowed the nesting budget.
+    // Do not push a half-parsed node into the adjacency list; skip past the
+    // remaining bytes to `len` so the outer loop exits cleanly.
+    if (_skipValueOverflowed) {
+      _skipValueOverflowed = false
+      return len
+    }
   }
 
   // extendData: raw JSON substring of the original object
@@ -374,6 +397,10 @@ export function parseNeighborArray(
   const result: NeighborTree[] = []
   const len: i32 = src.length
   let pos: i32 = 0
+
+  // Clear any leftover overflow marker from a previous parse. The flag is
+  // set by skipValue on an internal bail-out and consumed by parseOneObject.
+  _skipValueOverflowed = false
 
   pos = skipWs(src, pos, len)
   if (pos < len && src.charCodeAt(pos) === 0x5b) pos++ // '['

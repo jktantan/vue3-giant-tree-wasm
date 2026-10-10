@@ -373,10 +373,24 @@ const refreshAllNodesCache = () => {
   allNodesCache = ids.map((id, index) => {
     const item = inputById.get(id)
     const offset = index * 4
+    // Defensive fallback: if the input array is missing an id present in the
+    // MPTT layout (e.g. a previous append/remove transient left stale state),
+    // surface a warning and keep `extendData` defined so downstream consumers
+    // such as `filterFn` or node-icon resolvers cannot crash on `undefined`.
+    if (item === undefined) {
+      if (typeof console !== 'undefined')
+        console.warn(
+          `VueGiantTree: missing input entry for rendered id "${id}"; ` +
+            `extending it from an empty record.`
+        )
+    }
+    const safeItem: TreeInputItem & Record<string, unknown> =
+      item ?? ({ id: '', name: '', parentId: '', disabled: false } as TreeInputItem &
+        Record<string, unknown>)
     return {
       id,
-      name: String(item?.[nameField] ?? id),
-      parentId: String(item?.[parentIdField] ?? ''),
+      name: String(safeItem[nameField] ?? id),
+      parentId: String(safeItem[parentIdField] ?? ''),
       leftNode: layouts[offset],
       rightNode: layouts[offset + 1],
       deep: layouts[offset + 2],
@@ -384,7 +398,7 @@ const refreshAllNodesCache = () => {
       selected: CheckType.UNCHECKED,
       collapsed: true,
       disabled: layouts[offset + 3] !== 0,
-      extendData: item,
+      extendData: safeItem,
     }
   })
   refreshTree()

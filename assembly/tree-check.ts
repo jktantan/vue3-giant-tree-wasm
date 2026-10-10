@@ -30,6 +30,13 @@ export function checkNodeInTree(
     if (node.disabled) return
     node.checked = checked
     setSubTreeChecked(fullTree, node, checked, i + 1)
+    // Walk every ancestor once. fullTree is preorder-sorted by leftNode, so
+    // walking backwards finds ancestors in closest-to-farthest order. Each
+    // ancestor's checked state is recomputed from its direct children's
+    // updated values via getParentNodeCheckType, which makes the operation
+    // idempotent across ancestor depth. A naive early-break cannot be used
+    // here because outer ancestors still need their indirect aggregate
+    // rolled up (an inner ancestor flip does not propagate outward).
     for (let j = i - 1; j >= 0; j--) {
       const prevNode: MpttTree = fullTree[j]
       if (

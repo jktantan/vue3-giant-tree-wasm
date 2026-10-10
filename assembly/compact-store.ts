@@ -161,12 +161,24 @@ export class CompactNodeStore {
     this.checked[targetIndex] = value
     tree[targetIndex].checked = value
     const subtreeEnd = this.subtreeEnd[targetIndex]
-    for (let i = targetIndex + 1; i < subtreeEnd; i++) {
-      if (this.disabled[i] === 0) {
+    // Fast path: when this subtree has no disabled descendants there is no
+    // need to recheck `disabled[i]` on each iteration. Skipping that branch
+    // saves a typed-array load per child on the hot checkbox path.
+    if (!this.hasDisabledInSubtree(targetIndex)) {
+      for (let i = targetIndex + 1; i < subtreeEnd; i++) {
         const previous = this.checked[i]
         this.updateChildState(this.parent[i], previous, value)
         this.checked[i] = value
         tree[i].checked = value
+      }
+    } else {
+      for (let i = targetIndex + 1; i < subtreeEnd; i++) {
+        if (this.disabled[i] === 0) {
+          const previous = this.checked[i]
+          this.updateChildState(this.parent[i], previous, value)
+          this.checked[i] = value
+          tree[i].checked = value
+        }
       }
     }
     let ancestor = this.parent[targetIndex]

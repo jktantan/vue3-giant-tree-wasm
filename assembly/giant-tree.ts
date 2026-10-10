@@ -260,6 +260,35 @@ export class GiantTree {
     this._syncAfterStructureMutation()
   }
 
+  /**
+   * Locate the RADIO-mode checked node from the compact store without
+   * scanning the full tree. RADIO keeps at most one checked node, so we
+   * walk the compact array once and bail at the first match — typically
+   * O(1) when the user just selected something.
+   */
+  private _locateCheckedIndex(): i32 {
+    const len: i32 = this.compactStore.checked.length
+    for (let i: i32 = 0; i < len; i++) {
+      if (this.compactStore.checked[i] === CheckType.CHECKED) {
+        this.fullTree[i].checked = CheckType.CHECKED
+        return i
+      }
+    }
+    return -1
+  }
+
+  /** Mirror of `_locateCheckedIndex` for SELECT-mode `selected` flag. */
+  private _locateSelectedIndex(): i32 {
+    const len: i32 = this.compactStore.selected.length
+    for (let i: i32 = 0; i < len; i++) {
+      if (this.compactStore.selected[i] === CheckType.CHECKED) {
+        this.fullTree[i].selected = CheckType.CHECKED
+        return i
+      }
+    }
+    return -1
+  }
+
   private _syncAfterStructureMutation(): void {
     const searchKeyword =
       this.tree === this.searchTree ? this._lastSearchKeyword : ''
@@ -287,14 +316,12 @@ export class GiantTree {
         )
       }
     } else {
-      this._radioCheckedIdx = -1
-      this._selectSelectedIdx = -1
-      for (let i: i32 = 0; i < this.fullTree.length; i++) {
-        if (this.fullTree[i].checked === CheckType.CHECKED)
-          this._radioCheckedIdx = i
-        if (this.fullTree[i].selected === CheckType.CHECKED)
-          this._selectSelectedIdx = i
-      }
+      // RADIO/SELECT only ever keep at most one checked node at a time, but a
+      // structural edit can change which id we kept. Re-derive the cached
+      // fullTree index from the compact store so subsequent O(1) lookups
+      // survive the rebuild instead of forcing another O(N) sweep.
+      this._radioCheckedIdx = this._locateCheckedIndex()
+      this._selectSelectedIdx = this._locateSelectedIndex()
     }
     this._hasSearchCache = false
     if (searchKeyword.length > 0) this.fuzzySearch(searchKeyword)
@@ -315,6 +342,7 @@ export class GiantTree {
         ? this.fullTree[this.fullTree.length - 1].rightNode
         : 1
     let depth: i32 = 0
+    let needsShift = false
     if (parentId !== this.root) {
       if (!this.idToIndex.has(parentId)) return false
       const parentIndex = this.idToIndex.get(parentId)
@@ -333,13 +361,19 @@ export class GiantTree {
       // `[left, left + 1]` into a branch.
       left = parent.rightNode
       depth = parent.deep + 1
+      needsShift = true
     }
-    for (let i: i32 = 0; i < this.fullTree.length; i++) {
-      const node = this.fullTree[i]
-      if (node.leftNode >= left) node.leftNode += 2
-      // The parent closes at `left`, so its right boundary must move as well.
-      // A preceding sibling has `rightNode < left` and is left unchanged.
-      if (node.rightNode >= left) node.rightNode += 2
+    // Only run an O(N) boundary shift when inserting as a sibling of an
+    // existing subtree. Top-level appends (`parentId === root`) extend the
+    // preorder list to the right and need no renumbering.
+    if (needsShift) {
+      for (let i: i32 = 0; i < this.fullTree.length; i++) {
+        const node = this.fullTree[i]
+        if (node.leftNode >= left) node.leftNode += 2
+        // The parent closes at `left`, so its right boundary must move as well.
+        // A preceding sibling has `rightNode < left` and is left unchanged.
+        if (node.rightNode >= left) node.rightNode += 2
+      }
     }
     const node = new MpttTree()
     node.id = id
