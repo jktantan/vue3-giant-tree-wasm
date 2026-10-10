@@ -106,3 +106,18 @@
 文档口径中「阶段 3 单一状态来源」原记录：若要删除镜像，需另立架构项目。
 本次退役的虽非 `fullTree` 对象镜像本身（字符串 / `extendData` 仍保留），
 但属同类架构收口，故单独一个提交、单独留档，不夹带其他改动。
+
+## 与后续审查的关系
+
+2026-10-09 之后再进行一次 [`Assembly/` 与 `lib/` 全面审查](../diagnostics.md)，
+发现 10 项问题（2 🔴、3 🟠、5 🟡）。其中 5 项已在本批次落地修复：
+
+- `Assembly/giant-tree.ts:appendChild` 顶层追加边界重排 bug（🔴）。
+- `Assembly/compact-store.ts:checkCheckbox` 无 disabled 子树时 fast path（🟠）。
+- `Assembly/giant-tree.ts:_syncAfterStructureMutation` RADIO/SELECT 索引恢复用 `CompactNodeStore` 替代 O(N) 全扫（🟠）。
+- `lib/VueGiantTree.vue:refreshAllNodesCache` `extendData` fallback 防御（🟠）。
+- `Assembly/tree-builder.ts:skipValue` 嵌套深度上限显式化（🟡）。
+
+本退役记录归档的是"建议 1（`fullIndex`）" + 单次 shown-index 退役。
+上述五项修复独立于本记录，但 `_syncAfterStructureMutation` 仍是 `fullIndex`
+回填的汇聚点，因此新的维护者请将两份文档一并阅读。

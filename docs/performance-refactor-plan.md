@@ -437,3 +437,18 @@
 - 新增 [`docs/phase5-migration-evaluation-2026-09-19.md`](phase5-migration-evaluation-2026-09-19.md)，结论为：暂不启动 C/Rust 生产迁移，继续使用 AssemblyScript/WASM。
 - 理由：前台 profile 中事件/计算约 `3ms`、呈现等待约 `28ms`；100k 滚动 action P95 约 `0.1ms`；浏览器渲染而非 WASM 纯计算是当前主要墙钟成本。1M compact 根/批量选择仍有同步镜像成本，换语言不能直接解决。
 - `vue-tsc --noEmit` 与最终 `pnpm run gate:phase3-4` 均通过。C/Rust 仅在未来固定 trace 证明 WASM 纯计算成为主热点、且同布局 POC 同时改善 P95/内存/二进制体积/维护成本时重新评估。
+
+### 2026-10-XX：Assembly/ 与 lib/ 代码审查与定向修复
+
+- 触发：以上一阶段评估为收口点，对 `Assembly/` 与 `lib/` 目录做静态审查；产出诊断报告 [`docs/diagnostics.md`](diagnostics.md)，含 10 项发现（2 🔴、3 🟠、5 🟡）与已确认 OK 清单。
+- 修复 1（🔴）：`Assembly/giant-tree.ts:appendChild` 顶层追加（`parentId === root`）时不再执行 O(N) 边界重排。增加 `needsShift` 标志，仅在向现有父节点插入子节点时整体 `±2` 偏移；原行为会与末尾节点 `leftNode/rightNode` 冲突。
+- 修复 2（🔴）：`Assembly/tree-check.ts:checkNodeInTree` 的祖先回溯循环增加注释说明为何不能 break：外层祖先的聚合依赖自身直接子节点 `checked`，不是 idempotent；保持原行为并文档化原因。
+- 修复 3（🟠）：`Assembly/compact-store.ts:checkCheckbox` 增加 fast path。当目标子树通过 `disabledPrefix` 前缀和判定无 disabled 后代时，跳过每轮 `disabled[i]` 读取，热路径降低一项 typed-array load。
+- 修复 4（🟠）：`Assembly/giant-tree.ts:_syncAfterStructureMutation` RADIO/SELECT 分支不再做 O(N) 全树扫描。新增 `_locateCheckedIndex` / `_locateSelectedIndex` 私有方法，按 `CompactNodeStore.checked/selected` 查找首个匹配项，返回 fullTree 索引；与顶部 `// State management strategy` 注释承诺的 O(1) 路径一致。
+- 修复 5（🟠）：`lib/VueGiantTree.vue:refreshAllNodesCache` 增加防御性 fallback。当 `inputById.get(id)` 返回 undefined（极端输入或 `trackInputLayouts=false` 的中间态）时，给 `safeItem` 回退为合法占位对象并 `console.warn`，保证 `extendData` 不再落下 `undefined`，下游 `filterFn` 与 node-icon resolver 不会因为读 undefined 崩溃。
+- 修复 6（🟡）：`Assembly/tree-builder.ts:skipValue` 深度上限触发时不再静默写入半截邻接表对象。引入模块级 `_skipValueOverflowed` 标志，由 `skipValue` 在越界时置位，`parseOneObject` 检测后丢弃半截节点并返回 `len`；`parseNeighborArray` 入口清零。
+- 验证（release WASM，本机 Node v24.15.0）：
+  - `npx asc assembly/index.ts --target release` rebuild 成功；
+  - `npx vitest run tests/wasm --reporter=verbose`：7 文件 / 96 项测试全绿，覆盖本次修复的全部 WASM 路径（lazy checkbox 1k 节点固定种子 300 步与 120 步随机操作、JSON 转义、嵌套、Unicode、UTF-8 批量输入）；
+  - `npx vue-tsc -b --noEmit` 仅遗留基线 `Cannot find module '../build/release'`（调试环境无发布产物），本次修复无新增回归。
+- 状态：阶段 3、4、5 状态不变。本轮修复并未引入新的可见性结构或语言迁移；后续若 profile 改变结论，按既有阶段 3、4 重开路径继续。详细发现与变更文件清单见 [`docs/diagnostics.md`](diagnostics.md)。

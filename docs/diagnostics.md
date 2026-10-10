@@ -4,6 +4,27 @@
 > 审查时间：基于当前工作区版本。
 > 评级：🔴 高 / 🟠 中 / 🟡 低。
 
+**关联文档：**
+
+- [`README.md`](../README.md) 中文段「缺陷与诊断」与 English 段「Diagnostics」均反向链接本文档。
+- [`docs/performance-refactor-plan.md`](performance-refactor-plan.md) 末尾 `2026-10-XX：Assembly/ 与 lib/ 代码审查与定向修复` 段落汇总了本批次落地的 5 条修复与验证证据。
+- [`docs/shown-indices-retirement-2026-10-09.md`](shown-indices-retirement-2026-10-09.md) 在「与后续审查的关系」一节补充了本次修复与既有 `_syncAfterStructureMutation` 路径的耦合说明。**完成状态总览：**
+
+| # | 优先级 | 摘要 | 本次已落地修复 | 备注 |
+|---|--------|------|----------------|------|
+| 1 | 🔴 | `appendChild` 顶层追加边界冲突 | ✅ `needsShift` 标志 | 跳过 O(N) 改写 |
+| 2 | 🔴 | `checkNodeInTree` 父回溯可能误用 break | ✅ 仅添加文档注释 | break 会破坏外层祖先聚合，故保留循环 |
+| 3 | 🟠 | `checkCheckbox` 每轮 disabled 读取 | ✅ fast path | 复用 `hasDisabledInSubtree` |
+| 4 | 🟠 | `_syncAfterStructureMutation` RADIO/SELECT 全树扫描 | ✅ `_locateCheckedIndex` 等 helper | O(N) → O(checkedCount) |
+| 5 | 🟠 | `refreshAllNodesCache` `extendData` undefined | ✅ defensive fallback | 控制台告警定位数据不一致 |
+| 6 | 🟡 | `skipValue` 深度上限静默失败 | ✅ `_skipValueOverflowed` flag | 由 `parseOneObject` 丢弃半截对象 |
+| 7 | 🟡 | `updateChildState` 可读性 | ⏭ 未改 | 非运行期 bug，留作未来命名清理 |
+| 8 | 🟡 | `getParentNodeCheckType` 不跳过禁用子节点 | ⏭ 未改 | 仅在 legacy 路径使用，可后置 |
+| 9 | 🟡 | `TreeItem.vue guideCells` 频繁 Array.from | ⏭ 未改 | 性能敏感但非阻塞，可后置 |
+| 10 | 🟡 | `tree.worker.ts flushStructure` 节流回弹 | ⏭ 未改 | 行为正确，可优化 |
+
+已落地 5 / 10 项；其余 4 项保留为未来可优化项或文本说明。验证：`npx vitest run tests/wasm --reporter=verbose` → 7 文件 / 96 项用例全绿；`vue-tsc -b --noEmit` 无新增回归；AssemblyScript release rebuild 成功。
+
 ---
 
 ## 1. 总览

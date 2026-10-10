@@ -21,6 +21,12 @@
 
 完整测试方法、环境和结果见 [性能门禁归档](docs/performance-gate-2026-09-19.md)。
 
+### 缺陷与诊断
+
+最近一轮对 `Assembly/` 与 `lib/` 目录的代码审查产出 10 项发现（2 个 🔴、3 个 🟠、5 个 🟡），已在
+[`docs/diagnostics.md`](docs/diagnostics.md) 中按优先级与修复计划列出。引用本文档时请同步引用
+诊断报告，以确保读者了解已修复的边界条件与剩余的可优化项。
+
 ### 特性
 
 - **WASM 加速** — 树构建、遍历、搜索、选中等核心运算在 WebAssembly 中执行
@@ -440,6 +446,14 @@ The following reproducible benchmarks use release WASM and local Chromium. Resul
 - Only viewport rows are rendered to the DOM
 
 See the [performance-gate archive](docs/performance-gate-2026-09-19.md) for methodology, environment, and complete results.
+
+### Diagnostics
+
+A recent review of the `Assembly/` and `lib/` directories produced ten findings
+(2 🔴, 3 🟠, 5 🟡). They are catalogued in
+[`docs/diagnostics.md`](docs/diagnostics.md) with their priority and fix plan.
+When citing this README, link the diagnostics report together so readers know
+which edge cases are already addressed and which remain as future optimizations.
 
 ### Features
 
