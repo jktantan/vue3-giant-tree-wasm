@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { SelectType, CheckType } from '../build/release'
 import type { FilterFn, NodeIconResolver, TreeNodeData } from './types'
-import { computed } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 
 const props = defineProps<{
   item: TreeNodeData
@@ -47,6 +47,25 @@ const nodeIconClass = computed<string | undefined>(() => {
 const collapsedClick = () => {
   emit('collapse-click', props.item.id, !props.item.collapsed)
 }
+
+/**
+ * 选中反馈动画开关：虚拟滚动滚动时会不断卸载/重建行元素，若动画挂在
+ * 元素的进入上，新滚入视口的行会被误播动画。因此初始挂载不播，只有
+ * 组件存活期间 checked 状态真正变化时（nextTick 后）才加上
+ * giant-tree__animated 类，让 CSS 只对状态切换播动画。
+ */
+const checkAnimated = ref(false)
+watch(
+  () => props.item.checked,
+  (_newVal, oldVal) => {
+    if (oldVal === undefined) return // 初次挂载，不播
+    checkAnimated.value = false
+    nextTick(() => {
+      checkAnimated.value = true
+    })
+  },
+  { immediate: true },
+)
 
 /** 复选框/单选框点击（toggle 逻辑在 WASM 侧） / Checkbox/radio click (toggle logic is in WASM) / Клик по чекбоксу/радио (логика переключения в WASM) */
 const checkClick = () => {
@@ -128,17 +147,17 @@ const contextMenu = (event: MouseEvent) => {
       <div
         v-if="item.checked === CheckType.UNCHECKED"
         :style="{ width: fontSize, height: fontSize }"
-        class="giant-tree__mask-button giant-tree__icon-check-unchecked"
+        class="giant-tree__mask-button giant-tree__icon-check-unchecked" :class="{ 'giant-tree__animated': checkAnimated }"
       ></div>
       <div
         v-else-if="item.checked === CheckType.HALF_CHECKED"
         :style="{ width: fontSize, height: fontSize }"
-        class="giant-tree__mask-button giant-tree__icon-check-half checked"
+        class="giant-tree__mask-button giant-tree__icon-check-half checked" :class="{ 'giant-tree__animated': checkAnimated }"
       ></div>
       <div
         v-else-if="item.checked === CheckType.CHECKED"
         :style="{ width: fontSize, height: fontSize }"
-        class="giant-tree__mask-button giant-tree__icon-check-checked checked"
+        class="giant-tree__mask-button giant-tree__icon-check-checked checked" :class="{ 'giant-tree__animated': checkAnimated }"
       ></div>
     </div>
     <div
@@ -156,12 +175,12 @@ const contextMenu = (event: MouseEvent) => {
       <div
         v-if="item.checked === CheckType.CHECKED"
         :style="{ width: fontSize, height: fontSize }"
-        class="giant-tree__mask-button giant-tree__icon-radio-checked checked"
+        class="giant-tree__mask-button giant-tree__icon-radio-checked checked" :class="{ 'giant-tree__animated': checkAnimated }"
       ></div>
       <div
         v-else-if="item.checked === CheckType.UNCHECKED"
         :style="{ width: fontSize, height: fontSize }"
-        class="giant-tree__mask-button giant-tree__icon-radio-unchecked"
+        class="giant-tree__mask-button giant-tree__icon-radio-unchecked" :class="{ 'giant-tree__animated': checkAnimated }"
       ></div>
     </div>
     <div

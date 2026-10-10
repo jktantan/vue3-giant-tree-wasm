@@ -79,17 +79,18 @@
     }
     &.checked {
       background-color: $giant-tree__color-primary;
-      // v-if 切换状态时会重新渲染元素，进入动画即为选中反馈
-      animation: giant-tree__icon-pop 160ms cubic-bezier(0.34, 1.56, 0.64, 1);
-      // 半选态在级联勾选时高频切换，弹跳动画噪音大，单独排除
-      &.giant-tree__icon-check-half {
-        animation: none;
+      // v-if 切换状态时会重新渲染元素，进入动画即为选中反馈。
+      // 仅在 .giant-tree__animated 存在时播（该类由 TreeItem 在 checked
+      // 真实变化后加，虚拟滚动新挂载的行不带，不会误播）。
+      &.giant-tree__animated {
+        animation: giant-tree__icon-pop 160ms cubic-bezier(0.34, 1.56, 0.64, 1);
       }
     }
     // 取消选中时未选中图标元素同样由 v-if 重新渲染进入，给它一个
-    // 反向的缩小淡出式进入动画，作为「取消」的视觉反馈
-    &.giant-tree__icon-check-unchecked,
-    &.giant-tree__icon-radio-unchecked {
+    // 反向的缩小淡出式进入动画，作为「取消」的视觉反馈（同样仅限
+    // 状态真实变化时）
+    &.giant-tree__animated.giant-tree__icon-check-unchecked,
+    &.giant-tree__animated.giant-tree__icon-radio-unchecked {
       animation: giant-tree__icon-uncheck 160ms ease-out;
     }
 
