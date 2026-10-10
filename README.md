@@ -143,6 +143,7 @@ const search = (keyword: string) => treeRef.value?.fuzzySearch(keyword)
 | `checkedOutputMode` | `CheckedOutputMode`              | `All`      | CHECKBOX 输出 ID 过滤模式：`All` / `RootOnly` / `LeafOnly` / `Custom`                   |
 | `filterFn`          | `FilterFn`                       | —          | 自定义过滤回调。CHECKBOX + Custom 模式下过滤输出；RADIO 模式下判断节点是否显示 Radio 框 |
 | `nodeIcon`          | `boolean \| NodeIconResolver`   | `false`    | 节点图标：`true` 使用内置图标；回调可按节点指定或隐藏 CSS 图标类                        |
+| `showLine`          | `boolean`                        | `false`    | 连接线展示模式：`true` 时在缩进区绘制树形连接线；默认关闭不改布局                       |
 
 ### 插槽
 
@@ -229,6 +230,42 @@ const nodeIcon: NodeIconResolver = node => {
 ```
 
 回调返回值为 `true | false | string | { collapsed: string; expanded?: string }`。对象缺少 `expanded` 时自动复用 `collapsed`；叶子节点也使用 `collapsed`。自定义类负责提供完整图标样式，例如 `background-image: url(...)`；这种方式会保留 SVG 的多色填充。暗色主题可在主题选择器中为相同的图标类覆盖 `background-image`。
+
+### 连接线 (showLine)
+
+`showLine` 默认关闭，因此不会改变现有行布局。设为 `true` 后，在缩进区绘制经典的树形连接线，便于看清层级关系。
+
+规则：
+
+- **只有叶子节点**在标记列（箭头所在那一格）画连向父节点的折线；**分支节点只用箭头**，不画折线。
+- 缩进格会为「仍有后续兄弟」的祖先列画一条贯穿竖线，把上下的结构连起来。
+- 叶子折线的收尾形态取决于它在兄弟中的位置，**且顶层与内层不同**：
+
+| 位置 | 顶层（最外层） | 内层 |
+| --- | --- | --- |
+| 首位叶子 | `┌`（下半段竖线） | `├`（全高竖线） |
+| 中间叶子 | `├`（全高竖线） | `├` |
+| 末位叶子 | `└`（上半段竖线） | `└` |
+| 独子叶子 | — | `└` |
+
+只有**最外层**的首位叶子用 `┌` 开顶；内层首位叶子左上方已有缩进竖线接住，所以用 `├`。
+
+```vue
+<VueGiantTree :tree="treeData" :show-line="true" />
+```
+
+视觉样例（顶层 `┌`、分支只有箭头、内层 `├`/`└`）：
+
+```
+┌ □ 顶层叶·首
+▼ □ 顶部分支
+│  ├ □ 内层叶·首
+│  ├ □ 内层叶·中
+│  └ □ 内层叶·末
+└ □ 顶层叶·末
+```
+
+连接线仅在开启时渲染（组件对该配置做一次性预计算，几何只取决于层级结构、与折叠状态无关），关闭时行 DOM 与开启前完全一致。开发测试页的「数据规模 → `guide 连接线样例`」提供了覆盖各位置组合的样例，配合「功能开关 → 显示连接线」即可逐行核对。
 
 ### CheckedOutputMode
 
@@ -510,6 +547,43 @@ Use `v-model:tree` to receive the updated input array. Adding or deleting recomp
 | `outputIdOnly`      | `boolean`                        | `true`     | When `true` (default), v-model emits only selected node IDs; `false` emits full JSON                        |
 | `checkedOutputMode` | `CheckedOutputMode`              | `All`      | CHECKBOX output ID filter mode: `All` / `RootOnly` / `LeafOnly` / `Custom`                                  |
 | `filterFn`          | `FilterFn`                       | —          | Custom filter callback. CHECKBOX + Custom mode filters output; RADIO mode determines which nodes show Radio |
+| `showLine`          | `boolean`                        | `false`    | Guide-line mode: `true` draws tree connector lines in the indent area; off by default |
+
+### Guide Lines (showLine)
+
+`showLine` is off by default and therefore does not change the existing row layout. Set it to `true` to draw classic tree connector lines in the indent area for clearer hierarchy.
+
+Rules:
+
+- Only **leaf nodes** draw the connector to their parent in the marker column (the arrow cell); **branch nodes show just the arrow**, with no connector.
+- Indent cells draw a full-height vertical for each ancestor column that still has later siblings, tying the structure together.
+- The leaf connector's shape depends on the node's position among its siblings, **and differs between the top level and inner levels**:
+
+| Position | Top level | Inner level |
+| --- | --- | --- |
+| First leaf | `┌` (lower half) | `├` (full height) |
+| Middle leaf | `├` (full height) | `├` |
+| Last leaf | `└` (upper half) | `└` |
+| Only child | — | `└` |
+
+Only the **topmost** first leaf opens with `┌`; an inner first leaf already has an indent vertical above it, so it uses `├`.
+
+```vue
+<VueGiantTree :tree="treeData" :show-line="true" />
+```
+
+Visual sample (top `┌`, branch arrows only, inner `├`/`└`):
+
+```
+┌ □ Top leaf (first)
+▼ □ Top branch
+│  ├ □ Inner leaf (first)
+│  ├ □ Inner leaf (middle)
+│  └ □ Inner leaf (last)
+└ □ Top leaf (last)
+```
+
+Guide lines render only when enabled (one-time precompute whose geometry depends solely on the hierarchy, never on the collapsed state); when off, row DOM is identical to before. On the dev page, "Data size → `guide 连接线样例`" provides a sample covering every position, ready to inspect line by line with "Feature toggles → 显示连接线".
 
 ### Slots
 
@@ -788,6 +862,43 @@ const selected = ref([])
 | `outputIdOnly`      | `boolean`                        | `true`       | Если `true` (по умолч.), v-model передаёт только ID выбранных узлов; `false` — полные данные                       |
 | `checkedOutputMode` | `CheckedOutputMode`              | `All`        | Режим фильтрации вывода ID для CHECKBOX: `All` / `RootOnly` / `LeafOnly` / `Custom`                                |
 | `filterFn`          | `FilterFn`                       | —            | Пользовательский callback фильтрации. CHECKBOX + Custom — фильтрует вывод; RADIO — определяет, показывать ли Radio |
+| `showLine`          | `boolean`                        | `false`      | Режим направляющих линий: `true` рисует линии-связки дерева в области отступа; по умолчанию выкл. |
+
+### Направляющие линии (showLine)
+
+`showLine` по умолчанию выключен и потому не меняет текущую раскладку строк. При `true` в области отступа рисуются классические линии-связки дерева, чтобы иерархия читалась яснее.
+
+Правила:
+
+- Связку с родителем в маркерном столбце (ячейка стрелки) рисуют **только листья**; **ветви показывают лишь стрелку**, без связки.
+- Ячейки отступа рисуют вертикаль на всю высоту для каждого столбца-предка, у которого ещё есть последующие братья, — так структура связывается воедино.
+- Форма связки листа зависит от его позиции среди братьев и **различается для верхнего и внутренних уровней**:
+
+| Позиция | Верхний уровень | Внутренний уровень |
+| --- | --- | --- |
+| Первый лист | `┌` (нижняя половина) | `├` (на всю высоту) |
+| Средний лист | `├` (на всю высоту) | `├` |
+| Последний лист | `└` (верхняя половина) | `└` |
+| Единственный ребёнок | — | `└` |
+
+Только **самый верхний** первый лист открывается символом `┌`; у внутреннего первого листа сверху уже идёт вертикаль отступа, поэтому используется `├`.
+
+```vue
+<VueGiantTree :tree="treeData" :show-line="true" />
+```
+
+Наглядный пример (верх `┌`, у ветвей только стрелки, внутри `├`/`└`):
+
+```
+┌ □ Верхний лист (первый)
+▼ □ Верхняя ветвь
+│  ├ □ Внутренний лист (первый)
+│  ├ □ Внутренний лист (средний)
+│  └ □ Внутренний лист (последний)
+└ □ Верхний лист (последний)
+```
+
+Линии рисуются только при включении (однократный предрасчёт; геометрия зависит исключительно от иерархии, но не от состояния свёртки); при выключении DOM строк идентичен прежнему. На странице разработки в разделе «Размер данных → `guide 连接线样例`» есть пример, покрывающий все позиции, — сверяйте построчно вместе с «Переключатели → 显示连接线».
 
 ### Слоты
 

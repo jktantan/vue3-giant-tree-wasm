@@ -106,6 +106,64 @@
     //  background-color: $giant-tree__color-primary;
     //}
   }
+  /*
+  连接线（showLine 模式）：
+  - .item-guide-cell 是缩进格（列 0..deep-1），画竖向贯穿竖线，延续祖先所在列；
+  - .item-icon（标记列，列 deep）里的 .giant-tree__guide 只用于叶子，画连向父节点的
+    ├/└：竖线段（按兄弟位置取上半/下半/全高）+ 横向折线。分支行用箭头，不画线。
+  竖线定位在格子中心，与逐层缩进对齐；相邻行首尾相接成连续竖线。
+   */
+  &__guide {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+
+    &::before {
+      content: '';
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      width: $giant-tree__line-width;
+      background-color: $giant-tree__line-color;
+    }
+    // 缩进格竖线：--v-full 贯穿/延续，--v-none 不画。
+    &--v-full::before {
+      top: 0;
+      bottom: 0;
+    }
+    &--v-none::before {
+      display: none;
+    }
+
+    // 标记列竖线段：按节点在兄弟中的位置——上半 / 下半 / 全高 / 不画。
+    &--m-full::before {
+      top: 0;
+      bottom: 0;
+    }
+    // 末子：竖线只到行中，与横线交汇成 └ 的转折点。
+    &--m-upper::before {
+      top: 0;
+      height: 50%;
+    }
+    // 首子：竖线从行中向下延伸，接住下方的兄弟。
+    &--m-lower::before {
+      top: 50%;
+      bottom: 0;
+    }
+
+    // 横向折线：从格子中心伸到右缘，连向本行的节点内容。
+    &--h::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      right: 0;
+      height: $giant-tree__line-width;
+      transform: translateY(-50%);
+      background-color: $giant-tree__line-color;
+    }
+  }
+
   &__node-icon {
     flex: 0 0 auto;
     background-repeat: no-repeat;
@@ -132,9 +190,18 @@
       }
     }
     .item-icon {
+      position: relative;
+      // 拉满行高，标记列的折线竖线才能跨行相接。
+      align-self: stretch;
       display: flex;
       align-items: center;
       justify-content: center;
+    }
+    .item-guide-cell {
+      position: relative;
+      // 拉满行高，竖线才能跨行首尾相接。
+      align-self: stretch;
+      flex: 0 0 auto;
     }
     .item-control {
       align-self: stretch;

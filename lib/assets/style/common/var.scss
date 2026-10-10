@@ -22,6 +22,12 @@ $giant-tree__icon-size: $giant-tree__font-size;
 
 $giant-tree__trans: all 0.3s ease-in-out;
 
+/*
+连接线（showLine 模式）：缩进格中的分支线颜色与线宽
+ */
+$giant-tree__line-color: #d0d4dc !default;
+$giant-tree__line-width: 1px !default;
+
 $shadow-top-inset: inset 0 12px 10px -12px rgb(0 0 0 / 60%); /* 上内阴影 */
 $shadow-bottom-inset: inset 0 -12px 10px -12px rgb(0 0 0 / 60%); /* 上内阴影 */
 $shadow-horizontal-inset: $shadow-top-inset, $shadow-bottom-inset;

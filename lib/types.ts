@@ -60,6 +60,17 @@ export interface TreeNodeData {
   disabled: boolean
   /** 原始行数据（JSON 对象），包含输入时的所有自定义字段 / Original row data (JSON object), contains all custom fields from input / Исходные данные строки (объект JSON), содержит все пользовательские поля из ввода */
   extendData?: Record<string, unknown>
+  /**
+   * 连接线展示字段（showLine 模式），由渲染层预计算，非 WASM 数据。
+   * 仅在启用 `showLine` 时存在；默认关闭时不写入，以保持行对象轻量。
+   * Guide-line fields (showLine mode), precomputed by the render layer, not WASM
+   * data. Present only when `showLine` is enabled, keeping default rows light.
+   */
+  isLastChild?: boolean
+  /** 祖先列贯穿位掩码，见 lib/guide.ts。 / Ancestor-column continuation bitmask, see lib/guide.ts. */
+  guideMask?: number
+  /** 标记列（箭头/图标那一格）竖线段形态，见 lib/guide.ts。 */
+  markerLine?: 'none' | 'upper' | 'lower' | 'full'
 }
 
 /**

@@ -46,6 +46,7 @@ import {
 import { debounce } from 'throttle-debounce'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import TreeItem from '@lib/TreeItem.vue'
+import { computeGuideLines, type GuideLineInfo } from './guide'
 import type {
   TreeNodeData,
   TreeInputItem,
@@ -83,6 +84,8 @@ const props = withDefaults(
     workerMode?: boolean
     /** 输入已按深度优先前序排列时，跳过通用父子分组构建 */
     preorderedInput?: boolean
+    /** 连接线展示模式：true 时在缩进格绘制分支线（├/└ 与祖先竖线） */
+    showLine?: boolean
   }>(),
   {
     width: '100%',
@@ -100,6 +103,7 @@ const props = withDefaults(
     buildBatchSize: 2_000,
     workerMode: false,
     preorderedInput: false,
+    showLine: false,
   }
 )
 const emit = defineEmits([
@@ -265,6 +269,51 @@ const ro = new ResizeObserver((entries: ResizeObserverEntry[]) => {
     refreshTree()
   }, 0)
 })
+/**
+ * 连接线字段：showLine 开启时，按输入结构为每个节点预计算一次 isLastChild /
+ * guideMask。几何只由结构决定、与折叠无关，所以一次算好即可覆盖主线程、worker
+ * 可见切片与搜索视图等所有渲染路径，无需随可见集合重算。
+ *
+ * Guide-line map: computed once from the input structure when showLine is on.
+ * Because the geometry never depends on the collapsed state, one pass covers
+ * every render path (main thread, worker viewport slice, search view).
+ */
+const guideByNode = ref<Map<string, GuideLineInfo>>(new Map())
+/**
+ * 把 guide 字段写到行对象上，但仅在值真正变化时替换对象——虚拟行靠引用比较决定
+ * 是否重挂载，引用稳定才能保住「未变化行不重渲染」的优化。
+ *
+ * Attach guide fields, replacing the node only when a value actually changed, so
+ * virtual rows keep their identity and are not remounted needlessly.
+ */
+const applyGuide = (node: TreeNodeData): TreeNodeData => {
+  if (!props.showLine) return node
+  const guide = guideByNode.value.get(node.id)
+  if (guide === undefined) return node
+  if (
+    node.isLastChild === guide.isLastChild &&
+    node.guideMask === guide.guideMask &&
+    node.markerLine === guide.markerLine
+  ) {
+    return node
+  }
+  return {
+    ...node,
+    isLastChild: guide.isLastChild,
+    guideMask: guide.guideMask,
+    markerLine: guide.markerLine,
+  }
+}
+/** 重算连接线字段；运行时切换 showLine 或替换 tree/root/fieldKeys 时调用。 */
+const rebuildGuideLines = () => {
+  guideByNode.value = props.showLine
+    ? computeGuideLines(
+        props.tree as TreeInputItem[],
+        props.root,
+        props.fieldKeys
+      )
+    : new Map()
+}
 const refreshTree = () => {
   if (isBuilding) return
   const shownStarted = now()
@@ -297,7 +346,11 @@ const refreshTree = () => {
           }
         }
       }
-      return allNodesCache[index]
+      const cached = allNodesCache[index]
+      if (cached === undefined) return undefined
+      const guided = applyGuide(cached)
+      if (guided !== cached) allNodesCache[index] = guided
+      return guided
     })
     .filter((node): node is TreeNodeData => node !== undefined)
 }
@@ -910,10 +963,12 @@ const startWorker = () => {
     workerTreeSize = snapshot.size
     isTreeReady = true
     listHeight.value = snapshot.listHeight
-    currentTreeList.value = snapshot.rows.map(row => ({
-      ...row,
-      extendData: inputNodeById.get(row.id),
-    }))
+    currentTreeList.value = snapshot.rows.map(row =>
+      applyGuide({
+        ...row,
+        extendData: inputNodeById.get(row.id),
+      })
+    )
     // A structural mutation invalidates the transition rows: a row that was added
     // or removed can never enter or leave that fixed set. Content edits still
     // rebind safely below.
@@ -995,6 +1050,7 @@ watch(
 
 /** 挂载时初始化: 观察容器大小、加载树数据、立即渲染首屏 / On mount: observe container, load tree data, render initial viewport immediately / При монтировании: наблюдать за контейнером, загрузить данные дерева, сразу отрендерить начальный viewport */
 onMounted(async () => {
+  rebuildGuideLines()
   ro.observe(container.value!)
   if (startWorker()) return
   await initializeMainTree()
@@ -1328,6 +1384,7 @@ const removeNode = (id: string): boolean => {
 watch(
   () => props.tree,
   tree => {
+    rebuildGuideLines()
     if (isUsingWorker()) {
       if (awaitingWorkerTreeEchoes > 0) {
         awaitingWorkerTreeEchoes--
@@ -1355,6 +1412,20 @@ watch(
       return
     }
     void reconcileTreeData()
+  }
+)
+
+// 运行时切换 showLine：重算引导字段并即时重绘。主线程走 refreshTree；worker
+// 模式下主线程 WASM 树处于休眠，直接对当前切片就地套用即可，无需打扰 worker。
+watch(
+  () => props.showLine,
+  () => {
+    rebuildGuideLines()
+    if (isUsingWorker()) {
+      currentTreeList.value = currentTreeList.value.map(applyGuide)
+      return
+    }
+    refreshTree()
   }
 )
 
@@ -1412,6 +1483,7 @@ defineExpose({
           :select-type="selectType"
           :filter-fn="filterFn"
           :node-icon="nodeIcon"
+          :show-line="showLine"
           @check-click="checkClick"
           @item-click="itemClick"
           @item-contextmenu="contextMenuClick"
@@ -1440,6 +1512,7 @@ defineExpose({
             :select-type="selectType"
             :filter-fn="filterFn"
             :node-icon="nodeIcon"
+            :show-line="showLine"
             @check-click="checkClick"
             @item-click="itemClick"
             @item-contextmenu="contextMenuClick"

@@ -9,6 +9,8 @@ const props = defineProps<{
   selectType: SelectType
   filterFn?: FilterFn
   nodeIcon?: boolean | NodeIconResolver
+  /** 连接线展示模式：true 时缩进格绘制分支线。 / Guide-line mode: draw branch lines in the indent cells. */
+  showLine?: boolean
 }>()
 
 const emit = defineEmits([
@@ -49,6 +51,43 @@ const collapsedClick = () => {
 }
 
 /**
+ * 连接线模式：为每个缩进格计算该画什么线。
+ * deep=d 的行左侧有 d 个缩进格（列 0..d-1），每格是否画贯穿竖线由 guideMask 的对应位
+ * 决定——用于把同列的箭头上下连起来；连向父节点的 ├/└ 折线画在标记列（箭头那一格，
+ * 列 d），不在这里。关闭 showLine 时返回空数组，模板走轻量占位分支。
+ *
+ * Guide-line mode: per-indent-cell vertical spec. A row of deep=d has d indent
+ * cells (columns 0..d-1); each draws a full-height vertical only when the
+ * ancestor column continues (guideMask bit). The ├/└ connector is drawn in the
+ * marker column (the arrow cell, column d) instead.
+ */
+const guideCells = computed(() => {
+  const deep = props.item.deep
+  if (!props.showLine || deep <= 0) return []
+  const mask = props.item.guideMask ?? 0
+  return Array.from({ length: deep }, (_, i) => ({
+    key: i,
+    vertical: ((mask >> i) & 1) === 1 ? 'full' : 'none',
+  }))
+})
+/**
+ * 标记列（列 deep，箭头/图标所在那一格）的竖线段形态。
+ *
+ * 该竖线段只用于**叶子**：分支行用箭头，不画竖线。形态由节点在兄弟中的位置决定，
+ * 顶部/底部不要多画半段：
+ * - 'none'（独子）→ 不画；'lower'（首子）→ 下半段；'upper'（末子）→ 上半段；
+ * - 'full'（中间）→ 全高。
+ * 连向父节点的横向折线（├/└ 的横线）只有叶子才画。
+ */
+const markerLine = computed(() => props.item.markerLine ?? 'none')
+const showMarkerLine = computed(
+  () => props.showLine && !isBranch.value && markerLine.value !== 'none'
+)
+const markerVerticalClass = computed(
+  () => `giant-tree__guide--m-${markerLine.value}`
+)
+
+/**
  * 选中反馈动画开关：虚拟滚动滚动时会不断卸载/重建行元素，若动画挂在
  * 元素的进入上，新滚入视口的行会被误播动画。因此初始挂载不播，只有
  * 组件存活期间 checked 状态真正变化时（nextTick 后）才加上
@@ -64,7 +103,7 @@ watch(
       checkAnimated.value = true
     })
   },
-  { immediate: true },
+  { immediate: true }
 )
 
 /** 复选框/单选框点击（toggle 逻辑在 WASM 侧） / Checkbox/radio click (toggle logic is in WASM) / Клик по чекбоксу/радио (логика переключения в WASM) */
@@ -105,7 +144,23 @@ const contextMenu = (event: MouseEvent) => {
     @click="itemClick"
     @contextmenu="contextMenu"
   >
-    <div v-for="i in item.deep" :style="{ width: fontSize }" :key="i"></div>
+    <template v-if="showLine">
+      <div
+        v-for="cell in guideCells"
+        :key="cell.key"
+        class="item-guide-cell"
+        :style="{ width: fontSize }"
+        aria-hidden="true"
+      >
+        <span
+          class="giant-tree__guide"
+          :class="`giant-tree__guide--v-${cell.vertical}`"
+        />
+      </div>
+    </template>
+    <template v-else>
+      <div v-for="i in item.deep" :key="i" :style="{ width: fontSize }"></div>
+    </template>
     <div
       v-if="isBranch"
       class="item-icon item-control"
@@ -117,6 +172,7 @@ const contextMenu = (event: MouseEvent) => {
       @keydown.enter.prevent="collapsedClick"
       @keydown.space.prevent="collapsedClick"
     >
+      <!-- 分支行用箭头，不画连接线。 -->
       <div
         :style="{ width: fontSize, height: fontSize }"
         class="giant-tree__mask-button"
@@ -127,7 +183,15 @@ const contextMenu = (event: MouseEvent) => {
         "
       />
     </div>
-    <div v-else class="item-icon" :style="{ width: fontSize }"></div>
+    <div v-else class="item-icon" :style="{ width: fontSize }">
+      <!-- 叶子行：标记列按位置画竖线段（上半/下半/全高）加横向折线，构成 ├/└。 -->
+      <span
+        v-if="showMarkerLine"
+        class="giant-tree__guide"
+        :class="[markerVerticalClass, 'giant-tree__guide--h']"
+        aria-hidden="true"
+      />
+    </div>
     <div
       v-if="selectType === SelectType.CHECKBOX"
       class="item-selection item-control"
@@ -147,17 +211,20 @@ const contextMenu = (event: MouseEvent) => {
       <div
         v-if="item.checked === CheckType.UNCHECKED"
         :style="{ width: fontSize, height: fontSize }"
-        class="giant-tree__mask-button giant-tree__icon-check-unchecked" :class="{ 'giant-tree__animated': checkAnimated }"
+        class="giant-tree__mask-button giant-tree__icon-check-unchecked"
+        :class="{ 'giant-tree__animated': checkAnimated }"
       ></div>
       <div
         v-else-if="item.checked === CheckType.HALF_CHECKED"
         :style="{ width: fontSize, height: fontSize }"
-        class="giant-tree__mask-button giant-tree__icon-check-half checked" :class="{ 'giant-tree__animated': checkAnimated }"
+        class="giant-tree__mask-button giant-tree__icon-check-half checked"
+        :class="{ 'giant-tree__animated': checkAnimated }"
       ></div>
       <div
         v-else-if="item.checked === CheckType.CHECKED"
         :style="{ width: fontSize, height: fontSize }"
-        class="giant-tree__mask-button giant-tree__icon-check-checked checked" :class="{ 'giant-tree__animated': checkAnimated }"
+        class="giant-tree__mask-button giant-tree__icon-check-checked checked"
+        :class="{ 'giant-tree__animated': checkAnimated }"
       ></div>
     </div>
     <div
@@ -175,12 +242,14 @@ const contextMenu = (event: MouseEvent) => {
       <div
         v-if="item.checked === CheckType.CHECKED"
         :style="{ width: fontSize, height: fontSize }"
-        class="giant-tree__mask-button giant-tree__icon-radio-checked checked" :class="{ 'giant-tree__animated': checkAnimated }"
+        class="giant-tree__mask-button giant-tree__icon-radio-checked checked"
+        :class="{ 'giant-tree__animated': checkAnimated }"
       ></div>
       <div
         v-else-if="item.checked === CheckType.UNCHECKED"
         :style="{ width: fontSize, height: fontSize }"
-        class="giant-tree__mask-button giant-tree__icon-radio-unchecked" :class="{ 'giant-tree__animated': checkAnimated }"
+        class="giant-tree__mask-button giant-tree__icon-radio-unchecked"
+        :class="{ 'giant-tree__animated': checkAnimated }"
       ></div>
     </div>
     <div

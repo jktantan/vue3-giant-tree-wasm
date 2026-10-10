@@ -8,6 +8,7 @@ import { ref, shallowRef, computed, watch } from 'vue'
 import type { TreeNodeData, FilterFn, NodeIconResolver } from '@lib/types'
 
 const TREE_SIZES = {
+  guide: { guide: true },
   small: { l1: 5, l2: 3, l3: 2 },
   medium: { l1: 10, l2: 10, l3: 10 },
   large: { l1: 20, l2: 20, l3: 10 },
@@ -21,6 +22,7 @@ type TreeSize = keyof typeof TREE_SIZES
 const treeSizeOptions = Object.keys(TREE_SIZES) as TreeSize[]
 const treeSizeLabel = (size: TreeSize) => {
   const config = TREE_SIZES[size]
+  if ('guide' in config) return '连接线样例'
   return 'count' in config
     ? `${(config.count / 1000).toLocaleString()}k nodes`
     : `${config.l1}x${config.l2}x${config.l3}`
@@ -40,6 +42,7 @@ const workerMetrics = ref<Record<string, number | boolean>>({})
 const treeRef = ref<InstanceType<typeof VueGiantTree>>()
 const useNodeSlot = ref(false)
 const showMpttBoundaries = ref(true)
+const showLine = ref(false)
 const useActionsSlot = ref(false)
 const lastNodeAction = ref('')
 const enableDisabled = ref(true)
@@ -97,8 +100,52 @@ watch([outputIdOnly, checkedOutputMode], () => {
 
 const rootId = nanoid()
 
+/**
+ * 连接线专项样例：刻意覆盖「分支 / 叶子」在兄弟中的各种位置组合，用来肉眼核对
+ * ├ └ ┌ 的形态与收束是否正确。命名即语义，可直接对照：
+ *   顶层叶·首/中/末、顶层分支、内层叶·首/中/末、内层分支、内层独子。
+ * （真正的「顶层独子」需要整棵树只有一个节点，这里不适用。）
+ */
+const generateGuideSample = () => {
+  type Row = {
+    id: string
+    parentId: string
+    name: string
+    nodeType?: 'directory' | 'document'
+  }
+  const rows: Row[] = []
+  const leaf = (id: string, parentId: string, label: string) =>
+    rows.push({ id, parentId, name: `${label}（叶）`, nodeType: 'document' })
+  const branch = (id: string, parentId: string, label: string) =>
+    rows.push({ id, parentId, name: `${label}（分支）`, nodeType: 'directory' })
+
+  // ── 顶层（deep=0）：叶首 / 分支中 / 叶中 / 叶末 ──
+  // 顶层首叶应画 ┌(lower)，顶层末叶应画 └(upper)，中间用 ├(full)。
+  leaf('T1', rootId, 'T1 顶层叶·首')
+  branch('T2', rootId, 'T2 顶部分支·中')
+  leaf('T3', rootId, 'T3 顶层叶·中')
+  leaf('T4', rootId, 'T4 顶层叶·末')
+
+  // ── T2 子树（deep=1）：叶首 / 分支中 / 分支末 ──
+  // 内层首叶左侧已有缩进竖线，应画 ├(full)，而不是 ┌。
+  leaf('T2a', 'T2', 'T2a 内层叶·首')
+  branch('T2b', 'T2', 'T2b 内层分支·中')
+  branch('T2c', 'T2', 'T2c 内层分支·末')
+
+  // ── T2b 子树（deep=2）：叶首 / 叶中 / 叶末 ──
+  leaf('T2b1', 'T2b', 'T2b1 内层叶·首')
+  leaf('T2b2', 'T2b', 'T2b2 内层叶·中')
+  leaf('T2b3', 'T2b', 'T2b3 内层叶·末')
+
+  // ── T2c 子树（deep=2）：独子叶（上下都无兄弟）→ 收成 └(upper) ──
+  leaf('T2c1', 'T2c', 'T2c1 内层叶·独子')
+
+  return rows
+}
+
 const generateTreeData = (size: TreeSize) => {
   const config = TREE_SIZES[size]
+  if ('guide' in config) return generateGuideSample()
   const data: {
     id: string
     parentId: string
@@ -460,6 +507,10 @@ const switchDisplay = (type: DisplayType) => {
               显示 MPTT 边界（L/R）
             </label>
             <label class="toggle-label">
+              <input type="checkbox" v-model="showLine" />
+              显示连接线（├/└ 分支线）
+            </label>
+            <label class="toggle-label">
               <input type="checkbox" v-model="useActionsSlot" />
               启用操作插槽
             </label>
@@ -731,6 +782,7 @@ const switchDisplay = (type: DisplayType) => {
             :checked-output-mode="checkedOutputMode"
             :filter-fn="filterFn"
             :node-icon="nodeIcon"
+            :show-line="showLine"
             :worker-mode="true"
             :preordered-input="true"
             v-model="checkedResult"

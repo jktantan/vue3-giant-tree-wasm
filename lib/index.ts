@@ -6,6 +6,8 @@
 import './assets/style/index.scss'
 
 export { default as VueGiantTree } from './VueGiantTree.vue'
+export { computeGuideLines } from './guide'
+export type { GuideLineInfo } from './guide'
 export type {
   TreeNodeData,
   TreeInputItem,

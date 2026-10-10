@@ -496,4 +496,87 @@ describe('VueGiantTree: 主组件', () => {
     // 被收起的行必须真的离开 DOM，否则它们仍可被 Tab 聚焦、被读屏读出来
     expect(wrapper.text()).not.toContain('NodeA1')
   })
+
+  it('showLine 默认关闭时不渲染连接线格子', async () => {
+    const wrapper = mount(VueGiantTree, {
+      props: { modelValue: [], tree: makeTreeData(), root: 'root' },
+    })
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+    expect(wrapper.findAll('.item-guide-cell')).toHaveLength(0)
+  })
+
+  it('showLine 开启后按结构绘制 ├/└ 与祖先竖线', async () => {
+    const deepTree: TreeInputItem[] = [
+      { id: 'A', name: 'NodeA', parentId: 'root' },
+      { id: 'A1', name: 'NodeA1', parentId: 'A' },
+      { id: 'A1a', name: 'NodeA1a', parentId: 'A1' },
+      { id: 'A1b', name: 'NodeA1b', parentId: 'A1' },
+      { id: 'A2', name: 'NodeA2', parentId: 'A' },
+      { id: 'B', name: 'NodeB', parentId: 'root' },
+    ]
+    const wrapper = mount(VueGiantTree, {
+      props: { modelValue: [], tree: deepTree, root: 'root', showLine: true },
+    })
+    await flushPromises()
+    treeApi(wrapper).expandAll()
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+
+    const rowOf = (label: string) =>
+      wrapper.findAll('.tree-item').find(row => row.text().includes(label))!
+    const guideClasses = (label: string) =>
+      rowOf(label)
+        .findAll('.item-guide-cell')
+        .map(cell => cell.find('.giant-tree__guide').classes())
+
+    // deep2 叶子 A1a（内层首子）：缩进格两列都贯穿；标记列 full + 横线。
+    const a1a = guideClasses('NodeA1a')
+    expect(a1a).toHaveLength(2)
+    expect(a1a[0]).toContain('giant-tree__guide--v-full')
+    expect(a1a[0]).not.toContain('giant-tree__guide--h')
+    expect(a1a[1]).toContain('giant-tree__guide--v-full')
+    expect(a1a[1]).not.toContain('giant-tree__guide--h')
+    const a1aMarker = rowOf('NodeA1a').find('.item-icon .giant-tree__guide')
+    expect(a1aMarker.classes()).toContain('giant-tree__guide--m-full')
+    expect(a1aMarker.classes()).toContain('giant-tree__guide--h')
+
+    // deep2 叶子 A1b（末子）：标记列 upper + 横线。
+    const a1bMarker = rowOf('NodeA1b').find('.item-icon .giant-tree__guide')
+    expect(a1bMarker.classes()).toContain('giant-tree__guide--m-upper')
+    expect(a1bMarker.classes()).toContain('giant-tree__guide--h')
+
+    // deep1 末子 A2：列 0 贯穿（A 非末子）；标记列 upper。
+    const a2 = guideClasses('NodeA2')
+    expect(a2).toHaveLength(1)
+    expect(a2[0]).toContain('giant-tree__guide--v-full')
+    expect(a2[0]).not.toContain('giant-tree__guide--h')
+    expect(
+      rowOf('NodeA2').find('.item-icon .giant-tree__guide').classes()
+    ).toContain('giant-tree__guide--m-upper')
+
+    // 顶层节点不缩进，无连接线格。
+    expect(rowOf('NodeB').findAll('.item-guide-cell')).toHaveLength(0)
+  })
+
+  it('运行时切换 showLine 即时重绘连接线', async () => {
+    const wrapper = mount(VueGiantTree, {
+      props: { modelValue: [], tree: makeTreeData(), root: 'root' },
+    })
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+    // 先展开 A，使 deep1 的 A1 进入可见区。
+    await wrapper.findAll('.item-icon')[0].trigger('click')
+    await waitForBranchAnimation(wrapper)
+    expect(wrapper.text()).toContain('NodeA1')
+    expect(wrapper.findAll('.item-guide-cell')).toHaveLength(0)
+
+    await wrapper.setProps({ showLine: true })
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+    const a1Row = wrapper
+      .findAll('.tree-item')
+      .find(row => row.text().includes('NodeA1'))!
+    expect(a1Row.findAll('.item-guide-cell')).toHaveLength(1)
+  })
 })
