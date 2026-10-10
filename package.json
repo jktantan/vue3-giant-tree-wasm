@@ -22,6 +22,7 @@
     "benchmark:capacity:search-ab": "node --expose-gc scripts/benchmark-capacity.mjs --search-ab 1000000",
     "benchmark:capacity:lazy-ab": "node --expose-gc scripts/benchmark-capacity.mjs --lazy-ab 1000000",
     "benchmark:capacity:compact-ab": "node --expose-gc scripts/benchmark-capacity.mjs --compact-ab 1000000",
+    "benchmark:js-ab": "bash scripts/run-benchmark-js-ab.sh",
     "test:browser": "vitest run --config vitest.browser.config.ts",
     "test:browser:100k": "vitest run --config vitest.browser.config.ts --mode browser-100k",
     "profile:browser:build": "vitest run --config vitest.browser.config.ts --mode browser-build-profile",
