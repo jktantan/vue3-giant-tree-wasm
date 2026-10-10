@@ -1,5 +1,29 @@
 @use 'common/var' as *;
 
+// 选中态图标进入时的轻微弹跳，给 checkbox/radio 切换一个视觉反馈
+@keyframes giant-tree__icon-pop {
+  0% {
+    transform: scale(0.6);
+    opacity: 0.4;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+// 取消选中：从原尺寸轻微缩小再恢复，弱于选中动画，方向相反
+@keyframes giant-tree__icon-uncheck {
+  0% {
+    transform: scale(1.25);
+    opacity: 0.5;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
 .giant-tree {
   &.tree-container {
     //margin: 5px;
@@ -55,6 +79,26 @@
     }
     &.checked {
       background-color: $giant-tree__color-primary;
+      // v-if 切换状态时会重新渲染元素，进入动画即为选中反馈
+      animation: giant-tree__icon-pop 160ms cubic-bezier(0.34, 1.56, 0.64, 1);
+      // 半选态在级联勾选时高频切换，弹跳动画噪音大，单独排除
+      &.giant-tree__icon-check-half {
+        animation: none;
+      }
+    }
+    // 取消选中时未选中图标元素同样由 v-if 重新渲染进入，给它一个
+    // 反向的缩小淡出式进入动画，作为「取消」的视觉反馈
+    &.giant-tree__icon-check-unchecked,
+    &.giant-tree__icon-radio-unchecked {
+      animation: giant-tree__icon-uncheck 160ms ease-out;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      &.checked,
+      &.giant-tree__icon-check-unchecked,
+      &.giant-tree__icon-radio-unchecked {
+        animation: none;
+      }
     }
 
     //&:active {
