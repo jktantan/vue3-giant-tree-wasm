@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { computeGuideLines } from '@lib/guide'
+import { computeGuideLines, resolveShowLineOptions } from '@lib/guide'
 import type { TreeInputItem } from '@lib/types'
 
 /**
@@ -181,5 +181,81 @@ describe('computeGuideLines: 连接线预计算', () => {
 
   it('空输入返回空 Map', () => {
     expect(computeGuideLines([], '', {}).size).toBe(0)
+  })
+})
+
+/**
+ * `resolveShowLineOptions` 把 `showLine` 规整成 `{ enabled, options }`：
+ * - `false` 关闭；
+ * - `true` / `undefined` / `{}` 使用默认 `solid` 样式 + 默认颜色 + 1px；
+ * - 对象缺省字段按上述默认补齐；非法值（空串 / 0 / 负数）回退默认；
+ * - 不识别的 `style` 字符串（含旧 `'line'` / `'dot'`）回退默认 `solid`。
+ */
+describe('resolveShowLineOptions: showLine 归一化', () => {
+  it('false → 关闭', () => {
+    expect(resolveShowLineOptions(false)).toEqual({
+      enabled: false,
+      options: { style: 'solid', color: '#d0d4dc', width: 1 },
+    })
+  })
+
+  it('true / undefined / {} → 默认实线样式', () => {
+    for (const value of [true, undefined, {}]) {
+      expect(resolveShowLineOptions(value)).toEqual({
+        enabled: true,
+        options: { style: 'solid', color: '#d0d4dc', width: 1 },
+      })
+    }
+  })
+
+  it('{ style: "dashed" } → 虚线 + 默认颜色/粗细', () => {
+    expect(resolveShowLineOptions({ style: 'dashed' })).toEqual({
+      enabled: true,
+      options: { style: 'dashed', color: '#d0d4dc', width: 1 },
+    })
+  })
+
+  it('{ style: "dotted" } → 紧凑点状虚线 + 默认颜色/粗细', () => {
+    expect(resolveShowLineOptions({ style: 'dotted' })).toEqual({
+      enabled: true,
+      options: { style: 'dotted', color: '#d0d4dc', width: 1 },
+    })
+  })
+
+  it('{ color, width } → 自定义颜色与粗细', () => {
+    expect(
+      resolveShowLineOptions({ color: 'rgb(255, 0, 0)', width: 2 })
+    ).toEqual({
+      enabled: true,
+      options: { style: 'solid', color: 'rgb(255, 0, 0)', width: 2 },
+    })
+  })
+
+  it('未知 style（包括旧 "line"/"dot"）回退 solid', () => {
+    for (const style of ['line', 'dot', '', 'SOLID', null, 7]) {
+      expect(
+        resolveShowLineOptions({ style: style as unknown as 'solid' }).options.style
+      ).toBe('solid')
+    }
+  })
+
+  it('非法 color / width 回退默认', () => {
+    const result = resolveShowLineOptions({
+      color: '',
+      width: 0,
+    })
+    expect(result).toEqual({
+      enabled: true,
+      options: { style: 'solid', color: '#d0d4dc', width: 1 },
+    })
+  })
+
+  it('width 非数 / 负数 / NaN 回退默认', () => {
+    const samples: unknown[] = [NaN, -1, '2', null]
+    for (const width of samples) {
+      expect(
+        resolveShowLineOptions({ width: width as number }).options.width
+      ).toBe(1)
+    }
   })
 })

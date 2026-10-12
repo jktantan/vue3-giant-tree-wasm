@@ -23,6 +23,48 @@ export type NodeIconSpec =
 export type NodeIconResolver = (node: TreeNodeData) => NodeIconSpec
 
 /**
+ * 连接线展示形态：
+ * - `'solid'` 实线（默认，行为与旧 `true` 一致）；
+ * - `'dashed'` 横/竖短划线，`linear-gradient` 切段实现；
+ * - `'dotted'` 紧凑点状虚线，`radial-gradient` 等距填充。
+ *
+ * Show-line shape:
+ * - `'solid'` (default): continuous line, matches legacy `true`;
+ * - `'dashed'`: short stroke alternation, implemented via `linear-gradient`;
+ * - `'dotted'`: tightly-spaced dots via `radial-gradient`.
+ */
+export type ShowLineStyle = 'solid' | 'dashed' | 'dotted'
+
+/**
+ * `showLine` 的对象形式。省略的字段使用默认值：`style: 'line'`、`color` 沿用样式默认、
+ * `width: 1`。
+ *
+ * Object form of `showLine`. Missing fields use defaults: `style: 'line'`, `color`
+ * falls back to the stylesheet default, `width: 1`.
+ */
+export interface ShowLineOptions {
+  /** 'line' 或 'dot'。缺省 'line'。 / 'line' or 'dot'. Defaults to 'line'. */
+  style?: ShowLineStyle
+  /** 连接线颜色。接受任意合法的 CSS color。 / Guide-line color. Any legal CSS color. */
+  color?: string
+  /** 连接线粗细（像素）。缺省 1。 / Guide-line width in pixels. Defaults to 1. */
+  width?: number
+}
+
+/**
+ * `resolveShowLineOptions` 的返回值：已经填上默认值的最终配置。
+ * Result type of `resolveShowLineOptions`: fully populated options with defaults applied.
+ */
+export interface ResolvedShowLineOptions {
+  /** 连接线展示形态。 / Show-line shape. */
+  style: ShowLineStyle
+  /** 连接线颜色（CSS color）。 / Guide-line color (CSS color). */
+  color: string
+  /** 连接线粗细（像素）。 / Guide-line width in pixels. */
+  width: number
+}
+
+/**
  * JSON 字段键名配置
  * JSON field key configuration
  * Конфигурация имён полей JSON

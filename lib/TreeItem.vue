@@ -1,6 +1,11 @@
 <script setup lang="ts">
 import { SelectType, CheckType } from '../build/release'
-import type { FilterFn, NodeIconResolver, TreeNodeData } from './types'
+import type {
+  FilterFn,
+  NodeIconResolver,
+  ShowLineStyle,
+  TreeNodeData,
+} from './types'
 import { computed, nextTick, ref, watch } from 'vue'
 
 const props = defineProps<{
@@ -9,8 +14,18 @@ const props = defineProps<{
   selectType: SelectType
   filterFn?: FilterFn
   nodeIcon?: boolean | NodeIconResolver
-  /** 连接线展示模式：true 时缩进格绘制分支线。 / Guide-line mode: draw branch lines in the indent cells. */
-  showLine?: boolean
+  /**
+   * 是否启用连接线展示。模板据此选择「轻量占位 v-for」与「引导格渲染」分支。
+   * / Whether guide-line mode is enabled; the template picks between placeholder
+   * cells and rendered guide cells.
+   */
+  showLineEnabled?: boolean
+  /** 连接线形态：'line'（默认）/ 'dot'。 / Guide-line shape: 'line' (default) / 'dot'. */
+  showLineStyle?: ShowLineStyle
+  /** 连接线颜色。 / Guide-line color. */
+  showLineColor?: string
+  /** 连接线粗细（px）。 / Guide-line width in px. */
+  showLineWidth?: number
 }>()
 
 const emit = defineEmits([
@@ -63,7 +78,7 @@ const collapsedClick = () => {
  */
 const guideCells = computed(() => {
   const deep = props.item.deep
-  if (!props.showLine || deep <= 0) return []
+  if (!props.showLineEnabled || deep <= 0) return []
   const mask = props.item.guideMask ?? 0
   return Array.from({ length: deep }, (_, i) => ({
     key: i,
@@ -81,10 +96,36 @@ const guideCells = computed(() => {
  */
 const markerLine = computed(() => props.item.markerLine ?? 'none')
 const showMarkerLine = computed(
-  () => props.showLine && !isBranch.value && markerLine.value !== 'none'
+  () => props.showLineEnabled && !isBranch.value && markerLine.value !== 'none'
 )
 const markerVerticalClass = computed(
   () => `giant-tree__guide--m-${markerLine.value}`
+)
+
+/** 引导元素形参：style/color/width 由 props 决定，未启用时不写入（关闭时模板走轻量分支）。 */
+const showLineStyle = computed(() => props.showLineStyle ?? 'line')
+const showLineColor = computed(() => props.showLineColor ?? '#d0d4dc')
+const showLineWidth = computed(() => props.showLineWidth ?? 1)
+/**
+ * 写到行根节点的 CSS 变量集合。TreeItem 的根元素承担样式域，因此只在这里拼一次，
+ * 模板只声明 `:style="guideStyle"`。`none` 不写；`line`/`dot` 共用 `color` 与 `width`，
+ * 形态差异由 SCSS 中的 `.giant-tree__guide--dot` 消费。
+ *
+ * CSS variable set written to the row root. Only enabled rows pay this cost; the
+ * template takes the lightweight path when disabled. `line` and `dot` share `color`
+ * and `width`; the shape difference is consumed by `.giant-tree__guide--dot` in SCSS.
+ */
+const guideStyle = computed(() =>
+  props.showLineEnabled
+    ? ({
+        '--giant-tree-guide-style': showLineStyle.value,
+        '--giant-tree-guide-color': showLineColor.value,
+        '--giant-tree-guide-width':
+          typeof showLineWidth.value === 'number'
+            ? `${showLineWidth.value}px`
+            : '1px',
+      } as Record<string, string>)
+    : null
 )
 
 /**
@@ -139,12 +180,12 @@ const contextMenu = (event: MouseEvent) => {
 <template>
   <div
     class="tree-item"
-    :style="{ fontSize: fontSize }"
+    :style="[ { fontSize: fontSize }, guideStyle ]"
     :class="{ selected: item.selected, disabled: item.disabled }"
     @click="itemClick"
     @contextmenu="contextMenu"
   >
-    <template v-if="showLine">
+    <template v-if="showLineEnabled">
       <div
         v-for="cell in guideCells"
         :key="cell.key"

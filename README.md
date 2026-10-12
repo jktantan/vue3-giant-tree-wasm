@@ -149,7 +149,7 @@ const search = (keyword: string) => treeRef.value?.fuzzySearch(keyword)
 | `checkedOutputMode` | `CheckedOutputMode`              | `All`      | CHECKBOX 输出 ID 过滤模式：`All` / `RootOnly` / `LeafOnly` / `Custom`                   |
 | `filterFn`          | `FilterFn`                       | —          | 自定义过滤回调。CHECKBOX + Custom 模式下过滤输出；RADIO 模式下判断节点是否显示 Radio 框 |
 | `nodeIcon`          | `boolean \| NodeIconResolver`   | `false`    | 节点图标：`true` 使用内置图标；回调可按节点指定或隐藏 CSS 图标类                        |
-| `showLine`          | `boolean`                        | `false`    | 连接线展示模式：`true` 时在缩进区绘制树形连接线；默认关闭不改布局                       |
+| `showLine`          | `boolean \| ShowLineOptions`     | `false`    | 连接线展示模式：`false` 关闭；`true` 用默认（实线 + `#d0d4dc` + 1px）；对象可切换 `style: 'solid' \| 'dashed' \| 'dotted'`、`color`、`width`（像素） |
 
 ### 插槽
 
@@ -239,7 +239,19 @@ const nodeIcon: NodeIconResolver = node => {
 
 ### 连接线 (showLine)
 
-`showLine` 默认关闭，因此不会改变现有行布局。设为 `true` 后，在缩进区绘制经典的树形连接线，便于看清层级关系。
+`showLine` 默认关闭，因此不会改变现有行布局。开启后会按以下形式渲染：
+
+- `true` / `undefined`：使用默认线样式（`#d0d4dc` / 1px）；
+- `false`：关闭；
+- 对象 `{ style?, color?, width? }`：分别切换样式、颜色、粗细；缺省字段沿用默认。
+
+样式有三种：
+
+- `'solid'`（默认）：连续的实线，最常见的层级连接线；
+- `'dashed'`：`linear-gradient` 把线条切成 4px 实线 + 4px 间隔的循环，画中等节奏的虚线；
+- `'dotted'`：`radial-gradient` 在 4×4 网格里密铺一个紧凑点，整条线呈现虚线点状；适合深色主题或密集层级。
+
+颜色接受任意 CSS color（如 `#3b82f6`、`rgb(255,0,0)`），粗细为像素（正数，缺省 `1`）。
 
 规则：
 
@@ -258,6 +270,11 @@ const nodeIcon: NodeIconResolver = node => {
 
 ```vue
 <VueGiantTree :tree="treeData" :show-line="true" />
+<!-- 自定义点样式 + 颜色 + 粗细 -->
+<VueGiantTree
+  :tree="treeData"
+  :show-line="{ style: 'dotted', color: '#3b82f6', width: 2 }"
+/>
 ```
 
 视觉样例（顶层 `┌`、分支只有箭头、内层 `├`/`└`）：
@@ -561,11 +578,23 @@ Use `v-model:tree` to receive the updated input array. Adding or deleting recomp
 | `outputIdOnly`      | `boolean`                        | `true`     | When `true` (default), v-model emits only selected node IDs; `false` emits full JSON                        |
 | `checkedOutputMode` | `CheckedOutputMode`              | `All`      | CHECKBOX output ID filter mode: `All` / `RootOnly` / `LeafOnly` / `Custom`                                  |
 | `filterFn`          | `FilterFn`                       | —          | Custom filter callback. CHECKBOX + Custom mode filters output; RADIO mode determines which nodes show Radio |
-| `showLine`          | `boolean`                        | `false`    | Guide-line mode: `true` draws tree connector lines in the indent area; off by default |
+| `showLine`          | `boolean \| ShowLineOptions`     | `false`    | Guide-line mode: `false` disables; `true` uses defaults (solid + `#d0d4dc` + 1px); an object enables `style: 'solid' \| 'dashed' \| 'dotted'`, `color`, and `width` (px) |
 
 ### Guide Lines (showLine)
 
-`showLine` is off by default and therefore does not change the existing row layout. Set it to `true` to draw classic tree connector lines in the indent area for clearer hierarchy.
+`showLine` is off by default and therefore does not change the existing row layout. Once enabled, the prop accepts:
+
+- `true` / `undefined`: default style (solid + `#d0d4dc` + 1px);
+- `false`: disabled;
+- `{ style?, color?, width? }`: pick style, color and width; missing fields fall back to defaults.
+
+Three shapes are supported:
+
+- `'solid'` (default): a continuous line, the most common tree connector;
+- `'dashed'`: a `linear-gradient` cycles a 4px stroke and a 4px gap, giving a moderate-rhythm dashed line;
+- `'dotted'`: a `radial-gradient` tiles a tight dot on a 4×4 grid, producing a dotted line that suits dark themes or dense hierarchies.
+
+`color` accepts any CSS color (e.g. `#3b82f6`, `rgb(255, 0, 0)`); `width` is in pixels (positive, defaults to `1`).
 
 Rules:
 
@@ -584,6 +613,11 @@ Only the **topmost** first leaf opens with `┌`; an inner first leaf already ha
 
 ```vue
 <VueGiantTree :tree="treeData" :show-line="true" />
+<!-- Custom shape, color, width -->
+<VueGiantTree
+  :tree="treeData"
+  :show-line="{ style: 'dotted', color: '#3b82f6', width: 2 }"
+/>
 ```
 
 Visual sample (top `┌`, branch arrows only, inner `├`/`└`):
@@ -876,11 +910,23 @@ const selected = ref([])
 | `outputIdOnly`      | `boolean`                        | `true`       | Если `true` (по умолч.), v-model передаёт только ID выбранных узлов; `false` — полные данные                       |
 | `checkedOutputMode` | `CheckedOutputMode`              | `All`        | Режим фильтрации вывода ID для CHECKBOX: `All` / `RootOnly` / `LeafOnly` / `Custom`                                |
 | `filterFn`          | `FilterFn`                       | —            | Пользовательский callback фильтрации. CHECKBOX + Custom — фильтрует вывод; RADIO — определяет, показывать ли Radio |
-| `showLine`          | `boolean`                        | `false`      | Режим направляющих линий: `true` рисует линии-связки дерева в области отступа; по умолчанию выкл. |
+| `showLine`          | `boolean \| ShowLineOptions`     | `false`      | Режим направляющих линий: `false` выкл.; `true` использует значения по умолчанию (сплошная + `#d0d4dc` + 1px); объект задаёт `style: 'solid' \| 'dashed' \| 'dotted'`, `color`, `width` (пиксели) |
 
 ### Направляющие линии (showLine)
 
-`showLine` по умолчанию выключен и потому не меняет текущую раскладку строк. При `true` в области отступа рисуются классические линии-связки дерева, чтобы иерархия читалась яснее.
+`showLine` по умолчанию выключен и потому не меняет текущую раскладку строк. После включения параметр принимает:
+
+- `true` / `undefined`: стиль по умолчанию (сплошная + `#d0d4dc` + 1px);
+- `false`: выключено;
+- `{ style?, color?, width? }`: выбор формы, цвета и толщины; пропущенные поля возвращаются к значениям по умолчанию.
+
+Поддерживаются три формы:
+
+- `'solid'` (по умолчанию): непрерывная линия — самый распространённый вариант;
+- `'dashed'`: `linear-gradient` циклически рисует штрих 4px и пропуск 4px, давая пунктир среднего ритма;
+- `'dotted'`: `radial-gradient` плотно укладывает точку в сетке 4×4, превращая линию в плотную точечную — удобно для тёмных тем и плотных иерархий.
+
+`color` принимает любой CSS-цвет (например `#3b82f6`, `rgb(255, 0, 0)`); `width` — в пикселях (положительное число, по умолчанию `1`).
 
 Правила:
 
@@ -899,6 +945,11 @@ const selected = ref([])
 
 ```vue
 <VueGiantTree :tree="treeData" :show-line="true" />
+<!-- Произвольная форма, цвет и толщина -->
+<VueGiantTree
+  :tree="treeData"
+  :show-line="{ style: 'dotted', color: '#3b82f6', width: 2 }"
+/>
 ```
 
 Наглядный пример (верх `┌`, у ветвей только стрелки, внутри `├`/`└`):

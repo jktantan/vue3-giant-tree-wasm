@@ -12,7 +12,65 @@
  * Each node is therefore computed once and stays valid across scrolling,
  * expanding and collapsing.
  */
-import type { TreeFieldKeys, TreeInputItem } from './types'
+import type {
+  ResolvedShowLineOptions,
+  ShowLineOptions,
+  ShowLineStyle,
+  TreeFieldKeys,
+  TreeInputItem,
+} from './types'
+
+/** 连接线默认形态。 / Default show-line shape. */
+export const DEFAULT_SHOW_LINE_STYLE: ShowLineStyle = 'solid'
+/** 连接线默认颜色。 / Default guide-line color. */
+export const DEFAULT_SHOW_LINE_COLOR = '#d0d4dc'
+/** 连接线默认粗细（px）。 / Default guide-line width in px. */
+export const DEFAULT_SHOW_LINE_WIDTH = 1
+
+/**
+ * 把 `showLine` 规整成 `{ enabled, options }`：false 等价于关闭；true / undefined 等价于
+ * `{}`（使用全部默认）；对象则补齐字段默认值。
+ *
+ * Resolve `showLine` into `{ enabled, options }`: `false` disables, `true` / `undefined`
+ * is treated as `{}` (all defaults), objects get missing fields filled in.
+ *
+ * 仅做归一化，不读 SCSS 变量；颜色默认值与 `lib/assets/style/common/var.scss` 中
+ * `$giant-tree__line-color` 保持一致，便于组件层直接渲染。
+ *
+ * Pure normalization; does not read SCSS variables. The default color matches
+ * `$giant-tree__line-color` in `lib/assets/style/common/var.scss`.
+ */
+export function resolveShowLineOptions(
+  showLine: boolean | ShowLineOptions | undefined
+): { enabled: boolean; options: ResolvedShowLineOptions } {
+  if (showLine === false) {
+    return {
+      enabled: false,
+      options: {
+        style: DEFAULT_SHOW_LINE_STYLE,
+        color: DEFAULT_SHOW_LINE_COLOR,
+        width: DEFAULT_SHOW_LINE_WIDTH,
+      },
+    }
+  }
+  const raw: ShowLineOptions = typeof showLine === 'object' && showLine !== null
+    ? showLine
+    : {}
+  // 仅接受三态枚举；旧 `'line'`（实线别名）、`'dot'`（已废弃）及其他非法值
+  // 都回退默认 `solid`，避免运行时静默错用历史写法。
+  const style: ShowLineStyle =
+    raw.style === 'solid' || raw.style === 'dashed' || raw.style === 'dotted'
+      ? raw.style
+      : DEFAULT_SHOW_LINE_STYLE
+  const color = typeof raw.color === 'string' && raw.color.length > 0
+    ? raw.color
+    : DEFAULT_SHOW_LINE_COLOR
+  const width =
+    typeof raw.width === 'number' && Number.isFinite(raw.width) && raw.width > 0
+      ? raw.width
+      : DEFAULT_SHOW_LINE_WIDTH
+  return { enabled: true, options: { style, color, width } }
+}
 
 /** 单行的连接线展示字段。 / Guide-line fields for a single row. */
 export interface GuideLineInfo {

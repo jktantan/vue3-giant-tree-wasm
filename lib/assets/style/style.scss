@@ -112,19 +112,33 @@
   - .item-icon（标记列，列 deep）里的 .giant-tree__guide 只用于叶子，画连向父节点的
     ├/└：竖线段（按兄弟位置取上半/下半/全高）+ 横向折线。分支行用箭头，不画线。
   竖线定位在格子中心，与逐层缩进对齐；相邻行首尾相接成连续竖线。
+
+  颜色 / 粗细 / 形态由行根节点的三个 CSS 变量控制（来自 `showLine` props）：
+    --giant-tree-guide-color
+    --giant-tree-guide-width
+    --giant-tree-guide-style  ('solid' | 'dashed' | 'dotted')
+  三态都消费同一组颜色 / 粗细变量：
+    solid  → `background-color` 整段填色（默认行为，向后兼容）；
+    dashed → `linear-gradient` 切成 4px 实线 + 4px 间隔循环；
+    dotted → `radial-gradient(circle, color 40%, transparent 41%)` 在 4x4 网格上密铺点。
+  4px 是「紧凑点」经验的默认节奏：用户感觉虚线连续，但视觉上是离散节奏。
    */
   &__guide {
     position: absolute;
     inset: 0;
     pointer-events: none;
 
+    // 周期：竖/横虚线与点的重复节奏。紧凑点状用 4px。
+    $giant-tree__guide-cycle: 4px;
+
     &::before {
       content: '';
       position: absolute;
       left: 50%;
       transform: translateX(-50%);
-      width: $giant-tree__line-width;
-      background-color: $giant-tree__line-color;
+      width: var(--giant-tree-guide-width, $giant-tree__line-width);
+      background-color: var(--giant-tree-guide-color, $giant-tree__line-color);
+      // 默认（solid）：整段 background-color 已生效；dashed/dotted 由下方选择器覆盖。
     }
     // 缩进格竖线：--v-full 贯穿/延续，--v-none 不画。
     &--v-full::before {
@@ -158,9 +172,69 @@
       top: 50%;
       left: 50%;
       right: 0;
-      height: $giant-tree__line-width;
+      height: var(--giant-tree-guide-width, $giant-tree__line-width);
       transform: translateY(-50%);
-      background-color: $giant-tree__line-color;
+      background-color: var(--giant-tree-guide-color, $giant-tree__line-color);
+    }
+
+    // 三态共享的颜色 / 周期局部变量，避免在每个选择器里重复 var()。
+    $_guide-color: var(--giant-tree-guide-color, $giant-tree__line-color);
+    $_guide-cycle: $giant-tree__guide-cycle;
+
+    // ---- dashed：竖线 / 横线统一用 linear-gradient 切段 ----
+    // 4px 实线 + 4px 间隔循环；颜色取自 CSS 变量。
+    .tree-item[style*="--giant-tree-guide-style: dashed"] & {
+      &::before {
+        // 竖向段落：每 8px 周期内前 4px 着色。容器是行高，周期循环 repeat-y。
+        background-color: transparent;
+        background-image: linear-gradient(
+          to bottom,
+          $_guide-color 0,
+          $_guide-color $_guide-cycle,
+          transparent $_guide-cycle,
+          transparent (2 * $_guide-cycle)
+        );
+        background-size: 100% (2 * $_guide-cycle);
+        background-repeat: repeat-y;
+      }
+      &--h::after {
+        // 横向段落：同周期，转横向。
+        background-color: transparent;
+        background-image: linear-gradient(
+          to right,
+          $_guide-color 0,
+          $_guide-color $_guide-cycle,
+          transparent $_guide-cycle,
+          transparent (2 * $_guide-cycle)
+        );
+        background-size: (2 * $_guide-cycle) 100%;
+        background-repeat: repeat-x;
+      }
+    }
+
+    // ---- dotted：紧凑点状虚线。4x4 网格里密铺一个小圆点 ----
+    // 用 radial-gradient 在每个 4x4 单元的中心画直径≈2px 的实心圆。
+    .tree-item[style*="--giant-tree-guide-style: dotted"] & {
+      &::before {
+        background-color: transparent;
+        background-image: radial-gradient(
+          circle,
+          $_guide-color 0 40%,
+          transparent 41% 100%
+        );
+        background-size: $_guide-cycle $_guide-cycle;
+        background-repeat: repeat;
+      }
+      &--h::after {
+        background-color: transparent;
+        background-image: radial-gradient(
+          circle,
+          $_guide-color 0 40%,
+          transparent 41% 100%
+        );
+        background-size: $_guide-cycle $_guide-cycle;
+        background-repeat: repeat;
+      }
     }
   }
 

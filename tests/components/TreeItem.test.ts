@@ -318,7 +318,7 @@ describe('TreeItem: 连接线模式 (showLine)', () => {
         }),
         fontSize: '14px',
         selectType: SelectType.CHECKBOX,
-        showLine: true,
+        showLineEnabled: true,
       },
     })
     const cells = wrapper.findAll('.item-guide-cell')
@@ -349,7 +349,7 @@ describe('TreeItem: 连接线模式 (showLine)', () => {
           }),
           fontSize: '14px',
           selectType: SelectType.CHECKBOX,
-          showLine: true,
+          showLineEnabled: true,
         },
       })
     expect(
@@ -374,7 +374,7 @@ describe('TreeItem: 连接线模式 (showLine)', () => {
         }),
         fontSize: '14px',
         selectType: SelectType.CHECKBOX,
-        showLine: true,
+        showLineEnabled: true,
       },
     })
     // 缩进格照常，标记列无 guide 元素。
@@ -395,7 +395,7 @@ describe('TreeItem: 连接线模式 (showLine)', () => {
         }),
         fontSize: '14px',
         selectType: SelectType.CHECKBOX,
-        showLine: true,
+        showLineEnabled: true,
       },
     })
     // 分支行：标记列是箭头本身，不叠加任何 guide 竖线/折线。
@@ -409,7 +409,7 @@ describe('TreeItem: 连接线模式 (showLine)', () => {
         item: makeItem({ deep: 2, isLastChild: true, guideMask: 0b10 }),
         fontSize: '14px',
         selectType: SelectType.CHECKBOX,
-        showLine: true,
+        showLineEnabled: true,
       },
     })
     const cells = wrapper.findAll('.item-guide-cell')
@@ -428,7 +428,7 @@ describe('TreeItem: 连接线模式 (showLine)', () => {
         item: makeItem({ deep: 2, isLastChild: true, guideMask: 0 }),
         fontSize: '14px',
         selectType: SelectType.CHECKBOX,
-        showLine: true,
+        showLineEnabled: true,
       },
     })
     const cells = wrapper.findAll('.item-guide-cell')

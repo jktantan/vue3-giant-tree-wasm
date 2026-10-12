@@ -46,13 +46,14 @@ import {
 import { debounce } from 'throttle-debounce'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import TreeItem from '@lib/TreeItem.vue'
-import { computeGuideLines, type GuideLineInfo } from './guide'
+import { computeGuideLines, resolveShowLineOptions, type GuideLineInfo } from './guide'
 import type {
   TreeNodeData,
   TreeInputItem,
   TreeFieldKeys,
   FilterFn,
   NodeIconResolver,
+  ShowLineOptions,
   TreeMutationItem,
   TreeNodePatch,
 } from './types'
@@ -84,8 +85,16 @@ const props = withDefaults(
     workerMode?: boolean
     /** 输入已按深度优先前序排列时，跳过通用父子分组构建 */
     preorderedInput?: boolean
-    /** 连接线展示模式：true 时在缩进格绘制分支线（├/└ 与祖先竖线） */
-    showLine?: boolean
+    /**
+     * 连接线展示模式：
+     * - `false` 关闭（默认）；
+     * - `true` 开启，使用默认样式（线 / `#d0d4dc` / 1px）；
+     * - `ShowLineOptions` 进一步切换 `style: 'line' | 'dot'`、`color`、`width`。
+     *
+     * Guide-line mode: `false` disables (default); `true` enables with defaults
+     * (line / `#d0d4dc` / 1px); `ShowLineOptions` further customizes shape, color, width.
+     */
+    showLine?: boolean | ShowLineOptions
   }>(),
   {
     width: '100%',
@@ -280,6 +289,15 @@ const ro = new ResizeObserver((entries: ResizeObserverEntry[]) => {
  */
 const guideByNode = ref<Map<string, GuideLineInfo>>(new Map())
 /**
+ * `props.showLine` 的归一化结果：`enabled=false` 时模板走轻量占位分支，避免无谓渲染；
+ * `enabled=true` 时把 `style` / `color` / `width` 透传给 `TreeItem`，由 CSS 变量生效。
+ *
+ * Normalized view of `props.showLine`: when disabled, the template takes the lightweight
+ * placeholder path; when enabled, the resolved shape / color / width are forwarded to
+ * `TreeItem` and applied via CSS variables.
+ */
+const showLineConfig = computed(() => resolveShowLineOptions(props.showLine))
+/**
  * 把 guide 字段写到行对象上，但仅在值真正变化时替换对象——虚拟行靠引用比较决定
  * 是否重挂载，引用稳定才能保住「未变化行不重渲染」的优化。
  *
@@ -287,7 +305,7 @@ const guideByNode = ref<Map<string, GuideLineInfo>>(new Map())
  * virtual rows keep their identity and are not remounted needlessly.
  */
 const applyGuide = (node: TreeNodeData): TreeNodeData => {
-  if (!props.showLine) return node
+  if (!showLineConfig.value.enabled) return node
   const guide = guideByNode.value.get(node.id)
   if (guide === undefined) return node
   if (
@@ -306,7 +324,7 @@ const applyGuide = (node: TreeNodeData): TreeNodeData => {
 }
 /** 重算连接线字段；运行时切换 showLine 或替换 tree/root/fieldKeys 时调用。 */
 const rebuildGuideLines = () => {
-  guideByNode.value = props.showLine
+  guideByNode.value = showLineConfig.value.enabled
     ? computeGuideLines(
         props.tree as TreeInputItem[],
         props.root,
@@ -1497,7 +1515,10 @@ defineExpose({
           :select-type="selectType"
           :filter-fn="filterFn"
           :node-icon="nodeIcon"
-          :show-line="showLine"
+          :show-line-enabled="showLineConfig.enabled"
+          :show-line-style="showLineConfig.options.style"
+          :show-line-color="showLineConfig.options.color"
+          :show-line-width="showLineConfig.options.width"
           @check-click="checkClick"
           @item-click="itemClick"
           @item-contextmenu="contextMenuClick"
@@ -1526,7 +1547,10 @@ defineExpose({
             :select-type="selectType"
             :filter-fn="filterFn"
             :node-icon="nodeIcon"
-            :show-line="showLine"
+            :show-line-enabled="showLineConfig.enabled"
+            :show-line-style="showLineConfig.options.style"
+            :show-line-color="showLineConfig.options.color"
+            :show-line-width="showLineConfig.options.width"
             @check-click="checkClick"
             @item-click="itemClick"
             @item-contextmenu="contextMenuClick"

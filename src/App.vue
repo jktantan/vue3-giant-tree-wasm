@@ -42,7 +42,33 @@ const workerMetrics = ref<Record<string, number | boolean>>({})
 const treeRef = ref<InstanceType<typeof VueGiantTree>>()
 const useNodeSlot = ref(false)
 const showMpttBoundaries = ref(true)
+/** 是否开启连接线。开启时由 `showLineConfig` 派生具体样式 / 颜色 / 粗细。 */
 const showLine = ref(false)
+type ShowLineStyleMode = 'solid' | 'dashed' | 'dotted'
+const showLineStyle = ref<ShowLineStyleMode>('solid')
+/** 用户选择颜色：键名映射到 CSS color；「默认」用组件内置 `#d0d4dc`。 */
+const showLineColorKey = ref<'default' | 'grayDark' | 'primary' | 'red' | 'green'>('default')
+const SHOW_LINE_COLOR_TABLE: Record<typeof showLineColorKey.value, string> = {
+  default: '#d0d4dc',
+  grayDark: '#9ca3af',
+  primary: '#3b82f6',
+  red: '#ef4444',
+  green: '#10b981',
+}
+/** 粗细（像素，1–4）。 */
+const showLineWidth = ref(1)
+/**
+ * 与 `lib/VueGiantTree.vue` 中 `showLine` 同形状：`false` 关闭；`true` 使用默认。
+ * 这里为了清晰，把对象形式（style/color/width）直接传给组件。
+ */
+const showLineConfig = computed(() => {
+  if (!showLine.value) return false
+  return {
+    style: showLineStyle.value,
+    color: SHOW_LINE_COLOR_TABLE[showLineColorKey.value],
+    width: showLineWidth.value,
+  }
+})
 const useActionsSlot = ref(false)
 const lastNodeAction = ref('')
 const enableDisabled = ref(true)
@@ -510,6 +536,52 @@ const switchDisplay = (type: DisplayType) => {
               <input type="checkbox" v-model="showLine" />
               显示连接线（├/└ 分支线）
             </label>
+            <div v-if="showLine" class="show-line-controls">
+              <div class="btn-group show-line-style-group">
+                <span class="control-caption">样式</span>
+                <button
+                  :class="{ active: showLineStyle === 'solid' }"
+                  @click="showLineStyle = 'solid'"
+                >
+                  实线（默认）
+                </button>
+                <button
+                  :class="{ active: showLineStyle === 'dashed' }"
+                  @click="showLineStyle = 'dashed'"
+                >
+                  虚线
+                </button>
+                <button
+                  :class="{ active: showLineStyle === 'dotted' }"
+                  @click="showLineStyle = 'dotted'"
+                >
+                  点状
+                </button>
+              </div>
+              <div class="btn-group show-line-color-group">
+                <span class="control-caption">颜色</span>
+                <button
+                  v-for="(color, key) in SHOW_LINE_COLOR_TABLE"
+                  :key="key"
+                  class="show-line-color-swatch"
+                  :class="{ active: showLineColorKey === key }"
+                  :style="{ backgroundColor: color }"
+                  :aria-label="`颜色 ${key}`"
+                  :title="`${key} (${color})`"
+                  @click="showLineColorKey = key"
+                />
+              </div>
+              <label class="show-line-width-control">
+                <span class="control-caption">粗细 {{ showLineWidth }}px</span>
+                <input
+                  type="range"
+                  min="1"
+                  max="4"
+                  step="1"
+                  v-model.number="showLineWidth"
+                />
+              </label>
+            </div>
             <label class="toggle-label">
               <input type="checkbox" v-model="useActionsSlot" />
               启用操作插槽
@@ -782,7 +854,7 @@ const switchDisplay = (type: DisplayType) => {
             :checked-output-mode="checkedOutputMode"
             :filter-fn="filterFn"
             :node-icon="nodeIcon"
-            :show-line="showLine"
+            :show-line="showLineConfig"
             :worker-mode="true"
             :preordered-input="true"
             v-model="checkedResult"
@@ -940,6 +1012,59 @@ body {
   background: #4096ff;
   border-color: #4096ff;
   color: #fff;
+}
+
+/* 连接线在测试页的次级控件：样式按钮组 + 颜色色块 + 粗细 slider。 */
+.show-line-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 6px 10px;
+  border-left: 2px solid #e5e7eb;
+  margin-left: 6px;
+}
+.show-line-controls .control-caption {
+  font-size: 11px;
+  color: #6b7280;
+  margin-right: 6px;
+}
+.show-line-style-group {
+  align-items: center;
+}
+.show-line-style-group button {
+  min-width: 70px;
+}
+.show-line-color-group {
+  align-items: center;
+  gap: 8px;
+}
+.show-line-color-swatch {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  padding: 0;
+  background-clip: content-box;
+  outline: 1px solid #d9d9d9;
+  transition: border-color 150ms ease, transform 150ms ease;
+}
+.show-line-color-swatch:hover {
+  transform: scale(1.05);
+}
+.show-line-color-swatch.active {
+  border-color: #4096ff;
+  transform: scale(1.1);
+}
+.show-line-width-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.show-line-width-control input[type='range'] {
+  flex: 1;
+  accent-color: #4096ff;
 }
 
 .btn-detail {
