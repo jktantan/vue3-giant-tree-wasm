@@ -1,9 +1,44 @@
 {
   "name": "vue3-giant-tree-wasm",
   "description": "A WebAssembly-powered Vue 3 virtual tree for 100K–1M-node datasets.",
-  "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
   "type": "module",
+  "license": "BSD-2-Clause",
+  "author": "tantan <jkhyf@qq.com>",
+  "keywords": [
+    "vue",
+    "vue3",
+    "tree",
+    "virtual-tree",
+    "virtual-scroll",
+    "wasm",
+    "webassembly",
+    "assemblyscript",
+    "performance",
+    "100k",
+    "million-nodes"
+  ],
+  "homepage": "https://github.com/jktantan/vue3-giant-tree-wasm#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jktantan/vue3-giant-tree-wasm.git"
+  },
+  "bugs": {
+    "url": "https://github.com/jktantan/vue3-giant-tree-wasm/issues"
+  },
+  "sideEffects": [
+    "**/*.css",
+    "**/*.scss"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "main": "./dist/vue-giant-tree.es.js",
+  "module": "./dist/vue-giant-tree.es.js",
+  "types": "./dist/lib/index.d.ts",
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc -b && vite build",
@@ -30,11 +65,19 @@
     "report:browser:100k": "vitest run --config vitest.browser.config.ts --mode browser-100k --reporter verbose",
     "gate:phase3-4": "node scripts/run-phase3-4-gate.mjs",
     "start": "npx serve .",
-    "lib:build": "vite --config vite.config.lib.ts build"
+    "lib:build": "vite --config vite.config.lib.ts build",
+    "prepublishOnly": "npm run lib:build"
   },
   "dependencies": {
-    "throttle-debounce": "^5.0.2",
-    "vue": "^3.5.43"
+    "throttle-debounce": "^5.0.2"
+  },
+  "peerDependencies": {
+    "vue": "^3.4.0"
+  },
+  "peerDependenciesMeta": {
+    "vue": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@eslint/css": "^2.0.0",
@@ -70,17 +113,13 @@
     "vite-plugin-dts": "^5.1.1",
     "vite-plugin-package-version": "^1.1.0",
     "vitest": "^4.1.11",
+    "vue": "^3.5.43",
     "vue-eslint-parser": "^10.4.1",
     "vue-tsc": "^3.3.11"
   },
-  "main": "./dist/vue-giant-tree.es.js",
-  "module": "./dist/vue-giant-tree.es.js",
-  "types": "./dist/lib/index.d.ts",
-  "files": [
-    "dist"
-  ],
   "exports": {
     ".": {
+      "browser": "./dist/vue-giant-tree.es.js",
       "import": "./dist/vue-giant-tree.es.js",
       "types": "./dist/lib/index.d.ts"
     }
