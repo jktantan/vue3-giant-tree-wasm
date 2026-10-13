@@ -46,7 +46,11 @@ import {
 import { debounce } from 'throttle-debounce'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import TreeItem from '@lib/TreeItem.vue'
-import { computeGuideLines, resolveShowLineOptions, type GuideLineInfo } from './guide'
+import {
+  computeGuideLines,
+  resolveShowLineOptions,
+  type GuideLineInfo,
+} from './guide'
 import type {
   TreeNodeData,
   TreeInputItem,
@@ -403,7 +407,8 @@ const refreshAllNodesCache = () => {
         )
     }
     const safeItem: TreeInputItem & Record<string, unknown> =
-      item ?? ({ id: '', name: '', parentId: '', disabled: false } as TreeInputItem &
+      item ??
+      ({ id: '', name: '', parentId: '', disabled: false } as TreeInputItem &
         Record<string, unknown>)
     return {
       id,

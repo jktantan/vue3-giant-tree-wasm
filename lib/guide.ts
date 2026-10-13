@@ -53,18 +53,18 @@ export function resolveShowLineOptions(
       },
     }
   }
-  const raw: ShowLineOptions = typeof showLine === 'object' && showLine !== null
-    ? showLine
-    : {}
+  const raw: ShowLineOptions =
+    typeof showLine === 'object' && showLine !== null ? showLine : {}
   // 仅接受三态枚举；旧 `'line'`（实线别名）、`'dot'`（已废弃）及其他非法值
   // 都回退默认 `solid`，避免运行时静默错用历史写法。
   const style: ShowLineStyle =
     raw.style === 'solid' || raw.style === 'dashed' || raw.style === 'dotted'
       ? raw.style
       : DEFAULT_SHOW_LINE_STYLE
-  const color = typeof raw.color === 'string' && raw.color.length > 0
-    ? raw.color
-    : DEFAULT_SHOW_LINE_COLOR
+  const color =
+    typeof raw.color === 'string' && raw.color.length > 0
+      ? raw.color
+      : DEFAULT_SHOW_LINE_COLOR
   const width =
     typeof raw.width === 'number' && Number.isFinite(raw.width) && raw.width > 0
       ? raw.width

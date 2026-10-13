@@ -180,7 +180,7 @@ const contextMenu = (event: MouseEvent) => {
 <template>
   <div
     class="tree-item"
-    :style="[ { fontSize: fontSize }, guideStyle ]"
+    :style="[{ fontSize: fontSize }, guideStyle]"
     :class="{ selected: item.selected, disabled: item.disabled }"
     @click="itemClick"
     @contextmenu="contextMenu"
