@@ -1,5 +1,6 @@
 import { defineConfig } from 'vitepress'
 import { fileURLToPath, URL } from 'node:url'
+import assemblyscriptSite from './assemblyscript.ts'
 
 const REPOSITORY = 'https://github.com/jktantan/vue3-giant-tree-wasm'
 
@@ -47,7 +48,10 @@ export default defineConfig({
     socialLinks: [{ icon: 'github', link: REPOSITORY }],
   },
   vite: {
-    plugins: [],
+    plugins: [assemblyscriptSite()],
+    // AssemblyScript 的 ESM loader 用 top-level await；Vite 默认的 'modules'
+    // target（es2020 一档）会拒绝它，故站点构建提到 esnext。
+    build: { target: 'esnext' },
     resolve: {
       alias: {
         // lib/ 源码在仓库根，站点 root 是 docs-site/。
@@ -55,7 +59,10 @@ export default defineConfig({
       },
     },
     // lib/VueGiantTree.vue 用 `new Worker(new URL('./tree.worker.ts', import.meta.url))`，
-    // worker 需按 ESM 产物输出。
-    worker: { format: 'es' },
+    // worker 需按 ESM 产物输出；worker 内也会 import '../build/release'，故同样挂上插件。
+    worker: {
+      format: 'es',
+      plugins: () => [assemblyscriptSite()],
+    },
   },
 })
