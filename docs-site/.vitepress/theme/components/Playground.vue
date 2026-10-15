@@ -141,9 +141,12 @@ const showLine = computed(() =>
 /** 影响构建方式的配置变化时整体重挂载，避免半新半旧的树状态。 */
 const treeKey = computed(
   () =>
-    `w${settings.workerMode ? 1 : 0}-c${settings.chunkedBuild ? 1 : 0}-p${
-      settings.preorderedInput ? 1 : 0
-    }-f${settings.fieldKeysMode}`
+    // selectType 是 newTree() 的构建期参数：切换它必须重建树实例，
+    // 否则视图换成 radio 了、内部状态还停在 checkbox，第二次点击就不生效
+    // （app.vue 用 treeKey++ 处理的正是这件事）。
+    `s${settings.selectType}-w${settings.workerMode ? 1 : 0}-c${
+      settings.chunkedBuild ? 1 : 0
+    }-p${settings.preorderedInput ? 1 : 0}-f${settings.fieldKeysMode}`
 )
 
 const checkedSummary = computed(() => {
