@@ -151,6 +151,16 @@ const treeKey = computed(
     }`
 )
 
+/** 右栏树的高度：`fill` 交给容器撑满（组件用 100%），其余是显式 CSS 长度。 */
+const treeHeight = computed(() =>
+  settings.height === 'fill' ? '100%' : settings.height
+)
+
+/** 固定档位时高度同时交给容器，避免组件比容器高而被裁掉。 */
+const treeStyle = computed(() =>
+  settings.height === 'fill' ? undefined : { height: settings.height }
+)
+
 const checkedSummary = computed(() => {
   const value = checked.value
   if (Array.isArray(value)) return `${value.length}`
@@ -358,115 +368,178 @@ onMounted(async () => {
 
 <template>
   <div class="playground">
-    <ControlPanel :settings="settings" @action="runAction" />
+    <!-- 左栏：全部选项与操作，自己滚动，不牵动页面滚动条 -->
+    <aside class="playground__panel">
+      <ControlPanel :settings="settings" @action="runAction" />
+    </aside>
 
-    <div class="playground__stage">
-      <div
-        class="playground__tree"
-        :class="{ 'playground__tree--dark': settings.darkIconBg }"
-      >
-        <VueGiantTree
-          ref="treeRef"
-          :key="treeKey"
-          v-model="checked"
-          v-model:tree="tree"
-          root="root"
-          :height="settings.height"
-          :line-height="settings.lineHeight"
-          :font-size="settings.fontSize"
-          :select-type="selectType"
-          :show-line="showLine"
-          :node-icon="nodeIcon"
-          :filter-fn="filterFn"
-          :output-id-only="settings.outputIdOnly"
-          :checked-output-mode="outputMode"
-          :worker-mode="settings.workerMode"
-          :chunked-build="settings.chunkedBuild"
-          :build-batch-size="settings.buildBatchSize"
-          :preordered-input="settings.preorderedInput"
-          :field-keys="fieldKeys"
-          @item-contextmenu="onContextMenu"
+    <!-- 右栏：树占满剩余高度并在内部滚动；结果与日志固定在下方 -->
+    <div class="playground__main">
+      <div class="playground__stage">
+        <div
+          class="playground__tree"
+          :class="{
+            'playground__tree--dark': settings.darkIconBg,
+            'playground__tree--fixed': settings.height !== 'fill',
+          }"
+          :style="treeStyle"
         >
-          <template v-if="settings.useNodeSlot || settings.mptt" #node="{ node }">
-            <span>{{ node.name }}</span>
-            <code v-if="settings.mptt" class="playground__mptt">
-              L{{ node.leftNode }} R{{ node.rightNode }}
-            </code>
-          </template>
-          <template v-if="settings.useActionsSlot" #actions="{ node }">
-            <button type="button" class="playground__row-action" @click="renameNode(node)">
-              {{ t.editNode }}
-            </button>
-            <button type="button" class="playground__row-action" @click="addChildNode(node)">
-              {{ t.addChildNode }}
-            </button>
-            <button type="button" class="playground__row-action danger" @click="deleteNode(node)">
-              {{ t.deleteNode }}
-            </button>
-          </template>
-        </VueGiantTree>
+          <VueGiantTree
+            ref="treeRef"
+            :key="treeKey"
+            v-model="checked"
+            v-model:tree="tree"
+            root="root"
+            :height="treeHeight"
+            :line-height="settings.lineHeight"
+            :font-size="settings.fontSize"
+            :select-type="selectType"
+            :show-line="showLine"
+            :node-icon="nodeIcon"
+            :filter-fn="filterFn"
+            :output-id-only="settings.outputIdOnly"
+            :checked-output-mode="outputMode"
+            :worker-mode="settings.workerMode"
+            :chunked-build="settings.chunkedBuild"
+            :build-batch-size="settings.buildBatchSize"
+            :preordered-input="settings.preorderedInput"
+            :field-keys="fieldKeys"
+            @item-contextmenu="onContextMenu"
+          >
+            <template v-if="settings.useNodeSlot || settings.mptt" #node="{ node }">
+              <span>{{ node.name }}</span>
+              <code v-if="settings.mptt" class="playground__mptt">
+                L{{ node.leftNode }} R{{ node.rightNode }}
+              </code>
+            </template>
+            <template v-if="settings.useActionsSlot" #actions="{ node }">
+              <button
+                type="button"
+                class="playground__row-action"
+                @click="renameNode(node)"
+              >
+                {{ t.editNode }}
+              </button>
+              <button
+                type="button"
+                class="playground__row-action"
+                @click="addChildNode(node)"
+              >
+                {{ t.addChildNode }}
+              </button>
+              <button
+                type="button"
+                class="playground__row-action danger"
+                @click="deleteNode(node)"
+              >
+                {{ t.deleteNode }}
+              </button>
+            </template>
+          </VueGiantTree>
+        </div>
 
         <p v-if="settings.useActionsSlot" class="playground__note">
           {{ t.rowActions }}：{{ t.editNode }} / {{ t.addChildNode }} / {{ t.deleteNode }}
         </p>
       </div>
 
-      <aside class="playground__result">
-        <div class="result-row">
-          <span class="result-key">{{ t.checkedResult }}</span>
-          <span class="result-count">{{ checkedSummary }}</span>
-        </div>
-        <pre class="result-value">{{ checkedResultText }}</pre>
-        <div class="result-row">
-          <span class="result-key">{{ t.totalNodes }}</span>
-          <span class="result-count">{{ nodeCount }}</span>
-        </div>
-        <dl class="result-meta">
-          <div><dt>{{ t.rows }}</dt><dd>{{ tree.length }}</dd></div>
-          <div>
-            <dt>{{ t.fieldMode }}</dt>
-            <dd>
-              {{ settings.fieldKeysMode === 'custom' ? t.fieldKeysCustom : t.fieldKeysDefault }}
-            </dd>
+      <div class="playground__foot">
+        <aside class="playground__result">
+          <div class="result-col">
+            <div class="result-row">
+              <span class="result-key">{{ t.checkedResult }}</span>
+              <span class="result-count">{{ checkedSummary }}</span>
+            </div>
+            <div class="result-row">
+              <span class="result-key">{{ t.totalNodes }}</span>
+              <span class="result-count">{{ nodeCount }}</span>
+            </div>
+            <pre class="result-value">{{ checkedResultText }}</pre>
           </div>
-          <div><dt>{{ t.sizeLabel }}</dt><dd>{{ t.sizeLabels[settings.size] }}</dd></div>
-        </dl>
-        <dl class="result-meta">
-          <div>
-            <dt title="getBuildMetrics()">{{ t.metricsBuild }}</dt>
-            <dd>{{ metrics.build }}</dd>
-          </div>
-          <div>
-            <dt title="getWorkerMetrics()">{{ t.metricsWorker }}</dt>
-            <dd>{{ metrics.worker }}</dd>
-          </div>
-        </dl>
-      </aside>
-    </div>
 
-    <ApiLog :entries="logs" />
+          <div class="result-col result-col--meta">
+            <dl class="result-meta">
+              <div><dt>{{ t.rows }}</dt><dd>{{ tree.length }}</dd></div>
+              <div>
+                <dt>{{ t.fieldMode }}</dt>
+                <dd>
+                  {{ settings.fieldKeysMode === 'custom' ? t.fieldKeysCustom : t.fieldKeysDefault }}
+                </dd>
+              </div>
+              <div><dt>{{ t.sizeLabel }}</dt><dd>{{ t.sizeLabels[settings.size] }}</dd></div>
+            </dl>
+            <dl class="result-meta">
+              <div>
+                <dt title="getBuildMetrics()">{{ t.metricsBuild }}</dt>
+                <dd>{{ metrics.build }}</dd>
+              </div>
+              <div>
+                <dt title="getWorkerMetrics()">{{ t.metricsWorker }}</dt>
+                <dd>{{ metrics.worker }}</dd>
+              </div>
+            </dl>
+          </div>
+        </aside>
+
+        <ApiLog :entries="logs" />
+      </div>
+    </div>
   </div>
 </template>
 
 <style scoped>
-.playground__stage {
+/* 整页固定视口：左栏选项自己滚，右栏树填满剩余高度，页面不出现外部滚动条。 */
+.playground {
   display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(240px, 1fr);
+  grid-template-columns: minmax(0, 336px) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  flex: 1;
+  min-height: 0;
   gap: 14px;
-  align-items: start;
 }
 
-@media (max-width: 860px) {
-  .playground__stage {
-    grid-template-columns: minmax(0, 1fr);
-  }
+.playground__panel {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 2px;
+}
+
+.playground__main {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  min-height: 0;
+  gap: 12px;
+}
+
+.playground__stage {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  gap: 8px;
 }
 
 .playground__tree {
+  flex: 1;
+  min-height: 240px;
   border: 1px solid var(--vp-c-divider);
   border-radius: 10px;
   overflow: hidden;
   background: var(--vp-c-bg);
+}
+
+/* 选了显式高度档位时，容器不再吃剩余空间，正好等于组件高度。 */
+.playground__tree--fixed {
+  flex: none;
+}
+
+/* 结果与日志：树下方的一条固定高度，两块各自内部滚动，高度不随内容跳动。 */
+.playground__foot {
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  height: 190px;
+  min-height: 0;
+  gap: 12px;
 }
 
 .playground__tree--dark {
@@ -491,26 +564,62 @@ onMounted(async () => {
 
 .playground__note {
   margin: 0;
-  padding: 6px 10px;
+  padding: 5px 10px;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 8px;
+  background: var(--vp-c-bg-soft);
   font-size: 12px;
   color: var(--vp-c-text-3);
-  border-top: 1px solid var(--vp-c-divider);
 }
 
+/*
+ * MPTT 边界徽标：刻意用固定色，而不是跟随主题的 CSS 变量。
+ * 它要同时出现在浅色页、暗色主题和「深色背景预览」三种底色上，而
+ * `--vp-c-default-soft` / `--vp-c-text-3` 在深色底上会变成暗底暗字，整个徽标糊掉。
+ * 样式对齐 src/App.vue 的 `.mptt-boundary-badge`。
+ */
 .playground__mptt {
-  margin-left: 8px;
-  padding: 1px 5px;
-  border-radius: 4px;
-  font-size: 11px;
-  background: var(--vp-c-default-soft);
-  color: var(--vp-c-text-3);
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 5px;
+  border: 1px solid #ffd591;
+  border-radius: 3px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+  line-height: 16px;
+  white-space: nowrap;
+  color: #5c3b00;
+  background: #fff7e6;
 }
 
+/* 结果卡分两栏：数值与选中结果在左，构建 / Worker 指标在右，190px 内一屏看完。 */
 .playground__result {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-content: start;
+  gap: 0 16px;
+  min-height: 0;
+  overflow: auto;
   border: 1px solid var(--vp-c-divider);
   border-radius: 10px;
-  padding: 12px 14px;
+  padding: 10px 14px;
   background: var(--vp-c-bg-soft);
+}
+
+.result-col {
+  min-width: 0;
+}
+
+.result-col--meta {
+  padding-left: 16px;
+  border-left: 1px solid var(--vp-c-divider);
+}
+
+/* 右栏第一条没有上邻内容，去掉分隔线，否则顶端会多出一道横线。 */
+.result-col--meta .result-meta:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
 }
 
 .result-row {
@@ -529,15 +638,15 @@ onMounted(async () => {
 }
 
 .result-count {
-  font-size: 22px;
+  font-size: 20px;
   font-weight: 700;
   color: var(--vp-c-brand-1);
 }
 
 .result-value {
-  margin: 8px 0 12px;
-  padding: 8px 10px;
-  max-height: 150px;
+  margin: 8px 0 10px;
+  padding: 6px 8px;
+  max-height: 104px;
   overflow: auto;
   border-radius: 8px;
   background: var(--vp-c-bg);
@@ -591,6 +700,42 @@ onMounted(async () => {
 .playground__row-action.danger:hover {
   border-color: var(--vp-c-danger-1);
   color: var(--vp-c-danger-1);
+}
+
+/*
+ * 窄屏：整页固定视口放不下左右两栏，回到上下堆叠。
+ * 此时页面恢复滚动，右栏树改用固定高度（容器不再是它的高度来源）。
+ * 这些规则放在通用规则之后，才能覆盖上面的 `overflow` / `flex`。
+ */
+@media (max-width: 960px) {
+  .playground {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    flex: none;
+  }
+
+  .playground__panel {
+    max-height: 44vh;
+  }
+
+  .playground__main {
+    grid-template-rows: auto auto;
+  }
+
+  .playground__tree {
+    flex: none;
+    height: 420px;
+    min-height: 0;
+  }
+
+  .playground__foot {
+    grid-template-columns: minmax(0, 1fr);
+    height: auto;
+  }
+
+  .playground__result {
+    overflow: visible;
+  }
 }
 
 /* 演示用自定义图标类：只给 background-image，其余交给组件。 */

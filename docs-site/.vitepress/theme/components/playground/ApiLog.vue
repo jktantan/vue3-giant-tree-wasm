@@ -22,23 +22,28 @@ const t = useMessages()
 
 <style scoped>
 .api-log {
-  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   border: 1px solid var(--vp-c-divider);
-  border-radius: 6px;
-  padding: 8px 12px;
+  border-radius: 10px;
+  padding: 10px 12px;
   background: var(--vp-c-bg-soft);
   font-size: 12px;
 }
 
 .api-log__title {
+  margin: 0 0 6px;
   font-weight: 600;
-  margin-bottom: 4px;
 }
 
 .api-log__list {
-  max-height: 180px;
-  overflow: auto;
+  flex: 1;
+  min-height: 0;
+  margin: 0;
   padding-left: 18px;
+  overflow: auto;
+  overscroll-behavior: contain;
   list-style: decimal;
 }
 
@@ -53,6 +58,7 @@ const t = useMessages()
 }
 
 .api-log__empty {
+  margin: 0;
   color: var(--vp-c-text-3);
 }
 </style>

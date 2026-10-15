@@ -28,6 +28,7 @@ const MESSAGES = {
     enableDisabled: '掺入禁用节点',
     // 布局
     height: '高度',
+    heightFill: '填满视口',
     lineHeight: '行高',
     fontSize: '字号',
     // 选择与输出
@@ -134,6 +135,7 @@ const MESSAGES = {
     },
     enableDisabled: 'Include disabled nodes',
     height: 'Height',
+    heightFill: 'Fill viewport',
     lineHeight: 'Row height',
     fontSize: 'Font size',
     selectType: 'Selection mode',
@@ -236,6 +238,7 @@ const MESSAGES = {
     },
     enableDisabled: 'Добавлять отключённые узлы',
     height: 'Высота',
+    heightFill: 'Заполнить область',
     lineHeight: 'Высота строки',
     fontSize: 'Размер шрифта',
     selectType: 'Режим выбора',

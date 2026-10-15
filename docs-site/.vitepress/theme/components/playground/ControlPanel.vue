@@ -30,7 +30,14 @@ const iconLabels = () => ({
   partial: t.iconPartial,
 })
 
-const heights = ['240px', '360px', '520px', '720px']
+/** 高度档位：`fill` 表示填满右栏剩余空间，其余是显式 CSS 长度。 */
+const heights = [
+  { value: 'fill', label: t.heightFill },
+  { value: '240px' },
+  { value: '360px' },
+  { value: '520px' },
+  { value: '720px' },
+]
 const fonts = ['12px', '14px', '16px', '18px']
 const lineColors = ['#d0d4dc', '#9ca3af', '#3b82f6', '#ef4444', '#10b981']
 
@@ -66,7 +73,9 @@ const send = (action: ApiAction) => emit('action', action)
         <label class="field">
           <span>{{ t.height }}</span>
           <select v-model="settings.height">
-            <option v-for="h in heights" :key="h" :value="h">{{ h }}</option>
+            <option v-for="h in heights" :key="h.value" :value="h.value">
+              {{ h.label ?? h.value }}
+            </option>
           </select>
         </label>
         <label class="field">
@@ -294,9 +303,7 @@ const send = (action: ApiAction) => emit('action', action)
 <style scoped>
 .control-panel {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 14px;
-  margin-bottom: 16px;
+  gap: 12px;
 }
 
 .group {

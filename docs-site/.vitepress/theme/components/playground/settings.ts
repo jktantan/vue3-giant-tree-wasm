@@ -14,6 +14,10 @@ export type FieldKeysMode = 'default' | 'custom'
 /** 完整演示场的全部可调项。默认值与 `lib/VueGiantTree.vue` 的 `withDefaults` 对齐。 */
 export interface PlaygroundSettings {
   size: TreePreset
+  /**
+   * 树容器高度：`'fill'` 表示填满右栏剩余空间（组件高度用 `'100%'`），
+   * 其余值是显式 CSS 长度，用于演示 `height` prop 本身。
+   */
   height: string
   lineHeight: number
   fontSize: string
@@ -49,7 +53,7 @@ export interface PlaygroundSettings {
 
 export const DEFAULT_SETTINGS: PlaygroundSettings = {
   size: 'medium',
-  height: '360px',
+  height: 'fill',
   lineHeight: 26,
   fontSize: '14px',
   selectType: 'CHECKBOX',
