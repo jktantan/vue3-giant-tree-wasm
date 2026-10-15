@@ -23,3 +23,10 @@ build
 *.njsproj
 *.sln
 *.sw?
+pnpm-lock.yaml
+pnpm-workspace.yaml
+
+# VitePress 文档站点：仅提交源码，忽略构建缓存与产物
+docs-site/.vitepress/cache
+docs-site/.vitepress/dist
+docs-site/.vitepress/.temp
