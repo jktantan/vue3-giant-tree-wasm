@@ -46,7 +46,10 @@ export default defineConfig({
   title: 'VueGiantTree',
   base: '/vue3-giant-tree-wasm/',
   cleanUrls: true,
+  head: [['link', { rel: 'icon', type: 'image/svg+xml', href: '/logo.svg' }]],
   themeConfig: {
+    // 站点 LOGO：指数铺开的节点树，浅色/深色各一版
+    logo: { light: '/logo.svg', dark: '/logo-dark.svg' },
     search: { provider: 'local' },
     outline: { level: [2, 3] },
     socialLinks: [{ icon: 'github', link: REPOSITORY }],
