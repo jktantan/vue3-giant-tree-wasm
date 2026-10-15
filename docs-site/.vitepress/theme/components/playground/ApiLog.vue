@@ -9,7 +9,7 @@ const t = useMessages()
 
 <template>
   <div class="api-log">
-    <p class="api-log__title">{{ t.apiLogTitle }}（{{ entries.length }} / 50）</p>
+    <p class="api-log__title">{{ t.apiLogTitle }} ({{ entries.length }} / 50)</p>
     <ol class="api-log__list">
       <li v-for="(entry, index) in entries" :key="`${entry.at}-${index}`">
         <code>{{ entry.at }}</code>
