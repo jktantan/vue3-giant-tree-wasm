@@ -126,9 +126,9 @@ const querySize = () => {
           :value="size"
           @change="reload(($event.target as HTMLSelectElement).value as TreePreset)"
         >
-          <option value="small">small · {{ t.nodeCount(39) }}</option>
-          <option value="medium">medium · {{ t.nodeCount(258) }}</option>
-          <option value="10k">10k · {{ t.nodeCount(10000) }}</option>
+          <option value="small">{{ t.sizeLabels.small }} · {{ t.nodeCount(39) }}</option>
+          <option value="medium">{{ t.sizeLabels.medium }} · {{ t.nodeCount(258) }}</option>
+          <option value="10k">{{ t.sizeLabels['10k'] }} · {{ t.nodeCount(10000) }}</option>
         </select>
       </label>
 
@@ -160,22 +160,22 @@ const querySize = () => {
         <label class="tree-playground__field">
           <span>{{ t.selectType }}</span>
           <select v-model="currentSelectType">
-            <option value="CHECKBOX">CHECKBOX</option>
-            <option value="RADIO">RADIO</option>
-            <option value="SELECT">SELECT</option>
+            <option value="CHECKBOX">{{ t.selectTypeLabels.CHECKBOX }}</option>
+            <option value="RADIO">{{ t.selectTypeLabels.RADIO }}</option>
+            <option value="SELECT">{{ t.selectTypeLabels.SELECT }}</option>
           </select>
         </label>
         <label class="tree-playground__field">
           <span>{{ t.outputMode }}</span>
           <select v-model="outputMode">
-            <option value="All">All</option>
-            <option value="RootOnly">RootOnly</option>
-            <option value="LeafOnly">LeafOnly</option>
-            <option value="Custom">Custom</option>
+            <option value="All">{{ t.outputModeLabels.All }}</option>
+            <option value="RootOnly">{{ t.outputModeLabels.RootOnly }}</option>
+            <option value="LeafOnly">{{ t.outputModeLabels.LeafOnly }}</option>
+            <option value="Custom">{{ t.outputModeLabels.Custom }}</option>
           </select>
         </label>
         <label class="tree-playground__field">
-          <span>filterFn</span>
+          <span>{{ t.filterFn }}</span>
           <input type="checkbox" v-model="enableFilterFn" />
         </label>
       </template>

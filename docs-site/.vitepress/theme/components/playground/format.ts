@@ -22,14 +22,15 @@ export type CheckedValue =
  */
 export function formatCheckedResult(
   value: CheckedValue,
-  outputIdOnly: boolean
+  outputIdOnly: boolean,
+  emptyText = '（未选中）'
 ): string {
   const items: Array<TreeNodeData | string> = Array.isArray(value)
     ? value
     : value
       ? [value]
       : []
-  if (items.length === 0) return '（未选中）'
+  if (items.length === 0) return emptyText
 
   if (!outputIdOnly) {
     const payload = items.length === 1 ? items[0] : items

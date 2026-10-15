@@ -10,13 +10,25 @@ const emit = defineEmits<{ action: [ApiAction] }>()
 const settings = props.settings
 const t = useMessages()
 
-const sizes: Array<{ value: TreePreset; label: string; heavy?: boolean }> = [
-  { value: 'small', label: 'small' },
-  { value: 'medium', label: 'medium' },
-  { value: '10k', label: '10k' },
-  { value: '100k', label: '100k', heavy: true },
-  { value: '1m', label: '1m', heavy: true },
+const sizes: Array<{ value: TreePreset; heavy?: boolean }> = [
+  { value: 'small' },
+  { value: 'medium' },
+  { value: '10k' },
+  { value: '100k', heavy: true },
+  { value: '1m', heavy: true },
 ]
+
+const selectTypes = ['CHECKBOX', 'RADIO', 'SELECT'] as const
+const outputModes = ['All', 'RootOnly', 'LeafOnly', 'Custom'] as const
+const lineStyles = ['solid', 'dashed', 'dotted'] as const
+const iconModes = ['off', 'default', 'business', 'single', 'partial'] as const
+const iconLabels = () => ({
+  off: t.iconOff,
+  default: t.iconBuiltin,
+  business: t.iconBusiness,
+  single: t.iconSingle,
+  partial: t.iconPartial,
+})
 
 const heights = ['240px', '360px', '520px', '720px']
 const fonts = ['12px', '14px', '16px', '18px']
@@ -37,12 +49,12 @@ const send = (action: ApiAction) => emit('action', action)
           :class="{ active: settings.size === item.value }"
           @click="settings.size = item.value"
         >
-          {{ item.label }}
+          {{ t.sizeLabels[item.value] }}
           <span v-if="item.heavy" class="tag">{{ t.sizeHeavy }}</span>
         </button>
       </div>
       <p class="hint">{{ t.sizeHint }}</p>
-      <label class="check">
+      <label class="check" title="disabled">
         <input v-model="settings.enableDisabled" type="checkbox" />
         <span>{{ t.enableDisabled }}</span>
       </label>
@@ -74,30 +86,31 @@ const send = (action: ApiAction) => emit('action', action)
       <h4 class="group__title">{{ t.selectAndOutput }}</h4>
       <div class="segmented">
         <button
-          v-for="mode in (['CHECKBOX', 'RADIO', 'SELECT'] as const)"
+          v-for="mode in selectTypes"
           :key="mode"
           type="button"
+          :title="`selectType: ${mode}`"
           :class="{ active: settings.selectType === mode }"
           @click="settings.selectType = mode"
         >
-          {{ mode }}
+          {{ t.selectTypeLabels[mode] }}
         </button>
       </div>
-      <label class="check">
+      <label class="check" title="outputIdOnly">
         <input v-model="settings.outputIdOnly" type="checkbox" />
         <span>{{ t.outputIdOnly }}</span>
       </label>
       <div v-if="settings.selectType === 'CHECKBOX'" class="fields">
-        <label class="field">
+        <label class="field" title="checkedOutputMode">
           <span>{{ t.checkedOutputMode }}</span>
           <select v-model="settings.checkedOutputMode">
-            <option v-for="m in (['All', 'RootOnly', 'LeafOnly', 'Custom'] as const)" :key="m" :value="m">
-              {{ m }}
+            <option v-for="m in outputModes" :key="m" :value="m">
+              {{ t.outputModeLabels[m] }}
             </option>
           </select>
         </label>
       </div>
-      <label class="check">
+      <label class="check" title="filterFn">
         <input v-model="settings.enableFilterFn" type="checkbox" />
         <span>{{ t.filterFn }}</span>
       </label>
@@ -116,49 +129,40 @@ const send = (action: ApiAction) => emit('action', action)
 
     <section class="group">
       <h4 class="group__title">{{ t.rowRendering }}</h4>
-      <label class="check">
+      <label class="check" title="showLine">
         <input v-model="settings.showLine" type="checkbox" />
         <span>{{ t.showLine }}</span>
       </label>
       <div v-if="settings.showLine" class="fields nested">
         <div class="segmented">
           <button
-            v-for="style in (['solid', 'dashed', 'dotted'] as const)"
+            v-for="style in lineStyles"
             :key="style"
             type="button"
+            :title="`showLine.style: ${style}`"
             :class="{ active: settings.showLineStyle === style }"
             @click="settings.showLineStyle = style"
           >
-            {{ style }}
+            {{ t.lineStyleLabels[style] }}
           </button>
         </div>
-        <label class="field">
+        <label class="field" title="showLine.color">
           <span>{{ t.lineColor }}</span>
           <select v-model="settings.showLineColor">
             <option v-for="c in lineColors" :key="c" :value="c">{{ c }}</option>
           </select>
         </label>
-        <label class="field">
+        <label class="field" title="showLine.width">
           <span>{{ t.lineWidth }}</span>
           <input v-model.number="settings.showLineWidth" type="number" min="1" max="4" />
         </label>
       </div>
       <div class="fields">
-        <label class="field">
+        <label class="field" title="nodeIcon">
           <span>{{ t.nodeIcon }}</span>
           <select v-model="settings.nodeIcon">
-            <option v-for="m in (['off', 'default', 'business', 'single', 'partial'] as const)" :key="m" :value="m">
-              {{
-                m === 'off'
-                  ? t.iconOff
-                  : m === 'default'
-                    ? t.iconBuiltin
-                    : m === 'business'
-                      ? t.iconBusiness
-                      : m === 'single'
-                        ? t.iconSingle
-                        : t.iconPartial
-              }}
+            <option v-for="m in iconModes" :key="m" :value="m">
+              {{ iconLabels()[m] }}
             </option>
           </select>
         </label>
@@ -167,15 +171,15 @@ const send = (action: ApiAction) => emit('action', action)
         <input v-model="settings.darkIconBg" type="checkbox" />
         <span>{{ t.iconDarkBg }}</span>
       </label>
-      <label class="check">
+      <label class="check" title="leftNode / rightNode">
         <input v-model="settings.mptt" type="checkbox" />
         <span>{{ t.mptt }}</span>
       </label>
-      <label class="check">
+      <label class="check" title="#node">
         <input v-model="settings.useNodeSlot" type="checkbox" />
         <span>{{ t.slotNode }}</span>
       </label>
-      <label class="check">
+      <label class="check" title="#actions">
         <input v-model="settings.useActionsSlot" type="checkbox" />
         <span>{{ t.slotActions }}</span>
       </label>
@@ -195,8 +199,12 @@ const send = (action: ApiAction) => emit('action', action)
         <button type="button" @click="send('clearSearch')">{{ t.clear }}</button>
       </div>
       <div class="segmented">
-        <button type="button" @click="send('switchDisplayTree')">{{ t.treeView }}</button>
-        <button type="button" @click="send('switchDisplaySearch')">{{ t.searchView }}</button>
+        <button type="button" title="switchDisplay(TREE)" @click="send('switchDisplayTree')">
+          {{ t.treeView }}
+        </button>
+        <button type="button" title="switchDisplay(SEARCH)" @click="send('switchDisplaySearch')">
+          {{ t.searchView }}
+        </button>
       </div>
     </section>
 
@@ -210,31 +218,33 @@ const send = (action: ApiAction) => emit('action', action)
           :placeholder="t.checkedIdsPlaceholder"
           @keyup.enter="send('setCheckedFromInput')"
         />
-        <button type="button" class="primary" @click="send('setCheckedFromInput')">{{ t.apply }}</button>
+        <button type="button" class="primary" @click="send('setCheckedFromInput')">
+          {{ t.apply }}
+        </button>
         <button type="button" @click="send('setCheckedRandom')">{{ t.random }}</button>
       </div>
     </section>
 
     <section class="group">
       <h4 class="group__title">{{ t.buildAndWorker }}</h4>
-      <label class="check">
+      <label class="check" title="workerMode">
         <input v-model="settings.workerMode" type="checkbox" />
         <span>{{ t.workerMode }}</span>
       </label>
-      <label class="check">
+      <label class="check" title="chunkedBuild">
         <input v-model="settings.chunkedBuild" type="checkbox" />
         <span>{{ t.chunkedBuild }}</span>
       </label>
-      <label class="check">
+      <label class="check" title="preorderedInput">
         <input v-model="settings.preorderedInput" type="checkbox" />
         <span>{{ t.preorderedInput }}</span>
       </label>
       <div class="fields">
-        <label class="field">
+        <label class="field" title="buildBatchSize">
           <span>{{ t.buildBatchSize }}</span>
           <input v-model.number="settings.buildBatchSize" type="number" min="100" step="100" />
         </label>
-        <label class="field">
+        <label class="field" title="fieldKeys">
           <span>{{ t.fieldKeys }}</span>
           <select v-model="settings.fieldKeysMode">
             <option value="default">{{ t.fieldKeysDefault }}</option>
@@ -247,14 +257,34 @@ const send = (action: ApiAction) => emit('action', action)
     <section class="group">
       <h4 class="group__title">{{ t.instanceMethods }}</h4>
       <div class="actions">
-        <button type="button" @click="send('expandAll')">expandAll</button>
-        <button type="button" @click="send('collapseAll')">collapseAll</button>
-        <button type="button" @click="send('clearAllChecked')">clearAllChecked</button>
-        <button type="button" @click="send('refreshCheckedResult')">refreshCheckedResult</button>
-        <button type="button" @click="send('updateFirst')">updateNode</button>
-        <button type="button" @click="send('addChild')">addNode</button>
-        <button type="button" @click="send('removeLast')">removeNode</button>
-        <button type="button" @click="send('queryMetrics')">getBuildMetrics / getWorkerMetrics</button>
+        <button type="button" title="expandAll()" @click="send('expandAll')">
+          {{ t.expandAll }}
+        </button>
+        <button type="button" title="collapseAll()" @click="send('collapseAll')">
+          {{ t.collapseAll }}
+        </button>
+        <button type="button" title="clearAllChecked()" @click="send('clearAllChecked')">
+          {{ t.clearChecked }}
+        </button>
+        <button type="button" title="refreshCheckedResult()" @click="send('refreshCheckedResult')">
+          {{ t.methodRefresh }}
+        </button>
+        <button type="button" title="updateNode(id, patch)" @click="send('updateFirst')">
+          {{ t.methodUpdate }}
+        </button>
+        <button type="button" title="addNode(node)" @click="send('addChild')">
+          {{ t.methodAdd }}
+        </button>
+        <button type="button" title="removeNode(id)" @click="send('removeLast')">
+          {{ t.methodRemove }}
+        </button>
+        <button
+          type="button"
+          title="getBuildMetrics() / getWorkerMetrics()"
+          @click="send('queryMetrics')"
+        >
+          {{ t.methodMetrics }}
+        </button>
         <button type="button" class="primary" @click="send('reload')">{{ t.reload }}</button>
       </div>
     </section>

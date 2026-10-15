@@ -154,7 +154,7 @@ const checkedSummary = computed(() => {
 })
 
 const checkedResultText = computed(() =>
-  formatCheckedResult(checked.value, settings.outputIdOnly)
+  formatCheckedResult(checked.value, settings.outputIdOnly, t.noneChecked)
 )
 
 const idsOf = (rows: TreeInputItem[]) =>
@@ -418,12 +418,23 @@ onMounted(async () => {
         </div>
         <dl class="result-meta">
           <div><dt>{{ t.rows }}</dt><dd>{{ tree.length }}</dd></div>
-          <div><dt>{{ t.fieldMode }}</dt><dd>{{ settings.fieldKeysMode }}</dd></div>
-          <div><dt>{{ t.sizeLabel }}</dt><dd>{{ settings.size }}</dd></div>
+          <div>
+            <dt>{{ t.fieldMode }}</dt>
+            <dd>
+              {{ settings.fieldKeysMode === 'custom' ? t.fieldKeysCustom : t.fieldKeysDefault }}
+            </dd>
+          </div>
+          <div><dt>{{ t.sizeLabel }}</dt><dd>{{ t.sizeLabels[settings.size] }}</dd></div>
         </dl>
         <dl class="result-meta">
-          <div><dt>getBuildMetrics()</dt><dd>{{ metrics.build }}</dd></div>
-          <div><dt>getWorkerMetrics()</dt><dd>{{ metrics.worker }}</dd></div>
+          <div>
+            <dt title="getBuildMetrics()">{{ t.metricsBuild }}</dt>
+            <dd>{{ metrics.build }}</dd>
+          </div>
+          <div>
+            <dt title="getWorkerMetrics()">{{ t.metricsWorker }}</dt>
+            <dd>{{ metrics.worker }}</dd>
+          </div>
         </dl>
       </aside>
     </div>
