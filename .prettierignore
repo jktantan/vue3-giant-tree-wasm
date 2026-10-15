@@ -6,3 +6,6 @@
 /dist/
 /node_modules/
 /.vscode/
+# prettier 推断不出 .gitignore 的 parser，验证脚本的消费者工作目录也不该被格式化
+/.gitignore
+/.verify-consumer/

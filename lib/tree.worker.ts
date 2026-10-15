@@ -338,8 +338,10 @@ const handle = (m: WorkerCommand) => {
   // must observe that structural change, even before the timer fires.
   flushStructure()
   if (m.type === 'boundary') {
-    scrollTop = m.scrollTop
-    scrollHeight = m.scrollHeight
+    // 字段在类型上是可选的（别的命令不用它们），运行时则由主线程始终带上；
+    // 这里兜底成保留上一次的值，避免把 undefined 灌进几何计算。
+    scrollTop = m.scrollTop ?? scrollTop
+    scrollHeight = m.scrollHeight ?? scrollHeight
   } else if (m.type === 'collapse') wasm.collapseTree(tree, m.id, m.collapsed)
   else if (m.type === 'collapse-all') wasm.collapseAll(tree, m.collapsed)
   else if (m.type === 'check') wasm.checkNode(tree, m.id, m.checked)

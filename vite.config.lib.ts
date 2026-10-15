@@ -29,6 +29,14 @@ export default defineConfig(() => ({
     // 显式挂上 assemblyscriptPlugin 确保同一份 virtual 模块被复用，
     // 而不是被 Vite 单独 chunk 出孤儿 release 文件。
     plugins: () => [assemblyscriptPlugin()],
+    rolldownOptions: {
+      output: {
+        // worker 必须是自包含的单文件：消费者打包器只会把 worker 入口搬进自己的产物，
+        // 不会重写它内部的相对 import。一旦 rolldown 把互操作辅助提取成共享 chunk
+        // （`import{...}from"./rolldown-runtime-*.js"`），worker 一加载就是 404。
+        inlineDynamicImports: true,
+      },
+    },
   },
   oxc: {
     transform: {
