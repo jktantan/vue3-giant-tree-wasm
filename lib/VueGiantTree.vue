@@ -44,7 +44,7 @@ import {
 } from '../build/release'
 
 import { debounce } from 'throttle-debounce'
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, toRaw, watch } from 'vue'
 import TreeItem from '@lib/TreeItem.vue'
 import {
   computeGuideLines,
@@ -196,10 +196,18 @@ let workerMetrics: WorkerMetrics = {
   visibleRows: 0,
 }
 const workerCommandStartedAt = new Map<number, number>()
+/**
+ * 宿主可能把树数据放在 Vue 的深度响应式数组里（`ref([...])`）：全量遍历时每次属性
+ * 读取都会走 Proxy 的 get trap，并为嵌套对象惰性创建代理 —— 10 万节点实测比裸数组
+ * 慢一个数量级（`JSON.stringify(ref.value)` 277ms vs 原始数组 17ms）。
+ * 凡是全量遍历 / 序列化输入的地方都先过它；对普通数组 toRaw 是恒等操作。
+ */
+const rawTree = () => toRaw(props.tree)
+
 // Worker replies can arrive before Vue has propagated the preceding v-model
 // echo back through props. Keep the acknowledged controlled value locally so
 // rapid replies compose instead of overwriting one another.
-let workerInput: TreeMutationItem[] = props.tree as TreeMutationItem[]
+let workerInput: TreeMutationItem[] = rawTree() as TreeMutationItem[]
 let awaitingWorkerTreeEchoes = 0
 let skipNextPresentationOnlyReconcile = false
 const isUsingWorker = () => worker !== undefined
@@ -386,7 +394,7 @@ const refreshAllNodesCache = () => {
   const nameField = props.fieldKeys.nameField ?? 'name'
   const parentIdField = props.fieldKeys.parentIdField ?? 'parentId'
   const inputById = new Map<string, TreeInputItem & Record<string, unknown>>()
-  for (const item of props.tree as Array<
+  for (const item of rawTree() as Array<
     TreeInputItem & Record<string, unknown>
   >) {
     inputById.set(String(item[idField] ?? ''), item)
@@ -480,7 +488,7 @@ const encodeNeighborBatch = (
 }
 const loadTree = async () => {
   if (!canUseChunkedBuild()) {
-    setNeighborTree(tree, JSON.stringify(props.tree))
+    setNeighborTree(tree, JSON.stringify(rawTree()))
     return
   }
 
@@ -488,8 +496,9 @@ const loadTree = async () => {
   const idField = props.fieldKeys.idField ?? 'id'
   const nameField = props.fieldKeys.nameField ?? 'name'
   const parentIdField = props.fieldKeys.parentIdField ?? 'parentId'
-  for (let start = 0; start < props.tree.length; start += size) {
-    const batch = props.tree.slice(start, start + size) as Array<
+  const input = rawTree()
+  for (let start = 0; start < input.length; start += size) {
+    const batch = input.slice(start, start + size) as Array<
       TreeInputItem & Record<string, unknown>
     >
     const bridgeStarted = now()
@@ -501,7 +510,7 @@ const loadTree = async () => {
     )
     pushNeighborNodesUtf8(tree, payload)
     buildMetrics.inputBridgeMs += now() - bridgeStarted
-    if (start + size < props.tree.length) {
+    if (start + size < input.length) {
       const yieldStarted = now()
       await nextBuildTurn()
       buildMetrics.inputYieldMs += now() - yieldStarted
@@ -792,7 +801,7 @@ const tree = hasCustomKeys
 // 初始化 CHECKBOX 输出模式
 const inputNodeById = new Map<string, Record<string, unknown>>()
 const inputIdField = props.fieldKeys.idField ?? 'id'
-for (const item of props.tree as Array<
+for (const item of rawTree() as Array<
   TreeInputItem & Record<string, unknown>
 >) {
   inputNodeById.set(String(item[inputIdField] ?? ''), item)
@@ -873,10 +882,11 @@ const streamWorkerTree = async () => {
   const idField = props.fieldKeys.idField ?? 'id'
   const nameField = props.fieldKeys.nameField ?? 'name'
   const parentIdField = props.fieldKeys.parentIdField ?? 'parentId'
-  for (let start = 0; start < props.tree.length; start += size) {
+  const input = rawTree()
+  for (let start = 0; start < input.length; start += size) {
     if (!worker) return
     const payload = encodeNeighborBatch(
-      props.tree.slice(start, start + size) as Array<
+      input.slice(start, start + size) as Array<
         TreeInputItem & Record<string, unknown>
       >,
       idField,
@@ -886,7 +896,7 @@ const streamWorkerTree = async () => {
     postWorkerTransfer('stream-batch', { payload: payload.buffer }, [
       payload.buffer,
     ])
-    if (start + size < props.tree.length) await nextBuildTurn()
+    if (start + size < input.length) await nextBuildTurn()
   }
   postWorker('stream-finish')
 }

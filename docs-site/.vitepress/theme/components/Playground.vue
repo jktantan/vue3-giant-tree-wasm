@@ -34,7 +34,10 @@ const settings = reactive<PlaygroundSettings>({ ...DEFAULT_SETTINGS })
 const t = useMessages()
 const treeRef = ref<InstanceType<typeof VueGiantTree>>()
 const logs = ref<LogEntry[]>([])
-const checked = ref<TreeNodeData | TreeNodeData[] | string | string[]>([])
+// 同样用 shallowRef：选中结果在「仅输出 ID」关闭、且选了上万节点时是对象数组，
+// 而它会被 formatCheckedResult() 完整 JSON.stringify 出来 —— 深度响应式代理会让
+// 这次遍历慢一个数量级。这里始终整体替换数组，浅层引用足够。
+const checked = shallowRef<TreeNodeData | TreeNodeData[] | string | string[]>([])
 const nodeCount = ref(0)
 const metrics = ref({ build: '—', worker: '—' })
 let addedCount = 0
