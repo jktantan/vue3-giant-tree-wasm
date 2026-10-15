@@ -36,14 +36,14 @@ export type NodeIconResolver = (node: TreeNodeData) => NodeIconSpec
 export type ShowLineStyle = 'solid' | 'dashed' | 'dotted'
 
 /**
- * `showLine` 的对象形式。省略的字段使用默认值：`style: 'line'`、`color` 沿用样式默认、
+ * `showLine` 的对象形式。省略的字段使用默认值：`style: 'solid'`、`color: '#d0d4dc'`、
  * `width: 1`。
  *
- * Object form of `showLine`. Missing fields use defaults: `style: 'line'`, `color`
- * falls back to the stylesheet default, `width: 1`.
+ * Object form of `showLine`. Missing fields use defaults: `style: 'solid'`,
+ * `color: '#d0d4dc'`, `width: 1`.
  */
 export interface ShowLineOptions {
-  /** 'line' 或 'dot'。缺省 'line'。 / 'line' or 'dot'. Defaults to 'line'. */
+  /** 连接线形态，见 `ShowLineStyle`。缺省 'solid'。 / Guide-line shape, see `ShowLineStyle`. Defaults to 'solid'. */
   style?: ShowLineStyle
   /** 连接线颜色。接受任意合法的 CSS color。 / Guide-line color. Any legal CSS color. */
   color?: string

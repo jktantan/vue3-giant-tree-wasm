@@ -67,7 +67,6 @@ const props = withDefaults(
     width?: string
     height?: string
     lineHeight?: number
-    size?: number
     selectType?: SelectType
     root?: string
     fontSize?: string
@@ -92,11 +91,11 @@ const props = withDefaults(
     /**
      * 连接线展示模式：
      * - `false` 关闭（默认）；
-     * - `true` 开启，使用默认样式（线 / `#d0d4dc` / 1px）；
-     * - `ShowLineOptions` 进一步切换 `style: 'line' | 'dot'`、`color`、`width`。
+     * - `true` 开启，使用默认样式（实线 / `#d0d4dc` / 1px）；
+     * - `ShowLineOptions` 进一步切换 `style: 'solid' | 'dashed' | 'dotted'`、`color`、`width`。
      *
      * Guide-line mode: `false` disables (default); `true` enables with defaults
-     * (line / `#d0d4dc` / 1px); `ShowLineOptions` further customizes shape, color, width.
+     * (solid / `#d0d4dc` / 1px); `ShowLineOptions` further customizes shape, color, width.
      */
     showLine?: boolean | ShowLineOptions
   }>(),

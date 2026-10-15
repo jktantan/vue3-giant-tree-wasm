@@ -1,20 +1,68 @@
 /// <reference lib="webworker" />
+import type { CheckType, CheckedOutputMode, SelectType } from '../build/release'
 
+type WasmModule = typeof import('../build/release')
+/** 树实例句柄（AssemblyScript 生成的内部引用类型）。 */
+type TreeInstance = ReturnType<WasmModule['newTree']>
 type Input = Record<string, unknown>
-let wasm: any
-let tree: any
+/** `wasm.getAllNodes` 返回的 JSON 行。 */
+type SerializedRow = {
+  id: string
+  name: string
+  parentId: string
+  disabled?: boolean
+}
+type WorkerFieldKeys = {
+  idField?: string
+  nameField?: string
+  parentIdField?: string
+  leftNodeField?: string
+  rightNodeField?: string
+}
+type WorkerConfig = {
+  root: string
+  lineHeight: number
+  selectType: SelectType
+  checkedOutputMode: CheckedOutputMode
+  fieldKeys: WorkerFieldKeys
+  preorderedInput?: boolean
+}
+/** 主线程 → worker 的命令。字段按 `type` 取用，未用到的字段由发送方省略。 */
+type WorkerCommand = {
+  type: string
+  revision?: number
+  scrollTop?: number
+  scrollHeight?: number
+  config: WorkerConfig
+  tree: Input[]
+  payload: ArrayBufferLike
+  node: Input
+  id: string
+  ids: string[]
+  collapsed: boolean
+  checked: CheckType
+  mode: CheckedOutputMode
+  keyword: string
+  patch: Record<string, unknown>
+}
+/** `applyStructure` 的输出，随 snapshot 一起回传主线程。 */
+type StructureMutation =
+  { type: 'add'; node: Input } | { type: 'remove'; ids: string[] }
+
+let wasm: WasmModule
+let tree: TreeInstance | null = null
 let input: Input[] = []
 let inputReady = false
-let config: any
+let config: WorkerConfig
 let scrollTop = 0
 let scrollHeight = 0
 let ready = false
-const queue: any[] = []
+const queue: WorkerCommand[] = []
 let pendingSnapshotRevision = -1
 let snapshotScheduled = false
 let pendingCheckedResultRevision = -1
 let checkedResultScheduled = false
-const pendingStructure: any[] = []
+const pendingStructure: WorkerCommand[] = []
 let structureFlushScheduled = false
 let commandsHandled = 0
 let snapshotsSent = 0
@@ -52,8 +100,8 @@ const scheduleCheckedResult = (revision: number) => {
     })
   }, 48)
 }
-const snapshot = (revision: number, mutation?: any) => {
-  if (mutation) {
+const snapshot = (revision: number, mutation?: unknown) => {
+  if (mutation && tree) {
     const serializeStartedAt = performance.now()
     wasm.setBoundary(tree, scrollTop, scrollHeight)
     const size = wasm.getSize(tree),
@@ -172,9 +220,9 @@ const createEmptyTree = () => {
   wasm.setCheckedOutputMode(tree, config.checkedOutputMode)
 }
 const ensureInput = () => {
-  if (inputReady) return
+  if (inputReady || !tree) return
   const nameField = config.fieldKeys.nameField ?? 'name'
-  input = JSON.parse(wasm.getAllNodes(tree)).map((node: any) => ({
+  input = (JSON.parse(wasm.getAllNodes(tree)) as SerializedRow[]).map(node => ({
     [idField()]: node.id,
     [nameField]: node.name,
     [parentField()]: node.parentId,
@@ -182,7 +230,8 @@ const ensureInput = () => {
   }))
   inputReady = true
 }
-const applyStructure = (m: any) => {
+const applyStructure = (m: WorkerCommand): StructureMutation | undefined => {
+  if (!tree) return undefined
   if (m.type === 'add') {
     const parentId = String(m.node[parentField()] ?? '')
     const nameField = config.fieldKeys.nameField ?? 'name'
@@ -218,7 +267,7 @@ const flushStructure = () => {
   structuralBatches++
   structuralOperations += operations.length
   lastBatchSize = operations.length
-  const mutations: any[] = []
+  const mutations: StructureMutation[] = []
   let revision = 0
   wasm.beginStructureBatch(tree)
   for (const operation of operations) {
@@ -232,7 +281,7 @@ const flushStructure = () => {
     scheduleCheckedResult(revision)
   } else snapshot(revision)
 }
-const enqueueStructure = (m: any) => {
+const enqueueStructure = (m: WorkerCommand) => {
   pendingStructure.push(m)
   if (structureFlushScheduled) return
   structureFlushScheduled = true
@@ -241,7 +290,7 @@ const enqueueStructure = (m: any) => {
   // window groups those calls while keeping CRUD feedback immediate.
   setTimeout(flushStructure, 16)
 }
-const handle = (m: any) => {
+const handle = (m: WorkerCommand) => {
   commandsHandled++
   lastCommandStartedAt = performance.now()
   const revision = Number(m.revision ?? 0)
@@ -327,8 +376,9 @@ const handle = (m: any) => {
     scheduleCheckedResult(revision)
 }
 self.onmessage = e => {
-  if (ready) handle(e.data)
-  else queue.push(e.data)
+  const command = e.data as WorkerCommand
+  if (ready) handle(command)
+  else queue.push(command)
 }
 self.postMessage({ type: 'boot' })
 void import('../build/release')

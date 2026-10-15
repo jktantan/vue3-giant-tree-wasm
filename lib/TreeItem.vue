@@ -6,6 +6,11 @@ import type {
   ShowLineStyle,
   TreeNodeData,
 } from './types'
+import {
+  DEFAULT_SHOW_LINE_COLOR,
+  DEFAULT_SHOW_LINE_STYLE,
+  DEFAULT_SHOW_LINE_WIDTH,
+} from './guide'
 import { computed, nextTick, ref, watch } from 'vue'
 
 const props = defineProps<{
@@ -20,7 +25,7 @@ const props = defineProps<{
    * cells and rendered guide cells.
    */
   showLineEnabled?: boolean
-  /** 连接线形态：'line'（默认）/ 'dot'。 / Guide-line shape: 'line' (default) / 'dot'. */
+  /** 连接线形态，见 ShowLineStyle；缺省 'solid'。 / Guide-line shape, see ShowLineStyle. Defaults to 'solid'. */
   showLineStyle?: ShowLineStyle
   /** 连接线颜色。 / Guide-line color. */
   showLineColor?: string
@@ -103,9 +108,15 @@ const markerVerticalClass = computed(
 )
 
 /** 引导元素形参：style/color/width 由 props 决定，未启用时不写入（关闭时模板走轻量分支）。 */
-const showLineStyle = computed(() => props.showLineStyle ?? 'line')
-const showLineColor = computed(() => props.showLineColor ?? '#d0d4dc')
-const showLineWidth = computed(() => props.showLineWidth ?? 1)
+const showLineStyle = computed(
+  () => props.showLineStyle ?? DEFAULT_SHOW_LINE_STYLE
+)
+const showLineColor = computed(
+  () => props.showLineColor ?? DEFAULT_SHOW_LINE_COLOR
+)
+const showLineWidth = computed(
+  () => props.showLineWidth ?? DEFAULT_SHOW_LINE_WIDTH
+)
 /**
  * 写到行根节点的 CSS 变量集合。TreeItem 的根元素承担样式域，因此只在这里拼一次，
  * 模板只声明 `:style="guideStyle"`。`none` 不写；`line`/`dot` 共用 `color` 与 `width`，

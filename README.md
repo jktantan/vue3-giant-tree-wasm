@@ -107,6 +107,8 @@ const search = (keyword: string) => treeRef.value?.fuzzySearch(keyword)
 | `fuzzySearch(keyword)`                    | 300ms 防抖的模糊搜索；传入空字符串清除搜索 |
 | `fuzzySearchRaw(keyword)`                 | 立即执行模糊搜索；传入空字符串清除搜索     |
 | `getTreeSize()`                           | 返回树节点总数                             |
+| `getBuildReady()`                         | 返回首次构建是否已完成（布尔值）           |
+| `getBuildMetrics()`                       | 返回最近一次构建各阶段耗时（毫秒）         |
 | `getWorkerMetrics()`                      | 返回 Worker 队列、往返、序列化与结构批次指标 |
 | `setChecked(id)` / `setCheckedByIds(ids)` | 以编程方式设置选中节点                     |
 | `clearAllChecked()`                       | 清除所有选中状态                           |
@@ -115,6 +117,12 @@ const search = (keyword: string) => treeRef.value?.fuzzySearch(keyword)
 | `updateNode(id, patch)`                   | 更新节点原始字段；节点 ID 不可修改         |
 | `addNode(node)`                           | 在根或已有父节点下新增节点                  |
 | `removeNode(id)`                          | 删除节点及其全部子树                       |
+
+`chunkedBuild` 默认关闭。开启后会分批把节点写入 WASM，降低大输入首次构建时的主线程阻塞；它只在 `outputIdOnly` 为 `true` 且未设置 `filterFn` 时生效（这两种情况下组件才无需保留完整原始行数据），每批节点数由 `buildBatchSize` 控制（默认 2000）。
+
+`workerMode` 默认关闭。开启后树算法在 Web Worker 中执行，主线程只负责渲染，适合超大输入或频繁结构变更；Worker 相关指标由 `getWorkerMetrics()` 返回。
+
+`getBuildReady()` 返回首次构建是否已完成；`getBuildMetrics()` 返回最近一次构建的各阶段耗时（`inputBridgeMs`、`finalizeMs`、`cacheAssemblyMs`、`totalMs` 等），用于定位构建瓶颈。
 
 `preorderedInput` 默认是 `false`。当输入严格按深度优先前序排列（父节点在前，且节点的整个子树连续）时可设为 `true`，首次构建会跳过通用父子分组；若数据不符合该顺序，组件会自动回退到通用构建。
 
@@ -138,7 +146,7 @@ const search = (keyword: string) => treeRef.value?.fuzzySearch(keyword)
 | ------------------- | -------------------------------- | ---------- | --------------------------------------------------------------------------------------- |
 | `tree`              | `TreeInputItem[]`                | `[]`       | 树数据，邻接表格式                                                                      |
 | `root`              | `string`                         | `''`       | 根节点标识，顶层节点的 `parentId` 应等于此值                                            |
-| `modelValue`        | `TreeNodeData \| TreeNodeData[]` | —          | 选中结果 (v-model)                                                                      |
+| `modelValue`        | `TreeNodeData \| TreeNodeData[] \| string \| string[]` | —          | 选中结果 (v-model)                                                                      |
 | `width`             | `string`                         | `'100%'`   | 容器宽度                                                                                |
 | `height`            | `string`                         | `'100%'`   | 容器高度                                                                                |
 | `lineHeight`        | `number`                         | `26`       | 每行高度（像素）                                                                        |
@@ -150,6 +158,10 @@ const search = (keyword: string) => treeRef.value?.fuzzySearch(keyword)
 | `filterFn`          | `FilterFn`                       | —          | 自定义过滤回调。CHECKBOX + Custom 模式下过滤输出；RADIO 模式下判断节点是否显示 Radio 框 |
 | `nodeIcon`          | `boolean \| NodeIconResolver`   | `false`    | 节点图标：`true` 使用内置图标；回调可按节点指定或隐藏 CSS 图标类                        |
 | `showLine`          | `boolean \| ShowLineOptions`     | `false`    | 连接线展示模式：`false` 关闭；`true` 用默认（实线 + `#d0d4dc` + 1px）；对象可切换 `style: 'solid' \| 'dashed' \| 'dotted'`、`color`、`width`（像素） |
+| `chunkedBuild`      | `boolean`                        | `false`    | 显式启用分批 WASM 输入；仅在 `outputIdOnly` 为 `true` 且未设置 `filterFn` 时生效 |
+| `buildBatchSize`    | `number`                         | `2000`     | 分批构建时每批写入 WASM 的节点数 |
+| `workerMode`        | `boolean`                        | `false`    | 将树算法放入 Web Worker；适合大树或频繁结构变更 |
+| `preorderedInput`   | `boolean`                        | `false`    | 输入已按深度优先前序排列时，跳过通用父子分组构建 |
 
 ### 插槽
 
@@ -398,6 +410,7 @@ interface TreeInputItem {
   id: string // 节点唯一 ID
   name: string // 节点显示名称
   parentId: string // 父节点 ID
+  disabled?: boolean // 是否禁用；禁用节点不可选中
 }
 ```
 
@@ -414,6 +427,12 @@ interface TreeNodeData {
   checked: CheckType // 选中状态
   selected: CheckType
   collapsed: boolean // 是否折叠
+  disabled: boolean // 是否禁用
+  extendData?: Record<string, unknown> // 原始行数据（输入 JSON 的完整副本）
+  // 以下连接线字段仅在启用 showLine 时写入，用于渲染缩进与折线
+  isLastChild?: boolean // 是否为父节点的最后一个子节点
+  guideMask?: number // 祖先列贯穿位掩码
+  markerLine?: 'none' | 'upper' | 'lower' | 'full' // 标记列（箭头格）竖线段形态
 }
 ```
 
@@ -534,6 +553,7 @@ import { VueGiantTree } from 'vue3-giant-tree-wasm'
 const treeRef = ref<InstanceType<typeof VueGiantTree>>()
 const expandAll = () => treeRef.value?.expandAll()
 const collapseAll = () => treeRef.value?.collapseAll()
+const search = (keyword: string) => treeRef.value?.fuzzySearch(keyword)
 </script>
 
 <template>
@@ -550,6 +570,9 @@ const collapseAll = () => treeRef.value?.collapseAll()
 | `fuzzySearch(keyword)`                    | Debounced (300ms) fuzzy search; pass an empty string to clear it     |
 | `fuzzySearchRaw(keyword)`                 | Immediate fuzzy search; pass an empty string to clear it             |
 | `getTreeSize()`                           | Returns the total node count                                         |
+| `getBuildReady()`                         | Returns whether the initial build has completed                      |
+| `getBuildMetrics()`                       | Returns per-phase timings of the latest build (ms)                   |
+| `getWorkerMetrics()`                      | Returns worker queue, round-trip and serialization metrics           |
 | `setChecked(id)` / `setCheckedByIds(ids)` | Sets checked nodes programmatically                                  |
 | `clearAllChecked()`                       | Clears all checked state                                             |
 | `switchDisplay(displayType)`              | Switches to `TREE` or `SEARCH` view                                  |
@@ -558,9 +581,27 @@ const collapseAll = () => treeRef.value?.collapseAll()
 | `addNode(node)`                           | Adds a node under root or an existing parent                          |
 | `removeNode(id)`                          | Removes a node and its entire subtree                                 |
 
+`chunkedBuild` is off by default. Enabling it writes nodes to WASM in batches, reducing main-thread blocking during the first build of large inputs; it only takes effect when `outputIdOnly` is `true` and no `filterFn` is set (the only cases where the component does not need the full raw rows), and `buildBatchSize` controls the batch size (default 2000).
+
+`workerMode` is off by default. When enabled, the tree algorithms run in a Web Worker so the main thread only renders; it suits very large inputs or frequent structural changes. Worker metrics are returned by `getWorkerMetrics()`.
+
+`getBuildReady()` reports whether the initial build has completed; `getBuildMetrics()` returns per-phase timings of the latest build (`inputBridgeMs`, `finalizeMs`, `cacheAssemblyMs`, `totalMs`, …) for locating build bottlenecks.
+
+`preorderedInput` defaults to `false`. Set it to `true` when the input is strictly in depth-first preorder (parents before children, each subtree contiguous) to skip generic parent-child grouping on the first build; the component falls back to generic building automatically when the data does not match that order.
+
+`getWorkerMetrics()` only has meaningful data when `workerMode` is enabled. Use it to separate main-thread round-trip time (`lastRoundTripMs`), worker wait/compute time (`lastWorkerResponseMs`), visible-row serialization time (`lastWorkerSerializeMs`), and the effect of coalescing consecutive structural operations (`structuralBatches`, `structuralOperations`, `lastBatchSize`).
+
 ### Add, Edit, and Delete Nodes
 
-Use `v-model:tree` to receive the updated input array. Adding or deleting recomputes MPTT boundaries within the existing component instance and restores scroll, expanded, and selected state; it does not remount the component with a `key`.
+Use `v-model:tree` to receive the updated input array. Editing only updates node content; adding or deleting recomputes MPTT boundaries within the same component instance and restores scroll position, expanded and selected state, without remounting the component via `key`.
+
+```vue
+<VueGiantTree ref="treeRef" v-model:tree="treeData" v-model="selected" />
+
+<!-- treeRef.value?.addNode({ id: crypto.randomUUID(), name: 'New node', parentId }) -->
+<!-- treeRef.value?.updateNode(id, { name: 'Renamed' }) -->
+<!-- treeRef.value?.removeNode(id)  // removes all descendants -->
+```
 
 ### Props
 
@@ -568,7 +609,7 @@ Use `v-model:tree` to receive the updated input array. Adding or deleting recomp
 | ------------------- | -------------------------------- | ---------- | ----------------------------------------------------------------------------------------------------------- |
 | `tree`              | `TreeInputItem[]`                | `[]`       | Tree data in adjacency list format                                                                          |
 | `root`              | `string`                         | `''`       | Root identifier; top-level nodes' `parentId` should equal this                                              |
-| `modelValue`        | `TreeNodeData \| TreeNodeData[]` | —          | Selected result (v-model)                                                                                   |
+| `modelValue`        | `TreeNodeData \| TreeNodeData[] \| string \| string[]` | —          | Selected result (v-model)                                                                                   |
 | `width`             | `string`                         | `'100%'`   | Container width                                                                                             |
 | `height`            | `string`                         | `'100%'`   | Container height                                                                                            |
 | `lineHeight`        | `number`                         | `26`       | Row height in pixels                                                                                        |
@@ -578,7 +619,44 @@ Use `v-model:tree` to receive the updated input array. Adding or deleting recomp
 | `outputIdOnly`      | `boolean`                        | `true`     | When `true` (default), v-model emits only selected node IDs; `false` emits full JSON                        |
 | `checkedOutputMode` | `CheckedOutputMode`              | `All`      | CHECKBOX output ID filter mode: `All` / `RootOnly` / `LeafOnly` / `Custom`                                  |
 | `filterFn`          | `FilterFn`                       | —          | Custom filter callback. CHECKBOX + Custom mode filters output; RADIO mode determines which nodes show Radio |
+| `nodeIcon`          | `boolean \| NodeIconResolver`   | `false`    | Node icons: `true` uses built-in icons; a callback picks or hides the CSS icon class per node |
 | `showLine`          | `boolean \| ShowLineOptions`     | `false`    | Guide-line mode: `false` disables; `true` uses defaults (solid + `#d0d4dc` + 1px); an object enables `style: 'solid' \| 'dashed' \| 'dotted'`, `color`, and `width` (px) |
+| `chunkedBuild`      | `boolean`                        | `false`    | Explicitly enables batched WASM input; only effective when `outputIdOnly` is `true` and no `filterFn` is set |
+| `buildBatchSize`    | `number`                         | `2000`     | Nodes written to WASM per batch |
+| `workerMode`        | `boolean`                        | `false`    | Runs tree algorithms in a Web Worker; suited to very large trees or frequent structural changes |
+| `preorderedInput`   | `boolean`                        | `false`    | Skips generic parent-child grouping when input is already in depth-first preorder |
+
+### Node Icon (nodeIcon)
+
+`nodeIcon` is off by default and therefore does not change the existing row layout. Set it to `true` to show a closed folder for collapsed parents, an open folder for expanded parents, and a file icon for leaves.
+
+When the icon depends on business type, use a callback to map backend fields to CSS icon classes on the front end; the backend neither needs to know nor should know about the concrete front-end icon assets.
+
+```typescript
+import type { NodeIconResolver } from 'vue3-giant-tree-wasm'
+
+const nodeIcon: NodeIconResolver = node => {
+  switch (node.extendData?.nodeType) {
+    case 'directory':
+      return {
+        collapsed: 'app-icon-folder',
+        expanded: 'app-icon-folder-open',
+      }
+    case 'document':
+      return 'app-icon-document' // Shared by both states
+    case 'hidden':
+      return false // Hide the icon for this node
+    default:
+      return true // Fall back to the component's default icon
+  }
+}
+```
+
+```vue
+<VueGiantTree :tree="treeData" :node-icon="nodeIcon" />
+```
+
+The callback returns `true | false | string | { collapsed: string; expanded?: string }`. An object without `expanded` reuses `collapsed`; leaves also use `collapsed`. Custom classes are responsible for the complete icon styling, e.g. `background-image: url(...)`, which preserves multi-color SVG fills. Dark themes can override `background-image` for the same icon classes in a theme selector.
 
 ### Guide Lines (showLine)
 
@@ -790,6 +868,7 @@ interface TreeInputItem {
   id: string // Unique node ID
   name: string // Display name
   parentId: string // Parent node ID
+  disabled?: boolean // Whether disabled; disabled nodes cannot be selected
 }
 ```
 
@@ -806,6 +885,12 @@ interface TreeNodeData {
   checked: CheckType // Check state
   selected: CheckType
   collapsed: boolean // Whether collapsed
+  disabled: boolean // Whether disabled
+  extendData?: Record<string, unknown> // Raw row data (full copy of the input JSON)
+  // The following guide-line fields are written only when showLine is enabled
+  isLastChild?: boolean // Whether this is the parent's last child
+  guideMask?: number // Ancestor-column continuation bitmask
+  markerLine?: 'none' | 'upper' | 'lower' | 'full' // Marker-column (arrow cell) vertical segment
 }
 ```
 
@@ -845,6 +930,21 @@ pnpm lib:build
 
 Высокопроизводительный компонент дерева с виртуальной прокруткой на основе Vue 3 + WebAssembly, спроектированный для работы с массивными наборами данных. Основные алгоритмы дерева написаны на AssemblyScript и скомпилированы в WASM, используя структуру данных MPTT (Modified Preorder Tree Traversal) для достижения проверки поддерева за O(1) и среза видимой области за O(k) — легко справляясь с сотнями тысяч и даже миллионами узлов.
 
+### Производительность
+
+Приведённые данные получены на release-WASM в локальном Chromium с воспроизводимыми бенчмарками; фактические результаты зависят от формы данных, браузера, оборудования, включённых функций и сложности содержимого строк.
+
+- Бенчмарки ёмкости покрывают наборы данных до 1 млн узлов
+- P95 действия прокрутки на 100 000 узлах: ~0,1 мс
+- P95 действия прокрутки в браузерной нагрузке на 4 620 узлах: ~0,4 мс
+- В DOM рендерятся только строки в области просмотра
+
+Методика, окружение и полные результаты — в [архиве performance-gate](docs/performance-gate-2026-09-19.md).
+
+### Диагностика
+
+Последний обзор каталогов `Assembly/` и `lib/` дал десять находок (2 🔴, 3 🟠, 5 🟡); они перечислены в [`docs/diagnostics.md`](docs/diagnostics.md) с приоритетом и планом исправлений. Ссылаясь на этот README, указывайте и отчёт диагностики, чтобы читатель видел, какие граничные случаи уже закрыты, а какие остаются оптимизациями на будущее.
+
 ### Возможности
 
 - **Ускорение через WASM** — Построение дерева, обход, поиск и выбор выполняются в WebAssembly
@@ -852,7 +952,8 @@ pnpm lib:build
 - **Алгоритм MPTT** — Проверка поддерева за O(1), срез viewport за O(k), развёртывание/свёртывание за O(поддерево + log N)
 - **Плавная анимация развёртывания/свёртывания** — Анимирует ветви в текущей области просмотра, не добавляя в DOM всё поддерево; учитывает системное предпочтение уменьшения анимации
 - **Три режима выбора** — Чекбокс (множественный), Радиокнопка (одиночный), Выбор по клику
-- **Нечёткий поиск** — Фильтрация по ключевому слову с автоматическим дополнением цепочки предков
+- **Нечёткий поиск** — Фильтрация по ключевому слову с автоматическим дополнением цепочки предков; состояние развёртывания в режиме поиска не влияет на основное дерево
+- **Массовое развёртывание/свёртывание** — Методы экземпляра разворачивают или свёртывают текущее представление одним вызовом
 - **Настраиваемые ключи полей** — Сопоставление пользовательских имён полей JSON (id / name / parentId / leftNode / rightNode)
 - **Единое построение дерева** — Всегда перестраивает MPTT из parentId независимо от формата входных данных, избегая устаревших leftNode/rightNode
 - **Кэширование JSON** — При неизменной позиции прокрутки возвращается кэшированный результат
@@ -894,13 +995,75 @@ const selected = ref([])
 </template>
 ```
 
+### Методы экземпляра компонента
+
+Задайте `ref` компонента, чтобы вызывать эти методы. `expandAll()` и `collapseAll()` применяются к текущему представлению: обычно к полному дереву, а во время поиска — только к текущим результатам. Состояние развёртывания в режиме поиска никогда не меняет состояние свёртки основного дерева.
+
+```vue
+<script setup lang="ts">
+import { ref } from 'vue'
+import { VueGiantTree } from 'vue3-giant-tree-wasm'
+
+const treeRef = ref<InstanceType<typeof VueGiantTree>>()
+const expandAll = () => treeRef.value?.expandAll()
+const collapseAll = () => treeRef.value?.collapseAll()
+const search = (keyword: string) => treeRef.value?.fuzzySearch(keyword)
+</script>
+
+<template>
+  <button @click="expandAll">Развернуть всё</button>
+  <button @click="collapseAll">Свернуть всё</button>
+  <VueGiantTree ref="treeRef" :tree="treeData" root="root" v-model="selected" />
+</template>
+```
+
+| Метод                                     | Описание                                                                                       |
+| ----------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `expandAll()`                             | Разворачивает все разворачиваемые узлы текущего представления                                  |
+| `collapseAll()`                           | Сворачивает все сворачиваемые узлы текущего представления                                      |
+| `fuzzySearch(keyword)`                    | Нечёткий поиск с антидребезгом 300 мс; пустая строка очищает поиск                              |
+| `fuzzySearchRaw(keyword)`                 | Немедленный нечёткий поиск; пустая строка очищает поиск                                         |
+| `getTreeSize()`                           | Возвращает общее количество узлов дерева                                                        |
+| `getBuildReady()`                         | Возвращает, завершено ли первое построение (boolean)                                            |
+| `getBuildMetrics()`                       | Возвращает длительности фаз последнего построения (мс)                                          |
+| `getWorkerMetrics()`                      | Возвращает метрики очереди Worker, round-trip и сериализации                                    |
+| `setChecked(id)` / `setCheckedByIds(ids)` | Программно устанавливает выбранные узлы                                                         |
+| `clearAllChecked()`                       | Очищает всё состояние выбора                                                                    |
+| `switchDisplay(displayType)`              | Переключает вид `TREE` или `SEARCH`                                                             |
+| `refreshCheckedResult()`                  | Повторно испускает текущий результат v-model по активным настройкам вывода                      |
+| `updateNode(id, patch)`                   | Обновляет исходные поля узла; ID узла неизменяем                                                |
+| `addNode(node)`                           | Добавляет узел под корнем или под существующим родителем                                        |
+| `removeNode(id)`                          | Удаляет узел и всё его поддерево                                                                |
+
+`chunkedBuild` по умолчанию выключен. При включении узлы записываются в WASM пакетами, снижая блокировку главного потока при первом построении больших входных данных; он действует только когда `outputIdOnly` равен `true` и `filterFn` не задан (только в этих случаях компоненту не нужны полные исходные строки), а размер пакета задаёт `buildBatchSize` (по умолчанию 2000).
+
+`workerMode` по умолчанию выключен. При включении алгоритмы дерева выполняются в Web Worker, а главный поток только рендерит; подходит для очень больших входных данных или частых структурных изменений. Метрики Worker возвращает `getWorkerMetrics()`.
+
+`getBuildReady()` сообщает, завершено ли первое построение; `getBuildMetrics()` возвращает длительности фаз последнего построения (`inputBridgeMs`, `finalizeMs`, `cacheAssemblyMs`, `totalMs` и т. д.) для поиска узких мест.
+
+`preorderedInput` по умолчанию `false`. Установите `true`, если входные данные строго в порядке глубинного обхода (родители раньше потомков, поддерево непрерывно), чтобы пропустить общую группировку родитель-потомок при первом построении; при несоответствии данных компонент автоматически вернётся к общей сборке.
+
+`getWorkerMetrics()` содержит реальные данные только при включённом `workerMode`. С его помощью можно разделить время round-trip на главном потоке (`lastRoundTripMs`), время ожидания/вычислений Worker (`lastWorkerResponseMs`), время сериализации видимых строк (`lastWorkerSerializeMs`) и эффект объединения подряд идущих структурных операций (`structuralBatches`, `structuralOperations`, `lastBatchSize`).
+
+### Добавление, изменение и удаление узлов
+
+Используйте `v-model:tree`, чтобы получать обновлённый входной массив. Изменение обновляет только содержимое узла; добавление и удаление пересчитывают границы MPTT в том же экземпляре компонента и восстанавливают позицию прокрутки, развёртывание и выбор, не перемонтируя компонент через `key`.
+
+```vue
+<VueGiantTree ref="treeRef" v-model:tree="treeData" v-model="selected" />
+
+<!-- treeRef.value?.addNode({ id: crypto.randomUUID(), name: 'Новый узел', parentId }) -->
+<!-- treeRef.value?.updateNode(id, { name: 'Новое имя' }) -->
+<!-- treeRef.value?.removeNode(id)  // удаляет всех потомков -->
+```
+
 ### Свойства (Props)
 
 | Свойство            | Тип                              | По умолчанию | Описание                                                                                                           |
 | ------------------- | -------------------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------ |
 | `tree`              | `TreeInputItem[]`                | `[]`         | Данные дерева в формате списка смежности                                                                           |
 | `root`              | `string`                         | `''`         | Идентификатор корня; `parentId` узлов верхнего уровня должен быть равен этому значению                             |
-| `modelValue`        | `TreeNodeData \| TreeNodeData[]` | —            | Результат выбора (v-model)                                                                                         |
+| `modelValue`        | `TreeNodeData \| TreeNodeData[] \| string \| string[]` | —            | Результат выбора (v-model)                                                                                         |
 | `width`             | `string`                         | `'100%'`     | Ширина контейнера                                                                                                  |
 | `height`            | `string`                         | `'100%'`     | Высота контейнера                                                                                                  |
 | `lineHeight`        | `number`                         | `26`         | Высота строки в пикселях                                                                                           |
@@ -910,7 +1073,44 @@ const selected = ref([])
 | `outputIdOnly`      | `boolean`                        | `true`       | Если `true` (по умолч.), v-model передаёт только ID выбранных узлов; `false` — полные данные                       |
 | `checkedOutputMode` | `CheckedOutputMode`              | `All`        | Режим фильтрации вывода ID для CHECKBOX: `All` / `RootOnly` / `LeafOnly` / `Custom`                                |
 | `filterFn`          | `FilterFn`                       | —            | Пользовательский callback фильтрации. CHECKBOX + Custom — фильтрует вывод; RADIO — определяет, показывать ли Radio |
+| `nodeIcon`          | `boolean \| NodeIconResolver`   | `false`      | Значки узлов: `true` — встроенные; callback выбирает или скрывает CSS-класс значка для узла |
 | `showLine`          | `boolean \| ShowLineOptions`     | `false`      | Режим направляющих линий: `false` выкл.; `true` использует значения по умолчанию (сплошная + `#d0d4dc` + 1px); объект задаёт `style: 'solid' \| 'dashed' \| 'dotted'`, `color`, `width` (пиксели) |
+| `chunkedBuild`      | `boolean`                        | `false`      | Явно включает пакетную запись входных данных в WASM; действует только при `outputIdOnly` = `true` и без `filterFn` |
+| `buildBatchSize`    | `number`                         | `2000`       | Количество узлов, записываемых в WASM за пакет |
+| `workerMode`        | `boolean`                        | `false`      | Выполняет алгоритмы дерева в Web Worker; подходит для очень больших данных или частых структурных изменений |
+| `preorderedInput`   | `boolean`                        | `false`      | Пропускает общую группировку родитель-потомок, если данные уже в порядке глубинного обхода |
+
+### Значки узлов (nodeIcon)
+
+`nodeIcon` по умолчанию выключен и потому не меняет текущую раскладку строк. При `true` свёрнутый родитель показывает закрытую папку, развёрнутый — открытую, а листья — значок файла.
+
+Если значок зависит от бизнес-типа, используйте callback, чтобы на фронте сопоставить поля бэкенда с CSS-классами значков; бэкенду не нужно и не следует знать конкретные фронтенд-ресурсы значков.
+
+```typescript
+import type { NodeIconResolver } from 'vue3-giant-tree-wasm'
+
+const nodeIcon: NodeIconResolver = node => {
+  switch (node.extendData?.nodeType) {
+    case 'directory':
+      return {
+        collapsed: 'app-icon-folder',
+        expanded: 'app-icon-folder-open',
+      }
+    case 'document':
+      return 'app-icon-document' // общий для обоих состояний
+    case 'hidden':
+      return false // не показывать значок для этого узла
+    default:
+      return true // вернуться к значку по умолчанию
+  }
+}
+```
+
+```vue
+<VueGiantTree :tree="treeData" :node-icon="nodeIcon" />
+```
+
+Callback возвращает `true | false | string | { collapsed: string; expanded?: string }`. Объект без `expanded` переиспользует `collapsed`; листья также используют `collapsed`. Пользовательские классы отвечают за полный стиль значка, например `background-image: url(...)`, что сохраняет многоцветную заливку SVG. Тёмная тема может переопределить `background-image` для тех же классов значков в переключателе тем.
 
 ### Направляющие линии (showLine)
 
@@ -1122,6 +1322,7 @@ interface TreeInputItem {
   id: string // Уникальный ID узла
   name: string // Отображаемое имя
   parentId: string // ID родительского узла
+  disabled?: boolean // Отключён ли; отключённые узлы нельзя выбрать
 }
 ```
 
@@ -1138,6 +1339,12 @@ interface TreeNodeData {
   checked: CheckType // Состояние выбора
   selected: CheckType
   collapsed: boolean // Свёрнут ли узел
+  disabled: boolean // Отключён ли
+  extendData?: Record<string, unknown> // Исходные данные строки (полная копия входного JSON)
+  // Следующие поля направляющих линий записываются только при включённом showLine
+  isLastChild?: boolean // Последний ли дочерний узел у родителя
+  guideMask?: number // Битовая маска продолжения столбцов предков
+  markerLine?: 'none' | 'upper' | 'lower' | 'full' // Вертикальный отрезок в маркерном столбце (ячейка стрелки)
 }
 ```
 
