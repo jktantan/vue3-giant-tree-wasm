@@ -30,3 +30,6 @@ pnpm-workspace.yaml
 docs-site/.vitepress/cache
 docs-site/.vitepress/dist
 docs-site/.vitepress/.temp
+
+# SDD（superpowers）执行记录：仅本地，不入库
+.superpowers
