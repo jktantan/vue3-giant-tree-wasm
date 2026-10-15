@@ -3,12 +3,14 @@ import type { TreeInputItem } from '@lib/types'
 /** 演示数据的规模档位。 */
 export type TreePreset = 'small' | 'medium' | '10k' | '100k'
 
-/** 生成选项：用于演示 `disabled` 与 `filterFn`。 */
+/** 生成选项：用于演示 `disabled`、`filterFn` 与界面语言。 */
 export interface TreeDataOptions {
   /** 每隔 N 个节点（从 1 起算）标记为 `disabled`。 */
   disabledEvery?: number
   /** 每隔 N 个节点（从 1 起算）把 `category` 置为 `'B'`，其余为 `'A'`。 */
   categoryEvery?: number
+  /** 节点显示名的前缀，默认 `'节点'`（英文/俄文页面传各自的词）。 */
+  labelPrefix?: string
 }
 
 type TreeShape =
@@ -26,9 +28,13 @@ const SHAPES: Record<TreePreset, TreeShape> = {
 }
 
 /** 追加一行，返回它的 id（id 为自增的 `n1`、`n2`…）。 */
-const pushRow = (rows: DraftRow[], parentId: string): string => {
+const pushRow = (
+  rows: DraftRow[],
+  parentId: string,
+  prefix: string
+): string => {
   const id = `n${rows.length + 1}`
-  rows.push({ id, name: `节点 ${id}`, parentId, category: 'A' })
+  rows.push({ id, name: `${prefix} ${id}`, parentId, category: 'A' })
   return id
 }
 
@@ -59,13 +65,15 @@ export function buildTreeData(
 ): TreeInputItem[] {
   const shape = SHAPES[preset]
   const rows: DraftRow[] = []
+  const prefix = options.labelPrefix ?? '节点'
+  const push = (parentId: string) => pushRow(rows, parentId, prefix)
 
   if (shape.kind === 'levels') {
     let parents = ['root']
     for (const width of shape.levels) {
       const next: string[] = []
       for (const parentId of parents) {
-        for (let i = 0; i < width; i++) next.push(pushRow(rows, parentId))
+        for (let i = 0; i < width; i++) next.push(push(parentId))
       }
       parents = next
     }
@@ -73,7 +81,7 @@ export function buildTreeData(
     for (let i = 0; i < shape.count; i++) {
       const parentId =
         i === 0 ? 'root' : rows[Math.floor((i - 1) / shape.branching)].id
-      pushRow(rows, parentId)
+      push(parentId)
     }
   }
 
@@ -93,6 +101,8 @@ export function buildPreorderedTreeData(
 ): TreeInputItem[] {
   const shape = SHAPES[preset]
   const rows: DraftRow[] = []
+  const prefix = options.labelPrefix ?? '节点'
+  const push = (parentId: string) => pushRow(rows, parentId, prefix)
 
   if (shape.kind === 'levels') {
     // 先压入自己，再立刻下钻整棵子树 —— 这正是前序的定义。
@@ -100,7 +110,7 @@ export function buildPreorderedTreeData(
       const width = shape.levels[level]
       if (width === undefined) return
       for (let i = 0; i < width; i++) {
-        walk(pushRow(rows, parentId), level + 1)
+        walk(push(parentId), level + 1)
       }
     }
     walk('root', 0)
@@ -114,7 +124,7 @@ export function buildPreorderedTreeData(
       if (depth >= maxDepth) return
       for (let i = 0; i < shape.branching && remaining > 0; i++) {
         remaining--
-        walk(pushRow(rows, parentId), depth + 1)
+        walk(push(parentId), depth + 1)
       }
     }
     walk('root', 0)

@@ -1,17 +1,19 @@
 <script setup lang="ts">
 import type { ApiAction, PlaygroundSettings } from './settings'
+import { useMessages } from '../i18n'
 
 const props = defineProps<{ settings: PlaygroundSettings }>()
 const emit = defineEmits<{ action: [ApiAction] }>()
 
 /** 直接引用父组件的 reactive 对象，控件改动即写回。 */
 const settings = props.settings
+const t = useMessages()
 
 const sizes: Array<{ value: PlaygroundSettings['size']; label: string }> = [
   { value: 'small', label: 'small' },
   { value: 'medium', label: 'medium' },
   { value: '10k', label: '10k' },
-  { value: '100k', label: '100k（较慢）' },
+  { value: '100k', label: '100k' },
 ]
 
 const heights = ['240px', '360px', '520px', '720px']
@@ -22,7 +24,7 @@ const lineColors = ['#d0d4dc', '#9ca3af', '#3b82f6', '#ef4444', '#10b981']
 <template>
   <div class="control-panel">
     <fieldset>
-      <legend>数据规模</legend>
+      <legend>{{ t.sizeLabel }}</legend>
       <button
         v-for="item in sizes"
         :key="item.value"
@@ -32,23 +34,23 @@ const lineColors = ['#d0d4dc', '#9ca3af', '#3b82f6', '#ef4444', '#10b981']
       >
         {{ item.label }}
       </button>
-      <p class="hint">10k / 100k 在点击后才会生成，避免默认拖慢页面。</p>
+      <p class="hint">{{ t.sizeHint }}</p>
     </fieldset>
 
     <fieldset>
-      <legend>布局</legend>
+      <legend>{{ t.layout }}</legend>
       <label>
-        高度
+        {{ t.height }}
         <select v-model="settings.height">
           <option v-for="h in heights" :key="h" :value="h">{{ h }}</option>
         </select>
       </label>
       <label>
-        行高
+        {{ t.lineHeight }}
         <input v-model.number="settings.lineHeight" type="number" min="18" max="60" />
       </label>
       <label>
-        字号
+        {{ t.fontSize }}
         <select v-model="settings.fontSize">
           <option v-for="f in fonts" :key="f" :value="f">{{ f }}</option>
         </select>
@@ -56,7 +58,7 @@ const lineColors = ['#d0d4dc', '#9ca3af', '#3b82f6', '#ef4444', '#10b981']
     </fieldset>
 
     <fieldset>
-      <legend>选择与输出</legend>
+      <legend>{{ t.selectAndOutput }}</legend>
       <button
         v-for="mode in (['CHECKBOX', 'RADIO', 'SELECT'] as const)"
         :key="mode"
@@ -68,10 +70,10 @@ const lineColors = ['#d0d4dc', '#9ca3af', '#3b82f6', '#ef4444', '#10b981']
       </button>
       <label>
         <input v-model="settings.outputIdOnly" type="checkbox" />
-        outputIdOnly（只输出 ID）
+        {{ t.outputIdOnly }}
       </label>
       <label>
-        checkedOutputMode
+        {{ t.checkedOutputMode }}
         <select v-model="settings.checkedOutputMode">
           <option value="All">All</option>
           <option value="RootOnly">RootOnly</option>
@@ -81,15 +83,15 @@ const lineColors = ['#d0d4dc', '#9ca3af', '#3b82f6', '#ef4444', '#10b981']
       </label>
       <label>
         <input v-model="settings.enableFilterFn" type="checkbox" />
-        filterFn（仅保留 category=A）
+        {{ t.filterFn }}
       </label>
     </fieldset>
 
     <fieldset>
-      <legend>行渲染</legend>
+      <legend>{{ t.rowRendering }}</legend>
       <label>
         <input v-model="settings.showLine" type="checkbox" />
-        showLine
+        {{ t.showLine }}
       </label>
       <template v-if="settings.showLine">
         <button
@@ -102,36 +104,35 @@ const lineColors = ['#d0d4dc', '#9ca3af', '#3b82f6', '#ef4444', '#10b981']
           {{ style }}
         </button>
         <label>
-          颜色
           <select v-model="settings.showLineColor">
             <option v-for="c in lineColors" :key="c" :value="c">{{ c }}</option>
           </select>
         </label>
         <label>
-          粗细
+          px
           <input v-model.number="settings.showLineWidth" type="number" min="1" max="4" />
         </label>
       </template>
       <label>
-        nodeIcon
+        {{ t.nodeIcon }}
         <select v-model="settings.nodeIcon">
-          <option value="off">off</option>
-          <option value="default">内置图标</option>
-          <option value="business">业务字段映射</option>
+          <option value="off">{{ t.iconOff }}</option>
+          <option value="default">{{ t.iconBuiltin }}</option>
+          <option value="business">{{ t.iconBusiness }}</option>
         </select>
       </label>
       <label>
         <input v-model="settings.useNodeSlot" type="checkbox" />
-        #node 插槽
+        {{ t.slotNode }}
       </label>
       <label>
         <input v-model="settings.useActionsSlot" type="checkbox" />
-        #actions 插槽
+        {{ t.slotActions }}
       </label>
     </fieldset>
 
     <fieldset>
-      <legend>构建与 Worker</legend>
+      <legend>{{ t.buildAndWorker }}</legend>
       <label>
         <input v-model="settings.workerMode" type="checkbox" />
         workerMode
@@ -149,16 +150,16 @@ const lineColors = ['#d0d4dc', '#9ca3af', '#3b82f6', '#ef4444', '#10b981']
         preorderedInput
       </label>
       <label>
-        fieldKeys
+        {{ t.fieldKeys }}
         <select v-model="settings.fieldKeysMode">
-          <option value="default">默认字段</option>
-          <option value="custom">key/label/parent</option>
+          <option value="default">{{ t.fieldKeysDefault }}</option>
+          <option value="custom">{{ t.fieldKeysCustom }}</option>
         </select>
       </label>
     </fieldset>
 
     <fieldset>
-      <legend>实例方法</legend>
+      <legend>{{ t.instanceMethods }}</legend>
       <button type="button" @click="emit('action', 'expandAll')">expandAll</button>
       <button type="button" @click="emit('action', 'collapseAll')">collapseAll</button>
       <button type="button" @click="emit('action', 'clearAllChecked')">clearAllChecked</button>
@@ -170,7 +171,7 @@ const lineColors = ['#d0d4dc', '#9ca3af', '#3b82f6', '#ef4444', '#10b981']
       <button type="button" @click="emit('action', 'addChild')">addNode</button>
       <button type="button" @click="emit('action', 'removeLast')">removeNode</button>
       <button type="button" @click="emit('action', 'queryMetrics')">getBuildMetrics / getWorkerMetrics</button>
-      <button type="button" @click="emit('action', 'reload')">重建数据</button>
+      <button type="button" @click="emit('action', 'reload')">{{ t.reload }}</button>
     </fieldset>
   </div>
 </template>

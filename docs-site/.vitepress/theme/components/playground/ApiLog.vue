@@ -1,21 +1,22 @@
 <script setup lang="ts">
 import type { LogEntry } from './settings'
+import { useMessages } from '../i18n'
 
 defineProps<{ entries: LogEntry[] }>()
+
+const t = useMessages()
 </script>
 
 <template>
   <div class="api-log">
-    <p class="api-log__title">
-      事件 / API 调用日志（{{ entries.length }} / 50）
-    </p>
+    <p class="api-log__title">{{ t.apiLogTitle }}（{{ entries.length }} / 50）</p>
     <ol class="api-log__list">
       <li v-for="(entry, index) in entries" :key="`${entry.at}-${index}`">
         <code>{{ entry.at }}</code>
         {{ entry.text }}
       </li>
     </ol>
-    <p v-if="entries.length === 0" class="api-log__empty">（还没有记录）</p>
+    <p v-if="entries.length === 0" class="api-log__empty">{{ t.noLog }}</p>
   </div>
 </template>
 

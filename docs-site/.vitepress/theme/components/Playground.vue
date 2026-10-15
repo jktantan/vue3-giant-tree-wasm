@@ -21,8 +21,10 @@ import {
   type PlaygroundSettings,
 } from './playground/settings'
 import { formatCheckedResult } from './playground/format'
+import { useMessages } from './i18n'
 
 const settings = reactive<PlaygroundSettings>({ ...DEFAULT_SETTINGS })
+const t = useMessages()
 const treeRef = ref<InstanceType<typeof VueGiantTree>>()
 const logs = ref<LogEntry[]>([])
 const checked = ref<TreeNodeData | TreeNodeData[] | string | string[]>([])
@@ -47,6 +49,7 @@ const createData = (): TreeInputItem[] => {
   const nodes = build(settings.size, {
     disabledEvery: 9,
     categoryEvery: 4,
+    labelPrefix: t.nodeLabel,
   })
   if (settings.fieldKeysMode !== 'custom') return nodes
   return nodes.map(node => ({
@@ -156,7 +159,7 @@ const runAction = (action: ApiAction) => {
     case 'reload':
       tree.value = createData()
       checked.value = []
-      log('重建数据（v-model:tree 重组）')
+      log(t.reload)
       break
     case 'expandAll':
       instance?.expandAll()
@@ -271,8 +274,8 @@ watch(
     tree.value = createData()
     checked.value = []
     log(
-      `数据更换：${size}${mode === 'custom' ? '（自定义字段）' : ''}${
-        preordered ? '（深度优先前序）' : ''
+      `${t.dataChanged}: ${size}${mode === 'custom' ? ` (${t.customFields})` : ''}${
+        preordered ? ` (${t.preorder})` : ''
       }`
     )
     void refreshCount()
@@ -283,7 +286,7 @@ watch(checked, () => log(`update:modelValue → ${checkedSummary.value}`))
 watch(tree, () => log(`update:tree → ${tree.value.length} 行`))
 
 onMounted(() => {
-  log('演示场已挂载，WASM 就绪')
+  log(t.mounted)
   void refreshCount()
 })
 </script>
@@ -327,15 +330,15 @@ onMounted(() => {
 
     <div class="playground__output">
       <div class="playground__result">
-        <strong>选中结果：</strong>
+        <strong>{{ t.checkedResult }}：</strong>
         <pre>{{ checkedResultText }}</pre>
       </div>
       <p><strong>getTreeSize()：</strong>{{ nodeCount }}</p>
       <p><strong>getBuildReady() / getBuildMetrics()：</strong>{{ metrics.build }}</p>
       <p><strong>getWorkerMetrics()：</strong>{{ metrics.worker }}</p>
       <p>
-        <strong>当前数据：</strong>{{ tree.length }} 行 · 字段模式
-        {{ settings.fieldKeysMode }} · 根标识 root
+        <strong>{{ t.totalNodes }}：</strong>{{ tree.length }} · fieldKeys:
+        {{ settings.fieldKeysMode }} · root: root
       </p>
     </div>
 

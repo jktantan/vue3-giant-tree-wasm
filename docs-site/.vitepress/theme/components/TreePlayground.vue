@@ -7,6 +7,7 @@ import { computed, ref } from 'vue'
 import { VueGiantTree, SelectType, CheckedOutputMode } from '@lib/index'
 import type { FilterFn, NodeIconResolver, TreeNodeData } from '@lib/types'
 import { buildTreeData, type TreePreset } from './treeData'
+import { useMessages } from './i18n'
 
 type Preset =
   | 'tree-building'
@@ -34,6 +35,8 @@ const props = withDefaults(
   }
 )
 
+const t = useMessages()
+
 const SELECT_TYPES: Record<typeof props.selectType, SelectType> = {
   CHECKBOX: SelectType.CHECKBOX,
   RADIO: SelectType.RADIO,
@@ -42,19 +45,17 @@ const SELECT_TYPES: Record<typeof props.selectType, SelectType> = {
 
 const treeRef = ref<InstanceType<typeof VueGiantTree>>()
 const size = ref<TreePreset>(props.initialPreset)
-const data = ref(buildTreeData(size.value, { disabledEvery: 9, categoryEvery: 4 }))
+const dataOptions = () => ({
+  disabledEvery: 9,
+  categoryEvery: 4,
+  labelPrefix: t.nodeLabel,
+})
+const data = ref(buildTreeData(size.value, dataOptions()))
 const checked = ref<TreeNodeData | TreeNodeData[] | string | string[]>([])
 const keyword = ref('')
 const useLine = ref(props.preset === 'guide-lines' || props.showLine)
 const icons = ref(props.preset === 'node-icons' || props.nodeIcon)
 const nodeCount = ref(data.value.length)
-
-const reload = (preset: TreePreset = size.value) => {
-  size.value = preset
-  data.value = buildTreeData(preset, { disabledEvery: 9, categoryEvery: 4 })
-  checked.value = []
-  nodeCount.value = data.value.length
-}
 
 const currentSelectType = ref<typeof props.selectType>(props.selectType)
 const outputMode = ref<'All' | 'RootOnly' | 'LeafOnly' | 'Custom'>('All')
@@ -71,6 +72,13 @@ const outputModeEnum = computed(
     })[outputMode.value]
 )
 
+const reload = (preset: TreePreset = size.value) => {
+  size.value = preset
+  data.value = buildTreeData(preset, dataOptions())
+  checked.value = []
+  nodeCount.value = data.value.length
+}
+
 /** 只让 category 为 'A' 的节点可选 / 可输出。 */
 const filterFn: FilterFn = extendData => extendData.category === 'A'
 
@@ -81,11 +89,15 @@ const nodeIconResolver: NodeIconResolver = node =>
 const resultText = computed(() => {
   const value = checked.value
   if (Array.isArray(value)) {
-    if (value.length === 0) return '（未选中）'
-    const head = value.slice(0, 6).map(item => (typeof item === 'string' ? item : item.id))
-    return `${value.length} 项：${head.join('、')}${value.length > head.length ? ' …' : ''}`
+    if (value.length === 0) return t.noneChecked
+    const head = value
+      .slice(0, 6)
+      .map(item => (typeof item === 'string' ? item : item.id))
+    return `${value.length}：${head.join('、')}${
+      value.length > head.length ? ' …' : ''
+    }`
   }
-  if (!value) return '（未选中）'
+  if (!value) return t.noneChecked
   return typeof value === 'string' ? value : value.id
 })
 
@@ -109,36 +121,44 @@ const querySize = () => {
   <div class="tree-playground">
     <div class="tree-playground__controls">
       <label class="tree-playground__field">
-        <span>数据规模</span>
-        <select :value="size" @change="reload(($event.target as HTMLSelectElement).value as TreePreset)">
-          <option value="small">small（39 节点）</option>
-          <option value="medium">medium（258 节点）</option>
-          <option value="10k">10k（10000 节点）</option>
+        <span>{{ t.sizeLabel }}</span>
+        <select
+          :value="size"
+          @change="reload(($event.target as HTMLSelectElement).value as TreePreset)"
+        >
+          <option value="small">small · {{ t.nodeCount(39) }}</option>
+          <option value="medium">medium · {{ t.nodeCount(258) }}</option>
+          <option value="10k">10k · {{ t.nodeCount(10000) }}</option>
         </select>
       </label>
 
       <label v-if="preset === 'guide-lines'" class="tree-playground__field">
-        <span>连接线</span>
+        <span>{{ t.showLine }}</span>
         <input type="checkbox" v-model="useLine" />
       </label>
 
       <label v-if="preset === 'node-icons'" class="tree-playground__field">
-        <span>节点图标</span>
+        <span>{{ t.nodeIcon }}</span>
         <input type="checkbox" v-model="icons" />
       </label>
 
       <template v-if="preset === 'fuzzy-search'">
         <label class="tree-playground__field">
-          <span>关键词</span>
-          <input v-model="keyword" type="text" placeholder="例如 节点 n1" @keyup.enter="doSearch" />
+          <span>{{ t.keyword }}</span>
+          <input
+            v-model="keyword"
+            type="text"
+            :placeholder="t.keywordPlaceholder"
+            @keyup.enter="doSearch"
+          />
         </label>
-        <button type="button" @click="doSearch">搜索</button>
-        <button type="button" @click="clearSearch">清除</button>
+        <button type="button" @click="doSearch">{{ t.search }}</button>
+        <button type="button" @click="clearSearch">{{ t.clear }}</button>
       </template>
 
       <template v-if="preset === 'check-and-output'">
         <label class="tree-playground__field">
-          <span>选择模式</span>
+          <span>{{ t.selectType }}</span>
           <select v-model="currentSelectType">
             <option value="CHECKBOX">CHECKBOX</option>
             <option value="RADIO">RADIO</option>
@@ -146,7 +166,7 @@ const querySize = () => {
           </select>
         </label>
         <label class="tree-playground__field">
-          <span>输出模式</span>
+          <span>{{ t.outputMode }}</span>
           <select v-model="outputMode">
             <option value="All">All</option>
             <option value="RootOnly">RootOnly</option>
@@ -161,12 +181,12 @@ const querySize = () => {
       </template>
 
       <template v-if="preset === 'check-and-output' || preset === 'crud'">
-        <button type="button" @click="clearChecked">清除选中</button>
+        <button type="button" @click="clearChecked">{{ t.clearChecked }}</button>
       </template>
 
-      <button type="button" @click="expandAll">全部展开</button>
-      <button type="button" @click="collapseAll">全部收起</button>
-      <button type="button" @click="querySize">树节点总数</button>
+      <button type="button" @click="expandAll">{{ t.expandAll }}</button>
+      <button type="button" @click="collapseAll">{{ t.collapseAll }}</button>
+      <button type="button" @click="querySize">{{ t.treeSize }}</button>
     </div>
 
     <div class="tree-playground__tree">
@@ -187,8 +207,8 @@ const querySize = () => {
     </div>
 
     <div class="tree-playground__output">
-      <p><strong>节点总数：</strong>{{ nodeCount }}</p>
-      <p><strong>选中结果：</strong>{{ resultText }}</p>
+      <p><strong>{{ t.totalNodes }}：</strong>{{ nodeCount }}</p>
+      <p><strong>{{ t.checkedResult }}：</strong>{{ resultText }}</p>
     </div>
   </div>
 </template>
