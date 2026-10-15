@@ -11,7 +11,7 @@ import {
   DisplayType,
 } from '@lib/index'
 import type { FilterFn, NodeIconResolver, TreeInputItem, TreeNodeData } from '@lib/types'
-import { buildTreeData } from './treeData'
+import { buildPreorderedTreeData, buildTreeData } from './treeData'
 import ControlPanel from './playground/ControlPanel.vue'
 import ApiLog from './playground/ApiLog.vue'
 import {
@@ -20,6 +20,7 @@ import {
   type LogEntry,
   type PlaygroundSettings,
 } from './playground/settings'
+import { formatCheckedResult } from './playground/format'
 
 const settings = reactive<PlaygroundSettings>({ ...DEFAULT_SETTINGS })
 const treeRef = ref<InstanceType<typeof VueGiantTree>>()
@@ -38,7 +39,12 @@ const log = (text: string) => {
 
 /** 自定义字段模式下把默认字段映射成 key/label/parent。 */
 const createData = (): TreeInputItem[] => {
-  const nodes = buildTreeData(settings.size, {
+  // `preorderedInput` 只有数据真的是前序排列时才有意义（否则组件会静默回退到通用构建，
+  // 用户看不出差别），所以开关打开时换成前序生成器。
+  const build = settings.preorderedInput
+    ? buildPreorderedTreeData
+    : buildTreeData
+  const nodes = build(settings.size, {
     disabledEvery: 9,
     categoryEvery: 4,
   })
@@ -121,6 +127,11 @@ const checkedSummary = computed(() => {
   if (!value) return '空'
   return typeof value === 'string' ? `id=${value}` : `id=${value.id}`
 })
+
+/** 结果面板：按 `outputIdOnly` 分别渲染 ID 列表或完整 JSON。 */
+const checkedResultText = computed(() =>
+  formatCheckedResult(checked.value, settings.outputIdOnly)
+)
 
 const firstId = () => {
   const [first] = tree.value
@@ -251,11 +262,19 @@ const onRowEdit = (node: TreeNodeData) => {
 }
 
 watch(
-  [() => settings.size, () => settings.fieldKeysMode],
-  ([size, mode]) => {
+  [
+    () => settings.size,
+    () => settings.fieldKeysMode,
+    () => settings.preorderedInput,
+  ],
+  ([size, mode, preordered]) => {
     tree.value = createData()
     checked.value = []
-    log(`数据更换：${size}${mode === 'custom' ? '（自定义字段）' : ''}`)
+    log(
+      `数据更换：${size}${mode === 'custom' ? '（自定义字段）' : ''}${
+        preordered ? '（深度优先前序）' : ''
+      }`
+    )
     void refreshCount()
   }
 )
@@ -307,7 +326,10 @@ onMounted(() => {
     </div>
 
     <div class="playground__output">
-      <p><strong>选中结果：</strong>{{ checkedSummary }}</p>
+      <div class="playground__result">
+        <strong>选中结果：</strong>
+        <pre>{{ checkedResultText }}</pre>
+      </div>
       <p><strong>getTreeSize()：</strong>{{ nodeCount }}</p>
       <p><strong>getBuildReady() / getBuildMetrics()：</strong>{{ metrics.build }}</p>
       <p><strong>getWorkerMetrics()：</strong>{{ metrics.worker }}</p>
@@ -340,5 +362,19 @@ onMounted(() => {
   font-size: 13px;
   line-height: 1.8;
   word-break: break-all;
+}
+
+.playground__result {
+  display: flex;
+  gap: 6px;
+}
+
+.playground__result pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+  font-size: 12px;
+  max-height: 180px;
+  overflow: auto;
 }
 </style>
