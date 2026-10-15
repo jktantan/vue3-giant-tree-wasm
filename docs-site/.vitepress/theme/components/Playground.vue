@@ -3,7 +3,7 @@
  * 完整演示场：覆盖组件的全部 prop、实例方法、插槽与事件。
  * 只在客户端加载（`playground.md` 用 `defineClientComponent`），避免 SSR 期执行浏览器 API。
  */
-import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref, shallowRef, watch } from 'vue'
 import {
   VueGiantTree,
   SelectType,
@@ -65,7 +65,10 @@ const createData = (): TreeInputItem[] => {
   }))
 }
 
-const tree = ref<TreeInputItem[]>(createData())
+// 用 shallowRef：树数据是上万到上百万个节点对象，`ref` 会把它们逐个包成响应式代理，
+// 每次「重建数据」都要重新走一遍，主线程会阻塞几百毫秒（10 万节点实测 422ms）。
+// 这里只整体替换数组、从不原地修改，所以浅层引用就够。
+const tree = shallowRef<TreeInputItem[]>(createData())
 
 const fieldKeys = computed(() =>
   settings.fieldKeysMode === 'custom'
