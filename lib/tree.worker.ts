@@ -1,5 +1,8 @@
 /// <reference lib="webworker" />
 import type { CheckType, CheckedOutputMode, SelectType } from '../build/release'
+// release loader 静态导入（而非动态 import()）：这样它会被打进 worker 自己的 chunk，
+// worker 首次启动只需要一次请求，详见文件末尾的说明。
+import * as wasmModule from '../build/release'
 
 type WasmModule = typeof import('../build/release')
 /** 树实例句柄（AssemblyScript 生成的内部引用类型）。 */
@@ -380,12 +383,13 @@ self.onmessage = e => {
   if (ready) handle(command)
   else queue.push(command)
 }
-self.postMessage({ type: 'boot' })
-void import('../build/release')
-  .then(module => {
-    wasm = module
-    ready = true
-    self.postMessage({ type: 'ready' })
-    for (const m of queue.splice(0)) handle(m)
-  })
-  .catch(error => self.postMessage({ type: 'fatal', error: String(error) }))
+// `../build/release` 是静态导入，wasm 已在本模块求值阶段实例化完毕，因此这里不会有
+// 排队命令；保留 queue 分支只是防御。
+//
+// 之所以不用 `import().then()`：动态 import 会让 loader 变成一个独立 chunk，worker
+// 首次启动要「worker 脚本 + loader chunk」两次请求 —— 慢网络下每次 1~2 秒，直接体现为
+// worker 首次建树的 roundTrip 变长。静态导入把两者合并为一次请求。
+wasm = wasmModule
+ready = true
+self.postMessage({ type: 'ready' })
+for (const command of queue.splice(0)) handle(command)

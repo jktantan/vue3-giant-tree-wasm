@@ -27,6 +27,8 @@ import {
 } from './playground/settings'
 import { formatCheckedResult } from './playground/format'
 import { useMessages } from './i18n'
+// Worker 脚本的产物 URL：用来在页面空闲时提前预取（见 warmUpWorker）。
+import workerUrl from '@lib/tree.worker.ts?worker&url'
 
 const settings = reactive<PlaygroundSettings>({ ...DEFAULT_SETTINGS })
 const t = useMessages()
@@ -358,8 +360,27 @@ watch(
 watch(checked, () => log(`update:modelValue → ${checkedSummary.value}`))
 watch(tree, () => log(`update:tree → ${tree.value.length}`))
 
+/**
+ * 预热 worker 脚本：Worker 模式用的 `tree.worker` 是「只有勾选 Worker 模式才会用到」
+ * 的独立 chunk，用户首次开启时才发起下载 —— 慢网络下这一次请求就要 1~2 秒，直接体现为
+ * worker 首次建树的 roundTrip 很长（实测冷缓存 2590ms / 热缓存 400ms）。
+ * 这里在页面挂载后用低优先级的 prefetch 先把它放进 HTTP 缓存，worker 首次启动就只剩
+ * 本地读取。
+ *
+ * 不需要预热 wasm 与 release chunk：主线程建树时已经加载过它们，worker 请求会命中缓存。
+ */
+const warmUpWorker = () => {
+  if (typeof document === 'undefined') return
+  const link = document.createElement('link')
+  link.rel = 'prefetch'
+  link.as = 'script'
+  link.href = workerUrl
+  document.head.appendChild(link)
+}
+
 onMounted(async () => {
   log(t.mounted)
+  warmUpWorker()
   await refreshCount()
   // 首次构建完成后校正一次计数（首帧时组件可能还没就绪）。
   setTimeout(() => void refreshCount(), 300)

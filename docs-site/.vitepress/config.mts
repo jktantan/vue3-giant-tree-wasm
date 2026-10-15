@@ -275,6 +275,15 @@ export default defineConfig({
     worker: {
       format: 'es',
       plugins: () => [assemblyscriptSite()],
+      // worker 是独立的一次构建：默认 asset 命名是 `[name]-[hash]`，而主页面是
+      // `[name].[hash]`，同一个 release.wasm 会产出两个 URL 不同的副本 —— worker
+      // 加载时无法命中主页面已下载的 HTTP 缓存，白白多下 87KB（gzip 25KB）。
+      // 对齐命名后两份合并为同一个 asset，worker 的 wasm 请求直接命中缓存。
+      rollupOptions: {
+        output: {
+          assetFileNames: 'assets/[name].[hash][extname]',
+        },
+      },
     },
   },
 })
