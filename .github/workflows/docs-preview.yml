@@ -3,6 +3,9 @@ name: PR Docs Preview
 # PR 上构建 docs-site 并把产物上传为 workflow artifact。
 # 不部署到 Pages 环境，避免覆盖 main 的生产部署。
 # 使用方式：PR 评论里手动下载 artifact 或自行接到 PR 评论机器人。
+#
+# 下面的 action 一律固定在「首个运行于 Node 24 的 major」上：GitHub 已弃用
+# actions 的 node20 运行时（会被强制改用 Node 24 并报警告）。
 
 on:
   pull_request:
@@ -27,11 +30,11 @@ jobs:
     name: Build preview
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v5
         with:
           version: 9
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: '20'
           cache: 'pnpm'
@@ -39,7 +42,7 @@ jobs:
       - run: pnpm asbuild:release
       - run: pnpm docs:build
       - name: Upload preview artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: docs-preview-${{ github.event.pull_request.number }}
           path: docs-site/.vitepress/dist
