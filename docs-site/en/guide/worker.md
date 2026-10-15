@@ -113,15 +113,6 @@ Replacing `tree` goes through the binary streaming channel (UTF-8 + `transfer`),
 
 `chunkedBuild` only applies when `outputIdOnly === true` and no `filterFn` is used. Otherwise the component falls back to the whole-tree JSON path and the main thread is occupied in one go. An `inputBridgeMs` of 0 in `getBuildMetrics()` means the chunked path was not taken.
 
-### Vite needs `worker.format = 'es'`
-
-The component's Worker is an ES module worker (`new Worker(new URL(...), { type: 'module' })`), while Vite bundles workers as `iife` by default and fails at build time:
-
-```ts
-// vite.config.ts
-export default defineConfig({ worker: { format: 'es' } })
-```
-
 ## Try it
 
 Both the `workerMode` switch and the two metric methods live in the

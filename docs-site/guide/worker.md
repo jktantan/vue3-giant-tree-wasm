@@ -114,16 +114,6 @@ Worker 首次开启时要加载自己的脚本与 WASM，有一次性成本，�
 条件不满足就退回「整棵 JSON 路径」，主线程会被一次性占满。
 `getBuildMetrics().inputBridgeMs` 为 0 就是没走分批的信号。
 
-### Vite 里必须设置 `worker.format = 'es'`
-
-组件的 Worker 是 ES module worker（`new Worker(new URL(...), { type: 'module' })`），
-而 Vite 默认按 `iife` 打包 worker，构建期就会报错：
-
-```ts
-// vite.config.ts
-export default defineConfig({ worker: { format: 'es' } })
-```
-
 ## 动手试试
 
 `workerMode` 开关与两个指标方法都在[完整演示场](/playground)里：打开「workerMode」，

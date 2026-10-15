@@ -113,15 +113,6 @@ const rows = ref(buildRows())
 
 `chunkedBuild` действует только при `outputIdOnly === true` и без `filterFn`. Иначе компонент возвращается к JSON-пути для всего дерева, и главный поток занимается целиком. `inputBridgeMs === 0` в `getBuildMetrics()` означает, что пакетный путь не использовался.
 
-### В Vite нужен `worker.format = 'es'`
-
-Worker компонента — это ES module worker (`new Worker(new URL(...), { type: 'module' })`), а Vite по умолчанию собирает воркеры как `iife` и падает на этапе сборки:
-
-```ts
-// vite.config.ts
-export default defineConfig({ worker: { format: 'es' } })
-```
-
 ## Попробуйте
 
 И переключатель `workerMode`, и оба метода метрик есть на

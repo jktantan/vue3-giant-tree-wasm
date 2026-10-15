@@ -8,7 +8,7 @@ import {
   statSync,
   writeFileSync,
 } from 'node:fs'
-import { dirname, posix, resolve } from 'node:path'
+import { dirname, resolve } from 'node:path'
 import type { Plugin, ViteDevServer } from 'vite'
 
 interface AssemblyScriptPluginOptions {
@@ -209,43 +209,32 @@ export default function assemblyscriptPlugin(
       return header + replaced
     },
 
-    // generateBundle 时机把 loader 里嵌入的 wasm 字节 emit 成独立 asset，
-    // 同时把 loader 里残留的占位符替换为最终产物文件名。
-    // loader 会在运行时按 `document.baseURI` 解析这个相对路径为 fetch URL。
+    // generateBundle 时机把 loader 里的占位符替换成内联的 wasm data URL。
+    //
+    // 为什么内联、而不是 emit 成独立文件：独立文件要求「引用它的代码」与「wasm 文件」
+    // 的相对位置在【使用者自己的打包器】里依然成立。实测 Vite 不会处理 worker 内来自
+    // node_modules 的 `new URL(asset, import.meta.url)`（原样保留），worker 于是去取一个
+    // 不存在的文件名而 404，再静默回退到主线程。data URL 是绝对地址、不做任何路径推导，
+    // 因此任何打包器、零配置都能用 —— 代价是包体积（gzip 约 +25KB）。
     generateBundle(_options, bundle_) {
       const wasmAbsPath = resolve(projectRoot, 'build/release.wasm')
       if (!existsSync(wasmAbsPath)) {
         console.warn(
-          `\x1b[33m[AS]\x1b[0m release.wasm not found at ${wasmAbsPath}; wasm will not be emitted.`
+          `\x1b[33m[AS]\x1b[0m release.wasm not found at ${wasmAbsPath}; wasm will not be inlined.`
         )
         return
       }
       const wasmBytes = readFileSync(wasmAbsPath)
-      const refId = this.emitFile({
-        type: 'asset',
-        name: 'release.wasm',
-        source: wasmBytes,
-      })
-      const assetFileName = this.getFileName(refId)
+      const wasmDataUrl = `data:application/wasm;base64,${wasmBytes.toString('base64')}`
       for (const fileName of Object.keys(bundle_)) {
         const chunk = bundle_[fileName]
         if (chunk.type !== 'chunk') continue
         if (!chunk.code || !chunk.code.includes('__VITE_ASM_WASM_URL__')) continue
-        // wasm 地址必须相对于【当前 chunk 所在目录】解析，而不是产物根目录：
-        // 同一份 loader 会同时出现在 dist 根（主入口）与 dist/assets/（worker
-        // 动态 import 的 chunk）里，写死 `assets/xxx.wasm` 会让两者之一解析错。
-        const relativeAsset = posix.relative(
-          posix.dirname(chunk.fileName),
-          assetFileName
-        )
-        const wasmSpecifier = relativeAsset.startsWith('.')
-          ? relativeAsset
-          : `./${relativeAsset}`
         // 产物里该字面量的形态可能是 "…" / '…' / `…`（rolldown 常把普通字符串
         // 输出成模板字符串），这里同时容忍三种引号，避免再次静默漏替换。
         chunk.code = chunk.code.replace(
           /["'`]?__VITE_ASM_WASM_URL__["'`]?/g,
-          JSON.stringify(wasmSpecifier)
+          JSON.stringify(wasmDataUrl)
         )
         if (chunk.code.includes('__VITE_ASM_WASM_URL__')) {
           this.warn(

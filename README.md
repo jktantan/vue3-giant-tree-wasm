@@ -54,13 +54,6 @@ import 'vue3-giant-tree-wasm/style.css'
 
 **4. `chunkedBuild` 只在 `outputIdOnly` 为 `true` 且未使用 `filterFn` 时生效**，否则退回整棵 JSON 路径。`getBuildMetrics().inputBridgeMs` 为 0 就是没走分批的信号。
 
-**5. 用 Vite 打包时必须设置 `worker.format = 'es'`。** 组件的 Worker 是 ES module worker（`new Worker(new URL(...), { type: 'module' })`），而 Vite 默认按 `iife` 打包 worker，会直接在构建期报错：
-
-```ts
-// vite.config.ts
-export default defineConfig({ worker: { format: 'es' } })
-```
-
 ### 缺陷与诊断
 
 最近一轮对 `Assembly/` 与 `lib/` 目录的代码审查产出 10 项发现（2 个 🔴、3 个 🟠、5 个 🟡），已在
@@ -549,13 +542,6 @@ Below 10,000 the main-thread path is faster (it skips a round trip). Turning the
 
 **4. `chunkedBuild` only takes effect when `outputIdOnly` is `true` and no `filterFn` is used** — otherwise the component falls back to the whole-tree JSON path. An `inputBridgeMs` of 0 in `getBuildMetrics()` means the chunked path was not taken.
 
-**5. When bundling with Vite you must set `worker.format = 'es'`.** The component creates an ES module worker (`new Worker(new URL(...), { type: 'module' })`), while Vite bundles workers as `iife` by default and fails at build time:
-
-```ts
-// vite.config.ts
-export default defineConfig({ worker: { format: 'es' } })
-```
-
 ### Diagnostics
 
 A recent review of the `Assembly/` and `lib/` directories produced ten findings
@@ -1039,13 +1025,6 @@ pnpm lib:build
 **3. Меняйте данные, переприсваивая prop `tree`, а не принудительным ремаунтом через `:key`.** Первый способ переиспользует Worker и экземпляр WASM (~600ms для 1 млн узлов); второй каждый раз уничтожает и создаёт Worker заново.
 
 **4. `chunkedBuild` действует только при `outputIdOnly === true` и без `filterFn`** — иначе компонент возвращается к JSON-пути для всего дерева. `inputBridgeMs === 0` в `getBuildMetrics()` означает, что пакетный путь не использовался.
-
-**5. При сборке через Vite обязательно задайте `worker.format = 'es'`.** Компонент создаёт ES module worker (`new Worker(new URL(...), { type: 'module' })`), а Vite по умолчанию собирает воркеры как `iife` и падает на этапе сборки:
-
-```ts
-// vite.config.ts
-export default defineConfig({ worker: { format: 'es' } })
-```
 
 ### Диагностика
 
