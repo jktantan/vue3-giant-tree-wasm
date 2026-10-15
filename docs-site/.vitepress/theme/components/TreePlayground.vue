@@ -192,6 +192,7 @@ const querySize = () => {
     <div class="tree-playground__tree">
       <VueGiantTree
         ref="treeRef"
+        :key="`s${currentSelectType}`"
         v-model="checked"
         :tree="data"
         root="root"
