@@ -439,54 +439,78 @@ const nextBuildTurn = () => new Promise<void>(resolve => setTimeout(resolve, 0))
 const canUseChunkedBuild = () =>
   props.chunkedBuild && props.outputIdOnly && !props.filterFn
 const utf8Encoder = new TextEncoder()
+// 编码暂存区与长度表：复用它们，避免为每个字段分配 Uint8Array、为每个节点分配
+// 长度数组 —— 100 万节点意味着 300 万次分配，实测编码耗时 2.5 秒。
+let fieldScratch = new Uint8Array(1 << 16)
+let fieldLengths = new Int32Array(4096)
 const encodeNeighborBatch = (
   batch: Array<TreeInputItem & Record<string, unknown>>,
   idField: string,
   nameField: string,
   parentIdField: string
 ) => {
-  const values = new Array<string>(batch.length * 3)
-  const encoded = new Array<Uint8Array>(batch.length * 3)
-  let payloadLength = batch.length * 16
-  for (let index = 0; index < batch.length; index++) {
-    const node = batch[index]
-    const valueIndex = index * 3
-    values[valueIndex] = String(node[idField] ?? '')
-    values[valueIndex + 1] = String(node[nameField] ?? '')
-    values[valueIndex + 2] = String(node[parentIdField] ?? '')
-    encoded[valueIndex] = utf8Encoder.encode(values[valueIndex])
-    encoded[valueIndex + 1] = utf8Encoder.encode(values[valueIndex + 1])
-    encoded[valueIndex + 2] = utf8Encoder.encode(values[valueIndex + 2])
-    payloadLength += encoded[valueIndex].length
-    payloadLength += encoded[valueIndex + 1].length
-    payloadLength += encoded[valueIndex + 2].length
+  const count = batch.length
+  if (fieldLengths.length < count * 3) fieldLengths = new Int32Array(count * 3)
+
+  // 第一遍：把三个字段依次编码进连续的暂存区，只记长度。
+  let scratchUsed = 0
+  const encodeField = (value: string): number => {
+    // 一个 UTF-16 码元最多编成 3 字节；按最坏情况确保空间，否则 encodeInto 会只写一半。
+    const worst = value.length * 3
+    if (scratchUsed + worst > fieldScratch.length) {
+      const grown = new Uint8Array(
+        Math.max(fieldScratch.length * 2, scratchUsed + worst)
+      )
+      grown.set(fieldScratch.subarray(0, scratchUsed))
+      fieldScratch = grown
+    }
+    const { written } = utf8Encoder.encodeInto(
+      value,
+      fieldScratch.subarray(scratchUsed)
+    )
+    scratchUsed += written
+    return written
   }
+
+  let payloadLength = count * 16
+  for (let index = 0; index < count; index++) {
+    const node = batch[index]
+    const base = index * 3
+    const idLength = encodeField(String(node[idField] ?? ''))
+    const nameLength = encodeField(String(node[nameField] ?? ''))
+    const parentLength = encodeField(String(node[parentIdField] ?? ''))
+    fieldLengths[base] = idLength
+    fieldLengths[base + 1] = nameLength
+    fieldLengths[base + 2] = parentLength
+    payloadLength += idLength + nameLength + parentLength
+  }
+
+  // 第二遍：组装成「16 字节长度头 + 数据块」，每个节点只做一次拷贝。
   const payload = new Uint8Array(payloadLength)
   const view = new DataView(payload.buffer)
   let cursor = 0
-  for (let index = 0; index < batch.length; index++) {
-    const valueIndex = index * 3
-    const lengths = [
-      encoded[valueIndex].length,
-      encoded[valueIndex + 1].length,
-      encoded[valueIndex + 2].length,
-      batch[index].disabled === true ? 1 : 0,
-    ]
-    view.setInt32(cursor, lengths[0], true)
-    view.setInt32(cursor + 4, lengths[1], true)
-    view.setInt32(cursor + 8, lengths[2], true)
-    view.setInt32(cursor + 12, lengths[3], true)
+  let from = 0
+  for (let index = 0; index < count; index++) {
+    const base = index * 3
+    const idLength = fieldLengths[base]
+    const nameLength = fieldLengths[base + 1]
+    const parentLength = fieldLengths[base + 2]
+    view.setInt32(cursor, idLength, true)
+    view.setInt32(cursor + 4, nameLength, true)
+    view.setInt32(cursor + 8, parentLength, true)
+    view.setInt32(cursor + 12, batch[index].disabled === true ? 1 : 0, true)
     cursor += 16
-    payload.set(encoded[valueIndex], cursor)
-    cursor += lengths[0]
-    payload.set(encoded[valueIndex + 1], cursor)
-    cursor += lengths[1]
-    payload.set(encoded[valueIndex + 2], cursor)
-    cursor += lengths[2]
+    const block = idLength + nameLength + parentLength
+    payload.set(fieldScratch.subarray(from, from + block), cursor)
+    cursor += block
+    from += block
   }
   return payload
 }
 const loadTree = async () => {
+  // 主线程路径保持 JSON：实测 100 万节点 `JSON.stringify` + wasm 解析约 2466ms，
+  // 而用 JS 逐字段编码成 UTF-8 二进制要 4175ms —— 原生 stringify 在这条路上更快。
+  // 二进制通道只在 Worker 场景有价值（那边省掉的是 postMessage 结构化克隆）。
   if (!canUseChunkedBuild()) {
     setNeighborTree(tree, JSON.stringify(rawTree()))
     return
