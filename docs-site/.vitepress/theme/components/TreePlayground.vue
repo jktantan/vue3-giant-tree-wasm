@@ -56,7 +56,20 @@ const reload = (preset: TreePreset = size.value) => {
   nodeCount.value = data.value.length
 }
 
-const selectType = computed(() => SELECT_TYPES[props.selectType])
+const currentSelectType = ref<typeof props.selectType>(props.selectType)
+const outputMode = ref<'All' | 'RootOnly' | 'LeafOnly' | 'Custom'>('All')
+const enableFilterFn = ref(false)
+
+const selectType = computed(() => SELECT_TYPES[currentSelectType.value])
+const outputModeEnum = computed(
+  () =>
+    ({
+      All: CheckedOutputMode.All,
+      RootOnly: CheckedOutputMode.RootOnly,
+      LeafOnly: CheckedOutputMode.LeafOnly,
+      Custom: CheckedOutputMode.Custom,
+    })[outputMode.value]
+)
 
 /** 只让 category 为 'A' 的节点可选 / 可输出。 */
 const filterFn: FilterFn = extendData => extendData.category === 'A'
@@ -123,6 +136,30 @@ const querySize = () => {
         <button type="button" @click="clearSearch">清除</button>
       </template>
 
+      <template v-if="preset === 'check-and-output'">
+        <label class="tree-playground__field">
+          <span>选择模式</span>
+          <select v-model="currentSelectType">
+            <option value="CHECKBOX">CHECKBOX</option>
+            <option value="RADIO">RADIO</option>
+            <option value="SELECT">SELECT</option>
+          </select>
+        </label>
+        <label class="tree-playground__field">
+          <span>输出模式</span>
+          <select v-model="outputMode">
+            <option value="All">All</option>
+            <option value="RootOnly">RootOnly</option>
+            <option value="LeafOnly">LeafOnly</option>
+            <option value="Custom">Custom</option>
+          </select>
+        </label>
+        <label class="tree-playground__field">
+          <span>filterFn</span>
+          <input type="checkbox" v-model="enableFilterFn" />
+        </label>
+      </template>
+
       <template v-if="preset === 'check-and-output' || preset === 'crud'">
         <button type="button" @click="clearChecked">清除选中</button>
       </template>
@@ -142,8 +179,10 @@ const querySize = () => {
         :select-type="selectType"
         :show-line="useLine"
         :node-icon="icons ? nodeIconResolver : false"
-        :filter-fn="preset === 'check-and-output' ? filterFn : undefined"
-        :checked-output-mode="CheckedOutputMode.All"
+        :filter-fn="
+          preset === 'check-and-output' && enableFilterFn ? filterFn : undefined
+        "
+        :checked-output-mode="outputModeEnum"
       />
     </div>
 
