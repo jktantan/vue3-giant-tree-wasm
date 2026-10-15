@@ -1446,18 +1446,12 @@ watch(
       }
       workerInput = tree as TreeMutationItem[]
       refreshInputNodeById(tree as TreeMutationItem[])
-      postWorker('replace', {
-        config: {
-          root: props.root,
-          lineHeight: props.lineHeight,
-          selectType: props.selectType,
-          checkedOutputMode: props.checkedOutputMode,
-          fieldKeys: props.fieldKeys,
-        },
-        tree,
-        scrollTop,
-        scrollHeight,
-      })
+      // 走二进制流式发送，而不是 postWorker('replace', { tree, ... })：
+      // replace 会把整棵树交给 postMessage 的结构化克隆（100 万节点实测
+      // 2000~3000ms），worker 侧收到后还要再 JSON.stringify 一遍；
+      // stream 路径是 UTF-8 二进制 + transfer（同一份数据 ~600ms）。
+      // streamWorkerTree 自带 config / scrollTop / scrollHeight，可独立调用。
+      void streamWorkerTree()
       return
     }
     if (skipNextPresentationOnlyReconcile) {
