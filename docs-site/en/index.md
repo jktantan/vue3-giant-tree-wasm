@@ -5,6 +5,9 @@ hero:
   name: VueGiantTree
   text: Vue 3 + WebAssembly tree for very large datasets
   tagline: Built for 100K–1M nodes; MPTT + virtual scrolling, core algorithms in WASM
+  image:
+    src: /logo.svg
+    alt: VueGiantTree
   actions:
     - theme: brand
       text: Start with tree building

@@ -5,6 +5,9 @@ hero:
   name: VueGiantTree
   text: Дерево на Vue 3 + WebAssembly для очень больших данных
   tagline: Для 100 тыс. — 1 млн узлов; MPTT + виртуальная прокрутка, основные алгоритмы в WASM
+  image:
+    src: /logo.svg
+    alt: VueGiantTree
   actions:
     - theme: brand
       text: Начать с построения дерева

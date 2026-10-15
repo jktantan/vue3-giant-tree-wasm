@@ -5,6 +5,9 @@ hero:
   name: VueGiantTree
   text: 大规模树的 Vue 3 + WebAssembly 组件
   tagline: 面向 10 万至百万级节点；MPTT + 虚拟滚动，核心算法跑在 WASM
+  image:
+    src: /logo.svg
+    alt: VueGiantTree
   actions:
     - theme: brand
       text: 从树构建开始

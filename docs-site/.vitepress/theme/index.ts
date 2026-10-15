@@ -1,6 +1,7 @@
 import DefaultTheme from 'vitepress/theme'
 import type { Theme } from 'vitepress'
 import WasmProbe from './components/WasmProbe.vue'
+import './custom.css'
 
 /**
  * 站点主题：沿用 VitePress 默认主题，额外注册站点内共享的 DEMO 组件。

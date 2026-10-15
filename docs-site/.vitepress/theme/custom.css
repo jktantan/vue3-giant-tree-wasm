@@ -1,0 +1,15 @@
+/**
+ * 首页 hero 右侧的图标位。
+ *
+ * VitePress 在 `hero.image` 缺失时仍会渲染右侧容器，于是留下一块空白；
+ * 这里放站点 logo，并把默认偏小的尺寸放大到与标题块相称。
+ */
+.VPHomeHero .image-container img {
+  width: 220px;
+  height: 220px;
+}
+
+/* 深色主题下换成亮色版 logo：浅色版的深蓝紫在深色背景上几乎看不见。 */
+.dark .VPHomeHero .image-container img {
+  content: url('/logo-dark.svg');
+}
