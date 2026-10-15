@@ -17,6 +17,7 @@ const MESSAGES = {
     // 数据规模
     sizeHint: '10k 以上都在点击后才生成，避免默认拖慢页面。',
     sizeHeavy: '较重',
+    enableDisabled: '启用节点禁用',
     nodeCount: (n: number) => `${n} 节点`,
     // 布局
     height: '高度',
@@ -100,6 +101,7 @@ const MESSAGES = {
     checkedIdsGroup: 'Programmatic selection',
     sizeHint: 'Anything above 10k is generated only after you click, so the page stays fast.',
     sizeHeavy: 'heavy',
+    enableDisabled: 'Enable disabled nodes',
     nodeCount: (n: number) => `${n} nodes`,
     height: 'Height',
     lineHeight: 'Row height',
@@ -174,6 +176,7 @@ const MESSAGES = {
     checkedIdsGroup: 'Программный выбор',
     sizeHint: 'Всё выше 10k создаётся только по клику, чтобы страница оставалась быстрой.',
     sizeHeavy: 'тяжёлый',
+    enableDisabled: 'Включить отключённые узлы',
     nodeCount: (n: number) => `${n} узлов`,
     height: 'Высота',
     lineHeight: 'Высота строки',

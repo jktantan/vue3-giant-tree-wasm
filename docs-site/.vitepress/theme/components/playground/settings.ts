@@ -41,6 +41,10 @@ export interface PlaygroundSettings {
   keyword: string
   /** setCheckedByIds 的输入（逗号分隔）。 */
   checkedIdsInput: string
+  /** 数据里是否掺入禁用节点（每第 9 个）。 */
+  enableDisabled: boolean
+  /** filterFn 使用的 category 值。 */
+  filterCategory: 'A' | 'B'
 }
 
 export const DEFAULT_SETTINGS: PlaygroundSettings = {
@@ -68,6 +72,8 @@ export const DEFAULT_SETTINGS: PlaygroundSettings = {
   fieldKeysMode: 'default',
   keyword: '',
   checkedIdsInput: '',
+  enableDisabled: true,
+  filterCategory: 'A',
 }
 
 /** 控件面板能触发的动作；`Playground` 收到后调用对应的组件实例方法。 */

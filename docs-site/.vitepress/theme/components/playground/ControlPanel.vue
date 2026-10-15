@@ -42,6 +42,10 @@ const send = (action: ApiAction) => emit('action', action)
         </button>
       </div>
       <p class="hint">{{ t.sizeHint }}</p>
+      <label class="check">
+        <input v-model="settings.enableDisabled" type="checkbox" />
+        <span>{{ t.enableDisabled }}</span>
+      </label>
     </section>
 
     <section class="group">
@@ -83,7 +87,7 @@ const send = (action: ApiAction) => emit('action', action)
         <input v-model="settings.outputIdOnly" type="checkbox" />
         <span>{{ t.outputIdOnly }}</span>
       </label>
-      <div class="fields">
+      <div v-if="settings.selectType === 'CHECKBOX'" class="fields">
         <label class="field">
           <span>{{ t.checkedOutputMode }}</span>
           <select v-model="settings.checkedOutputMode">
@@ -97,6 +101,17 @@ const send = (action: ApiAction) => emit('action', action)
         <input v-model="settings.enableFilterFn" type="checkbox" />
         <span>{{ t.filterFn }}</span>
       </label>
+      <div v-if="settings.enableFilterFn" class="segmented">
+        <button
+          v-for="c in (['A', 'B'] as const)"
+          :key="c"
+          type="button"
+          :class="{ active: settings.filterCategory === c }"
+          @click="settings.filterCategory = c"
+        >
+          category={{ c }}
+        </button>
+      </div>
     </section>
 
     <section class="group">

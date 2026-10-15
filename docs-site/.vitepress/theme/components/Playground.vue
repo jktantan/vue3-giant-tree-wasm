@@ -49,7 +49,7 @@ const createData = (): TreeInputItem[] => {
   // 所以开关打开时换成前序生成器。
   const build = settings.preorderedInput ? buildPreorderedTreeData : buildTreeData
   const nodes = build(settings.size, {
-    disabledEvery: 9,
+    disabledEvery: settings.enableDisabled ? 9 : 0,
     categoryEvery: 4,
     labelPrefix: t.nodeLabel,
   })
@@ -97,7 +97,9 @@ const outputMode = computed(
 )
 
 const filterFn = computed<FilterFn | undefined>(() =>
-  settings.enableFilterFn ? extendData => extendData.category === 'A' : undefined
+  settings.enableFilterFn
+    ? extendData => extendData.category === settings.filterCategory
+    : undefined
 )
 
 /** 五种图标模式：关闭 / 内置 / 业务字段 / 单一 class / 局部隐藏。 */
@@ -106,7 +108,14 @@ const nodeIcon = computed<boolean | NodeIconResolver>(() => {
     case 'default':
       return true
     case 'business':
-      return node => node.extendData?.category !== 'B'
+      // 业务字段 → 自定义 CSS 类：category 为 B 的用文档图标，其余用文件夹（含展开态）。
+      return node =>
+        node.extendData?.category === 'B'
+          ? 'playground-icon-doc'
+          : {
+              collapsed: 'playground-icon-folder',
+              expanded: 'playground-icon-folder-open',
+            }
     case 'single':
       return 'playground-icon-doc'
     case 'partial':
@@ -318,9 +327,13 @@ watch(
     () => settings.size,
     () => settings.fieldKeysMode,
     () => settings.preorderedInput,
+    () => settings.enableDisabled,
   ],
   async ([size, mode, preordered]) => {
     log(`${t.dataChanged}: ${size}${mode === 'custom' ? ` / ${t.customFields}` : ''}${preordered ? ` / ${t.preorder}` : ''}`)
+    // 与 app.vue 的 rebuildTree 对齐：换数据时一并清掉搜索词与选中，并回到树视图。
+    settings.keyword = ''
+    treeRef.value?.switchDisplay(DisplayType.TREE)
     tree.value = createData()
     checked.value = []
     await refreshCount()
@@ -441,7 +454,23 @@ onMounted(async () => {
 }
 
 .playground__tree--dark {
-  background: #16181d;
+  background: #1e2936;
+  border-color: #35465d;
+}
+
+/* 深色预览必须同时把文字与交互态调亮，否则深字压深底根本看不见。 */
+.playground__tree--dark :deep(.giant-tree),
+.playground__tree--dark :deep(.giant-tree .tree-item) {
+  color: #e7edf5;
+}
+
+.playground__tree--dark :deep(.giant-tree .tree-item:hover),
+.playground__tree--dark :deep(.giant-tree .tree-item.selected) {
+  background: #2a4058;
+}
+
+.playground__tree--dark :deep(.giant-tree__mask-button) {
+  background-color: #b9c6d8;
 }
 
 .playground__note {
