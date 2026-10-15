@@ -33,3 +33,6 @@ docs-site/.vitepress/.temp
 
 # SDD（superpowers）执行记录：仅本地，不入库
 .superpowers
+
+# 打包产物冒烟测试的临时消费者项目：失败时会保留供排查，不入库
+.smoke-dist
