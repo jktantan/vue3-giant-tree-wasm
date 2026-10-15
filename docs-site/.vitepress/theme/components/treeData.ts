@@ -1,7 +1,7 @@
 import type { TreeInputItem } from '@lib/types'
 
 /** 演示数据的规模档位。 */
-export type TreePreset = 'small' | 'medium' | '10k' | '100k'
+export type TreePreset = 'small' | 'medium' | '10k' | '100k' | '1m'
 
 /** 生成选项：用于演示 `disabled`、`filterFn` 与界面语言。 */
 export interface TreeDataOptions {
@@ -25,6 +25,8 @@ const SHAPES: Record<TreePreset, TreeShape> = {
   medium: { kind: 'levels', levels: [6, 6, 6] },
   '10k': { kind: 'count', count: 10_000, branching: 10 },
   '100k': { kind: 'count', count: 100_000, branching: 10 },
+  // 百万级：与 src/App.vue 的 1m 档位一致，branching 取 32 让深度保持在浅层。
+  '1m': { kind: 'count', count: 1_000_000, branching: 32 },
 }
 
 /** 追加一行，返回它的 id（id 为自增的 `n1`、`n2`…）。 */

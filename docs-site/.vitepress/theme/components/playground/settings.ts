@@ -2,55 +2,72 @@ import type { TreePreset } from '../treeData'
 
 export type SelectTypeName = 'CHECKBOX' | 'RADIO' | 'SELECT'
 export type ShowLineStyleName = 'solid' | 'dashed' | 'dotted'
-export type NodeIconMode = 'off' | 'default' | 'business'
+export type NodeIconMode =
+  | 'off'
+  | 'default'
+  | 'business'
+  | 'single'
+  | 'partial'
 export type OutputModeName = 'All' | 'RootOnly' | 'LeafOnly' | 'Custom'
 export type FieldKeysMode = 'default' | 'custom'
 
-/** 完整演示场的全部可调项。与 `lib/VueGiantTree.vue` 的 `withDefaults` 保持同一套默认值。 */
+/** 完整演示场的全部可调项。默认值与 `lib/VueGiantTree.vue` 的 `withDefaults` 对齐。 */
 export interface PlaygroundSettings {
   size: TreePreset
-  selectType: SelectTypeName
   height: string
   lineHeight: number
   fontSize: string
+  selectType: SelectTypeName
+  outputIdOnly: boolean
+  checkedOutputMode: OutputModeName
+  enableFilterFn: boolean
   showLine: boolean
   showLineStyle: ShowLineStyleName
   showLineColor: string
   showLineWidth: number
   nodeIcon: NodeIconMode
-  outputIdOnly: boolean
-  checkedOutputMode: OutputModeName
-  enableFilterFn: boolean
+  /** 给树容器加深色背景，用于检查自定义图标在暗色下的效果。 */
+  darkIconBg: boolean
+  /** 用 `#node` 插槽把 MPTT 的 leftNode/rightNode 打在节点名后面。 */
+  mptt: boolean
+  useNodeSlot: boolean
+  useActionsSlot: boolean
   workerMode: boolean
   chunkedBuild: boolean
   buildBatchSize: number
   preorderedInput: boolean
   fieldKeysMode: FieldKeysMode
-  useNodeSlot: boolean
-  useActionsSlot: boolean
+  /** 模糊搜索关键词（控件写入，Playground 读取后调用 fuzzySearch）。 */
+  keyword: string
+  /** setCheckedByIds 的输入（逗号分隔）。 */
+  checkedIdsInput: string
 }
 
 export const DEFAULT_SETTINGS: PlaygroundSettings = {
   size: 'medium',
-  selectType: 'CHECKBOX',
   height: '360px',
   lineHeight: 26,
   fontSize: '14px',
+  selectType: 'CHECKBOX',
+  outputIdOnly: true,
+  checkedOutputMode: 'All',
+  enableFilterFn: false,
   showLine: false,
   showLineStyle: 'solid',
   showLineColor: '#d0d4dc',
   showLineWidth: 1,
   nodeIcon: 'off',
-  outputIdOnly: true,
-  checkedOutputMode: 'All',
-  enableFilterFn: false,
+  darkIconBg: false,
+  mptt: false,
+  useNodeSlot: false,
+  useActionsSlot: false,
   workerMode: false,
   chunkedBuild: false,
   buildBatchSize: 2000,
   preorderedInput: false,
   fieldKeysMode: 'default',
-  useNodeSlot: false,
-  useActionsSlot: false,
+  keyword: '',
+  checkedIdsInput: '',
 }
 
 /** 控件面板能触发的动作；`Playground` 收到后调用对应的组件实例方法。 */
@@ -59,7 +76,10 @@ export type ApiAction =
   | 'expandAll'
   | 'collapseAll'
   | 'clearAllChecked'
-  | 'setCheckedFirst'
+  | 'setCheckedFromInput'
+  | 'setCheckedRandom'
+  | 'search'
+  | 'clearSearch'
   | 'switchDisplayTree'
   | 'switchDisplaySearch'
   | 'refreshCheckedResult'
