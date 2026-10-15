@@ -17,6 +17,7 @@ import type {
   TreeNodeData,
 } from '@lib/types'
 import { buildPreorderedTreeData, buildTreeData } from './treeData'
+import type { TreePreset } from './treeData'
 import ControlPanel from './playground/ControlPanel.vue'
 import ApiLog from './playground/ApiLog.vue'
 import {
@@ -72,6 +73,20 @@ const createData = (): TreeInputItem[] => {
 // 每次「重建数据」都要重新走一遍，主线程会阻塞几百毫秒（10 万节点实测 422ms）。
 // 这里只整体替换数组、从不原地修改，所以浅层引用就够。
 const tree = shallowRef<TreeInputItem[]>(createData())
+
+/**
+ * 这几个档位自动改用 Worker 模式。
+ *
+ * 主线程路径要把整棵树 `JSON.stringify` 再交给 wasm 解析：10 万以上是秒级的同步
+ * 阻塞（100 万实测一次 long task 2696ms，页面完全冻住），而 Worker 路径走 UTF-8
+ * 二进制 + transfer，建树在子线程（同一份 100 万数据实测主线程只阻塞 ~470ms）。
+ * 小档位不动，保留使用者自己的开关选择。
+ */
+const AUTO_WORKER_PRESETS: ReadonlySet<TreePreset> = new Set([
+  '10k',
+  '100k',
+  '1m',
+])
 
 const fieldKeys = computed(() =>
   settings.fieldKeysMode === 'custom'
@@ -354,6 +369,9 @@ watch(
   ],
   async ([size, mode, preordered]) => {
     log(`${t.dataChanged}: ${size}${mode === 'custom' ? ` / ${t.customFields}` : ''}${preordered ? ` / ${t.preorder}` : ''}`)
+    // 大档位自动切到 Worker（见 AUTO_WORKER_PRESETS 的说明），与 demo 的
+    // `:worker-mode="true"` 效果对齐；小档位保持使用者的选择不动。
+    if (AUTO_WORKER_PRESETS.has(size)) settings.workerMode = true
     // 与 app.vue 的 rebuildTree 对齐：换数据时一并清掉搜索词与选中，并回到树视图。
     settings.keyword = ''
     treeRef.value?.switchDisplay(DisplayType.TREE)
