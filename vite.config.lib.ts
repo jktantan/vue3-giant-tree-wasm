@@ -34,7 +34,9 @@ export default defineConfig(() => ({
         // worker 必须是自包含的单文件：消费者打包器只会把 worker 入口搬进自己的产物，
         // 不会重写它内部的相对 import。一旦 rolldown 把互操作辅助提取成共享 chunk
         // （`import{...}from"./rolldown-runtime-*.js"`），worker 一加载就是 404。
-        inlineDynamicImports: true,
+        // （禁用代码分割在 rolldown 里的当前写法是 codeSplitting，旧的
+        // inlineDynamicImports 已弃用并会打警告。）
+        codeSplitting: false,
       },
     },
   },
