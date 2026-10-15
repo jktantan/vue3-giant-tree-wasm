@@ -58,6 +58,72 @@ if (metrics?.enabled) {
 基准数据（release WASM + 本机 Chromium）见仓库里的
 [性能门禁归档](https://github.com/jktantan/vue3-giant-tree-wasm/blob/main/docs/performance-gate-2026-09-19.md)。
 
+## 注意事项
+
+下面几条都是实测踩出来的，不注意很容易出现「本地很快、上线很慢」这类问题。
+
+### 大数组请用 `shallowRef`
+
+组件的 `tree` 会被全量遍历并序列化。如果宿主把它放在 Vue 的深度响应式 `ref` 里，
+每次属性读取都要过 Proxy 的 get trap，并为嵌套对象惰性创建代理 —— 10 万节点实测：
+
+| 写法 | `JSON.stringify(10 万个对象)` |
+| --- | --- |
+| 原始数组 | 17.1ms |
+| `ref(...).value` | **277.2ms** |
+| `shallowRef(...).value` | 19.6ms |
+
+组件内部已经用 `toRaw()` 兜底，所以两种写法都能跑，但 `shallowRef` 更省 ——
+树数据只会整体替换，不需要深层响应式。
+
+```ts
+// 推荐
+const rows = shallowRef(buildRows())
+// 不推荐
+const rows = ref(buildRows())
+```
+
+### 数据量决定要不要开 Worker
+
+release WASM + 本机 Chromium 实测：
+
+| 数据量 | `workerMode: false` | `workerMode: true` |
+| --- | --- | --- |
+| 1 万 | total **22.8ms**，无阻塞 | roundTrip 42.7ms，无阻塞 |
+| 10 万 | total 242ms，主线程阻塞 249ms | roundTrip **53.4ms**，无阻塞 |
+| 100 万 | total 2697ms，主线程阻塞 2749ms | roundTrip 584ms |
+
+**1 万以下主线程更快**（省一次往返）；**10 万以上建议开 Worker**。
+Worker 首次开启时要加载自己的脚本与 WASM，有一次性成本，之后复用。
+
+### 换数据直接改 `tree`，不要用 `:key` 重挂载
+
+```vue
+<!-- 推荐：复用 Worker 与 WASM 实例，100 万节点约 600ms -->
+<VueGiantTree :tree="rows" worker-mode />
+
+<!-- 不推荐：每次重建都销毁并新建 Worker -->
+<VueGiantTree :key="reloadKey" :tree="rows" worker-mode />
+```
+
+组件对 `tree` 的替换走二进制流式通道（UTF-8 + `transfer`）；而销毁重建要重新初始化 Worker。
+
+### `outputIdOnly` / `filterFn` 会让 `chunkedBuild` 失效
+
+`chunkedBuild` 只在 `outputIdOnly === true` 且未使用 `filterFn` 时生效，
+条件不满足就退回「整棵 JSON 路径」，主线程会被一次性占满。
+`getBuildMetrics().inputBridgeMs` 为 0 就是没走分批的信号。
+
+### Vite 里必须设置 `worker.format = 'es'`
+
+组件的 Worker 是 ES module worker（`new Worker(new URL(...), { type: 'module' })`），
+而 Vite 默认按 `iife` 打包 worker，构建期就会报错：
+
+```ts
+// vite.config.ts
+export default defineConfig({ worker: { format: 'es' } })
+```
+
 ## 动手试试
 
 `workerMode` 开关与两个指标方法都在[完整演示场](/playground)里：打开「workerMode」，
