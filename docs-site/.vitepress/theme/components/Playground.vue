@@ -75,18 +75,20 @@ const createData = (): TreeInputItem[] => {
 const tree = shallowRef<TreeInputItem[]>(createData())
 
 /**
- * 这几个档位自动改用 Worker 模式。
+ * 这几个档位自动改用 Worker 模式。阈值卡在 10 万，实测依据（本机 Chromium）：
  *
- * 主线程路径要把整棵树 `JSON.stringify` 再交给 wasm 解析：10 万以上是秒级的同步
- * 阻塞（100 万实测一次 long task 2696ms，页面完全冻住），而 Worker 路径走 UTF-8
- * 二进制 + transfer，建树在子线程（同一份 100 万数据实测主线程只阻塞 ~470ms）。
- * 小档位不动，保留使用者自己的开关选择。
+ * | 档位   | Worker 开                      | 主线程                    |
+ * | 1 万   | roundTrip 42.7ms / 0ms 阻塞     | total **22.8ms** / 0ms    |
+ * | 10 万  | roundTrip **53.4ms** / 0ms 阻塞 | total 242.1ms / **249ms** |
+ * | 100 万 | roundTrip 584ms / 445ms 阻塞    | total 2697ms / 2749ms     |
+ *
+ * 1 万走主线程更快（22.8ms），开 Worker 只是平白多一次往返；10 万起主线程要
+ * JSON.stringify + wasm 端 JSON 解析，建树涨到 242ms 并阻塞主线程 249ms，
+ * 而 Worker 走二进制 + 子线程建树只要 53ms 且不阻塞。
+ *
+ * 小档位不动这个开关，保留使用者自己的选择。
  */
-const AUTO_WORKER_PRESETS: ReadonlySet<TreePreset> = new Set([
-  '10k',
-  '100k',
-  '1m',
-])
+const AUTO_WORKER_PRESETS: ReadonlySet<TreePreset> = new Set(['100k', '1m'])
 
 const fieldKeys = computed(() =>
   settings.fieldKeysMode === 'custom'
@@ -369,9 +371,10 @@ watch(
   ],
   async ([size, mode, preordered]) => {
     log(`${t.dataChanged}: ${size}${mode === 'custom' ? ` / ${t.customFields}` : ''}${preordered ? ` / ${t.preorder}` : ''}`)
-    // 大档位自动切到 Worker（见 AUTO_WORKER_PRESETS 的说明），与 demo 的
-    // `:worker-mode="true"` 效果对齐；小档位保持使用者的选择不动。
-    if (AUTO_WORKER_PRESETS.has(size)) settings.workerMode = true
+    // 按数据量自动切换 Worker（见 AUTO_WORKER_PRESETS 的说明）：大档位开、小档位关。
+    // 这里双向设置是有意的 —— 只开不关的话，从大档位切回小档位会残留着 Worker，
+    // 小数据反而白付一次往返。
+    settings.workerMode = AUTO_WORKER_PRESETS.has(size)
     // 与 app.vue 的 rebuildTree 对齐：换数据时一并清掉搜索词与选中，并回到树视图。
     settings.keyword = ''
     treeRef.value?.switchDisplay(DisplayType.TREE)
