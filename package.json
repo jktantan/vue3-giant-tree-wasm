@@ -1,7 +1,7 @@
 {
   "name": "vue3-giant-tree-wasm",
   "description": "A WebAssembly-accelerated Vue 3 tree component for 100K–1M nodes: virtual scrolling, fuzzy search, checkbox/radio selection modes, and MPTT-based subtree operations.",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "type": "module",
   "license": "BSD-2-Clause",
   "author": "tantan",
