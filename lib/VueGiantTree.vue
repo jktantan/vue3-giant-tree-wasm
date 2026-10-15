@@ -954,7 +954,13 @@ const startWorker = () => {
         lastSerializeMs: number
       }
     }
-    if (snapshot.type === 'boot' || snapshot.type === 'ready') return
+    // worker 里的 release loader 是静态导入，模块求值阶段（含 wasm 实例化）尚未注册
+    // onmessage，此时发过去的命令会被直接丢弃 —— 所以首屏数据必须等 'ready' 再发。
+    if (snapshot.type === 'ready') {
+      void streamWorkerTree()
+      return
+    }
+    if (snapshot.type === 'boot') return
     if (snapshot.type === 'checked') {
       if (snapshot.checkedIds !== undefined) {
         workerCheckedIds = snapshot.checkedIds
@@ -1036,7 +1042,8 @@ const startWorker = () => {
     workerMetrics.enabled = false
     void initializeMainTree()
   }
-  void streamWorkerTree()
+  // 首屏数据不在这里发送：等 worker 的 'ready' 消息（见上面的 onmessage）。
+  // worker 就绪前的消息会被丢弃，因为静态导入的 loader 在模块求值期间还没注册 onmessage。
   return true
 }
 
