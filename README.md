@@ -2,6 +2,8 @@
 
 [中文](#中文) | [English](#english) | [Русский](#русский)
 
+> 📖 完整使用说明与在线 DEMO：https://jktantan.github.io/vue3-giant-tree-wasm/
+
 ---
 
 ## 中文

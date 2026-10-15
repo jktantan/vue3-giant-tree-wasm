@@ -1,0 +1,82 @@
+name: Docs
+
+# 文档站点构建 + GitHub Pages 部署
+# 文档站位于 docs-site/，使用 VitePress。
+# Pages 目标：项目站点 https://jktantan.github.io/vue3-giant-tree-wasm/，
+# 因此 docs-site/.vitepress/config.mts 里的 base 是 '/vue3-giant-tree-wasm/'。
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs-site/**'
+      - 'assembly/**'
+      - 'build/**'
+      - 'lib/**'
+      - 'package.json'
+      - '.github/workflows/docs.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 防止重复 deploy_pages；同一分支新 push 会取消在跑的运行
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          lfs: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build release WASM
+        # mini-DEMO 与 FullAppDemo 都依赖 build/release.{js,wasm}
+        run: pnpm asbuild:release
+
+      - name: Build VitePress site
+        # 输出到 docs-site/.vitepress/dist
+        run: pnpm docs:build
+
+      - name: Setup Pages
+        # 把 build 产物拷贝到符合 Pages 部署规范的目录（默认取 artifact）
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs-site/.vitepress/dist
+
+  deploy:
+    name: Deploy
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
