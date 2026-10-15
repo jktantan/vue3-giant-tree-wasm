@@ -1,0 +1,47 @@
+name: PR Docs Preview
+
+# PR 上构建 docs-site 并把产物上传为 workflow artifact。
+# 不部署到 Pages 环境，避免覆盖 main 的生产部署。
+# 使用方式：PR 评论里手动下载 artifact 或自行接到 PR 评论机器人。
+
+on:
+  pull_request:
+    paths:
+      - 'docs-site/**'
+      - 'assembly/**'
+      - 'build/**'
+      - 'lib/**'
+      - 'package.json'
+      - '.github/workflows/docs-preview.yml'
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: pr-docs-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build preview
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm asbuild:release
+      - run: pnpm docs:build
+      - name: Upload preview artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: docs-preview-${{ github.event.pull_request.number }}
+          path: docs-site/.vitepress/dist
+          retention-days: 14
+          if-no-files-found: error
