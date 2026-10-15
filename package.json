@@ -1,21 +1,22 @@
 {
   "name": "vue3-giant-tree-wasm",
-  "description": "A WebAssembly-powered Vue 3 virtual tree for 100K–1M-node datasets.",
+  "description": "A WebAssembly-accelerated Vue 3 tree component for 100K–1M nodes: virtual scrolling, fuzzy search, checkbox/radio selection modes, and MPTT-based subtree operations.",
   "version": "0.1.0",
   "type": "module",
   "license": "BSD-2-Clause",
-  "author": "tantan <jkhyf@qq.com>",
+  "author": "tantan",
   "keywords": [
     "vue",
     "vue3",
+    "vue-component",
     "tree",
-    "virtual-tree",
+    "treeview",
     "virtual-scroll",
+    "virtual-list",
     "wasm",
     "webassembly",
     "assemblyscript",
-    "performance",
-    "100k",
+    "large-data",
     "million-nodes"
   ],
   "homepage": "https://github.com/jktantan/vue3-giant-tree-wasm#readme",
@@ -123,9 +124,14 @@
   },
   "exports": {
     ".": {
+      "types": "./dist/lib/index.d.ts",
       "browser": "./dist/vue-giant-tree.es.js",
-      "import": "./dist/vue-giant-tree.es.js",
-      "types": "./dist/lib/index.d.ts"
-    }
+      "import": "./dist/vue-giant-tree.es.js"
+    },
+    "./style.css": "./dist/style.css",
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

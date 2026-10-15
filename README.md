@@ -1,8 +1,19 @@
 # vue3-giant-tree-wasm
 
-[中文](#中文) | [English](#english) | [Русский](#русский)
+A WebAssembly-powered virtual tree component for Vue 3, built for 100K–1M-node datasets. Tree building, traversal, fuzzy search and check propagation run in AssemblyScript-compiled WASM, using MPTT for O(1) subtree checks and O(k) viewport slicing. Only the rows in view are rendered to the DOM, so interaction stays responsive at a million nodes.
 
-> 📖 完整使用说明与在线 DEMO：https://jktantan.github.io/vue3-giant-tree-wasm/
+```bash
+npm install vue3-giant-tree-wasm
+```
+
+```ts
+import { VueGiantTree } from 'vue3-giant-tree-wasm'
+import 'vue3-giant-tree-wasm/style.css'
+```
+
+📖 <a href="https://jktantan.github.io/vue3-giant-tree-wasm/" target="_blank" rel="noopener noreferrer">Full documentation and live demo</a>
+
+[中文](#中文) | [English](#english) | [Русский](#русский)
 
 ---
 
@@ -21,12 +32,12 @@
 - 4,620 节点浏览器工作负载滚动动作 P95：约 0.4 ms
 - 仅将视口内的行渲染到 DOM
 
-完整测试方法、环境和结果见 [性能门禁归档](docs/performance-gate-2026-09-19.md)。
+完整测试方法、环境和结果见 <a href="https://github.com/jktantan/vue3-giant-tree-wasm/blob/main/docs/performance-gate-2026-09-19.md" target="_blank" rel="noopener noreferrer">性能门禁归档</a>。
 
 ### 缺陷与诊断
 
 最近一轮对 `Assembly/` 与 `lib/` 目录的代码审查产出 10 项发现（2 个 🔴、3 个 🟠、5 个 🟡），已在
-[`docs/diagnostics.md`](docs/diagnostics.md) 中按优先级与修复计划列出。引用本文档时请同步引用
+<a href="https://github.com/jktantan/vue3-giant-tree-wasm/blob/main/docs/diagnostics.md" target="_blank" rel="noopener noreferrer"><code>docs/diagnostics.md</code></a> 中按优先级与修复计划列出。引用本文档时请同步引用
 诊断报告，以确保读者了解已修复的边界条件与剩余的可优化项。
 
 ### 特性
@@ -53,6 +64,12 @@ npm install vue3-giant-tree-wasm
 pnpm add vue3-giant-tree-wasm
 # 或
 yarn add vue3-giant-tree-wasm
+```
+
+组件样式以独立 CSS 文件随包发布，需要在应用入口引入一次：
+
+```ts
+import 'vue3-giant-tree-wasm/style.css'
 ```
 
 ### 快速上手
@@ -464,7 +481,7 @@ pnpm lib:build
 
 ### 许可证
 
-[BSD 2-Clause](./LICENSE)
+<a href="https://github.com/jktantan/vue3-giant-tree-wasm/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">BSD 2-Clause</a>
 
 ---
 
@@ -483,13 +500,13 @@ The following reproducible benchmarks use release WASM and local Chromium. Resul
 - 4,620-node browser-workload scroll action P95: ~0.4 ms
 - Only viewport rows are rendered to the DOM
 
-See the [performance-gate archive](docs/performance-gate-2026-09-19.md) for methodology, environment, and complete results.
+See the <a href="https://github.com/jktantan/vue3-giant-tree-wasm/blob/main/docs/performance-gate-2026-09-19.md" target="_blank" rel="noopener noreferrer">performance-gate archive</a> for methodology, environment, and complete results.
 
 ### Diagnostics
 
 A recent review of the `Assembly/` and `lib/` directories produced ten findings
 (2 🔴, 3 🟠, 5 🟡). They are catalogued in
-[`docs/diagnostics.md`](docs/diagnostics.md) with their priority and fix plan.
+<a href="https://github.com/jktantan/vue3-giant-tree-wasm/blob/main/docs/diagnostics.md" target="_blank" rel="noopener noreferrer"><code>docs/diagnostics.md</code></a> with their priority and fix plan.
 When citing this README, link the diagnostics report together so readers know
 which edge cases are already addressed and which remain as future optimizations.
 
@@ -517,6 +534,12 @@ npm install vue3-giant-tree-wasm
 pnpm add vue3-giant-tree-wasm
 # or
 yarn add vue3-giant-tree-wasm
+```
+
+Component styles ship as a separate CSS file and must be imported once in your app entry:
+
+```ts
+import 'vue3-giant-tree-wasm/style.css'
 ```
 
 ### Quick Start
@@ -922,7 +945,7 @@ pnpm lib:build
 
 ### License
 
-[BSD 2-Clause](./LICENSE)
+<a href="https://github.com/jktantan/vue3-giant-tree-wasm/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">BSD 2-Clause</a>
 
 ---
 
@@ -941,11 +964,11 @@ pnpm lib:build
 - P95 действия прокрутки в браузерной нагрузке на 4 620 узлах: ~0,4 мс
 - В DOM рендерятся только строки в области просмотра
 
-Методика, окружение и полные результаты — в [архиве performance-gate](docs/performance-gate-2026-09-19.md).
+Методика, окружение и полные результаты — в <a href="https://github.com/jktantan/vue3-giant-tree-wasm/blob/main/docs/performance-gate-2026-09-19.md" target="_blank" rel="noopener noreferrer">архиве performance-gate</a>.
 
 ### Диагностика
 
-Последний обзор каталогов `Assembly/` и `lib/` дал десять находок (2 🔴, 3 🟠, 5 🟡); они перечислены в [`docs/diagnostics.md`](docs/diagnostics.md) с приоритетом и планом исправлений. Ссылаясь на этот README, указывайте и отчёт диагностики, чтобы читатель видел, какие граничные случаи уже закрыты, а какие остаются оптимизациями на будущее.
+Последний обзор каталогов `Assembly/` и `lib/` дал десять находок (2 🔴, 3 🟠, 5 🟡); они перечислены в <a href="https://github.com/jktantan/vue3-giant-tree-wasm/blob/main/docs/diagnostics.md" target="_blank" rel="noopener noreferrer"><code>docs/diagnostics.md</code></a> с приоритетом и планом исправлений. Ссылаясь на этот README, указывайте и отчёт диагностики, чтобы читатель видел, какие граничные случаи уже закрыты, а какие остаются оптимизациями на будущее.
 
 ### Возможности
 
@@ -971,6 +994,12 @@ npm install vue3-giant-tree-wasm
 pnpm add vue3-giant-tree-wasm
 # или
 yarn add vue3-giant-tree-wasm
+```
+
+Стили компонента поставляются отдельным CSS-файлом — подключите их один раз в точке входа приложения:
+
+```ts
+import 'vue3-giant-tree-wasm/style.css'
 ```
 
 ### Быстрый старт
@@ -1376,4 +1405,4 @@ pnpm lib:build
 
 ### Лицензия
 
-[BSD 2-Clause](./LICENSE)
+<a href="https://github.com/jktantan/vue3-giant-tree-wasm/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">BSD 2-Clause</a>

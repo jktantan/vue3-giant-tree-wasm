@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://jktantan.github.io/vue3-giant-tree-wasm/sitemap.xml

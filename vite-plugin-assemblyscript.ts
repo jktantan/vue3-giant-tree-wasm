@@ -8,7 +8,7 @@ import {
   statSync,
   writeFileSync,
 } from 'node:fs'
-import { dirname, resolve } from 'node:path'
+import { dirname, posix, resolve } from 'node:path'
 import type { Plugin, ViteDevServer } from 'vite'
 
 interface AssemblyScriptPluginOptions {
@@ -194,12 +194,14 @@ export default function assemblyscriptPlugin(
         )
       }
       // 在模块顶部声明一个变量持有 wasm URL；
-      // 运行时把它解析成 fetch 用的绝对地址（baseURI 或 import.meta.url 兜底）。
+      // 用 `new URL(相对路径, import.meta.url)` 让运行时按【当前 chunk】的真实
+      // 位置解析地址：import.meta.url 在 worker 里同样有效，且下游打包器
+      // （Vite/webpack）能识别这种静态形式并把 wasm 一起带走。
       // 注意：占位符必须是【带引号的字符串字面量】，才能被下面 generateBundle 的
       // /"__VITE_ASM_WASM_URL__"/g 替换为最终 asset 文件名。写成裸标识符会让替换
       // 静默落空，产物里留下未定义变量，下游一 import 就 ReferenceError。
       const header =
-        'const __releaseWasmUrl = (typeof document<"u"&&document.baseURI?document.baseURI:import.meta.url)+"__VITE_ASM_WASM_URL__";\n'
+        'const __releaseWasmUrl = new URL("__VITE_ASM_WASM_URL__", import.meta.url).href;\n'
       const replaced = source.replace(
         '))(new URL("release.wasm", import.meta.url));',
         '))(__releaseWasmUrl);'
@@ -229,11 +231,21 @@ export default function assemblyscriptPlugin(
         const chunk = bundle_[fileName]
         if (chunk.type !== 'chunk') continue
         if (!chunk.code || !chunk.code.includes('__VITE_ASM_WASM_URL__')) continue
+        // wasm 地址必须相对于【当前 chunk 所在目录】解析，而不是产物根目录：
+        // 同一份 loader 会同时出现在 dist 根（主入口）与 dist/assets/（worker
+        // 动态 import 的 chunk）里，写死 `assets/xxx.wasm` 会让两者之一解析错。
+        const relativeAsset = posix.relative(
+          posix.dirname(chunk.fileName),
+          assetFileName
+        )
+        const wasmSpecifier = relativeAsset.startsWith('.')
+          ? relativeAsset
+          : `./${relativeAsset}`
         // 产物里该字面量的形态可能是 "…" / '…' / `…`（rolldown 常把普通字符串
         // 输出成模板字符串），这里同时容忍三种引号，避免再次静默漏替换。
         chunk.code = chunk.code.replace(
           /["'`]?__VITE_ASM_WASM_URL__["'`]?/g,
-          JSON.stringify(assetFileName)
+          JSON.stringify(wasmSpecifier)
         )
         if (chunk.code.includes('__VITE_ASM_WASM_URL__')) {
           this.warn(

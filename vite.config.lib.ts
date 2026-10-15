@@ -8,6 +8,9 @@ import assemblyscriptPlugin from './vite-plugin-assemblyscript.ts'
 
 // https://vitejs.dev/config/
 export default defineConfig(() => ({
+  // 库产物会被安装到 node_modules 的任意深度：绝对资源路径（/assets/…）会被
+  // 解析到站点根目录而 404，只有相对路径才能让 worker / wasm 随包被消费者取到。
+  base: './',
   plugins: [
     assemblyscriptPlugin(),
     vue(),
@@ -41,6 +44,9 @@ export default defineConfig(() => ({
       name: 'vue-giant-tree',
       formats: ['es'],
       fileName: () => 'vue-giant-tree.es.js',
+      // 固定 CSS 文件名（默认是包名），让 package.json 的 exports 能用稳定的
+      // `./style.css` 子路径导出，消费者不必关心带 hash 的产物名。
+      cssFileName: 'style',
     },
     rolldownOptions: {
       external: ['vue'],
@@ -52,7 +58,14 @@ export default defineConfig(() => ({
           vue: 'Vue',
         },
         minify: true,
-        assetFileNames: 'assets/[name]-[hash][extname]',
+        // CSS 固定输出为 dist/style.css：exports 的 ./style.css 需要在安装后
+        // 有稳定路径，带 hash 的文件名没法写进导出表。
+        assetFileNames: (assetInfo) => {
+          const name = assetInfo.names?.[0] ?? assetInfo.name ?? ''
+          return name.endsWith('.css')
+            ? 'style.css'
+            : 'assets/[name]-[hash][extname]'
+        },
       },
     },
     assetsInlineLimit: 0,
