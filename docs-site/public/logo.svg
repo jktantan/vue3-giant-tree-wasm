@@ -1,45 +1,85 @@
-<svg
-  xmlns="http://www.w3.org/2000/svg"
-  viewBox="0 0 64 64"
-  width="64"
-  height="64"
-  role="img"
->
-  <title>VueGiantTree</title>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="100%" height="100%" class="max-w-[280px] sm:max-w-[340px] aspect-square">
+
   <defs>
-    <linearGradient id="gtNode" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#3f51d6" />
-      <stop offset="1" stop-color="#7c3aed" />
-    </linearGradient>
-    <linearGradient id="gtEdge" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#3f51d6" stop-opacity="0.9" />
-      <stop offset="1" stop-color="#7c3aed" stop-opacity="0.55" />
-    </linearGradient>
+    <radialGradient id="bgGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#3aa876" stop-opacity="0.22" />
+      <stop offset="100%" stop-color="#3aa876" stop-opacity="0" />
+    </radialGradient>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="20" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
   </defs>
+  <circle cx="200" cy="180" r="140" fill="url(#bgGlow)" />
 
-  <!-- 连接：根 → 2 → 4，逐层指数铺开 -->
-  <g
-    stroke="url(#gtEdge)"
-    stroke-width="3.2"
-    stroke-linecap="round"
-    fill="none"
-  >
-    <path d="M32 12 L19 30" />
-    <path d="M32 12 L45 30" />
-    <path d="M19 30 L10 48" />
-    <path d="M19 30 L25 48" />
-    <path d="M45 30 L39 48" />
-    <path d="M45 30 L54 48" />
+
+  <!-- Giant Tree & Hierarchy Node Structure -->
+  <g filter="url(#glow)">
+    <!-- Root Base Structure (Deep and Secure Roots) -->
+    <path d="M200,270 L170,305 M200,270 L230,305 M185,290 L160,320 M215,290 L240,320" stroke="#22303c" stroke-width="4.5" stroke-linecap="round"/>
+    <circle cx="170" cy="305" r="3.5" fill="#3aa876" />
+    <circle cx="230" cy="305" r="3.5" fill="#3aa876" />
+    <circle cx="160" cy="320" r="2.5" fill="#3aa876" />
+    <circle cx="240" cy="320" r="2.5" fill="#3aa876" />
+
+    <!-- Main Trunk -->
+    <path d="M193,160 L193,275 C193,280 207,280 207,275 L207,160 Z" fill="#22303c" />
+
+    <!-- Primary Structural Branches (Tree + Nodes) -->
+    <path d="M200,230 L130,180 M200,230 L270,180" stroke="#3aa876" stroke-width="3.5" stroke-linecap="round"/>
+    <path d="M200,170 L120,110 M200,170 L280,110" stroke="#3aa876" stroke-width="3.5" stroke-linecap="round"/>
+    <path d="M200,120 L200,60" stroke="#3aa876" stroke-width="3.5" stroke-linecap="round"/>
+
+
+    <!-- Mid Level Tree Branches / Nodes -->
+    <path d="M200,210 L150,165 M200,190 L250,145" stroke="#3aa876" stroke-width="2.5" stroke-linecap="round" opacity="0.8"/>
+    <circle cx="150" cy="165" r="4" fill="#3aa876" />
+    <circle cx="250" cy="145" r="4" fill="#3aa876" />
+
+    <!-- Dense sub-nodes -->
+    <path d="M175,180 L130,140 M225,170 L270,130 M200,150 L200,110" stroke="#3aa876" stroke-width="1.5" stroke-linecap="round" opacity="0.7"/>
+    <circle cx="130" cy="140" r="3" fill="#3aa876" />
+    <circle cx="270" cy="130" r="3" fill="#3aa876" />
+    <circle cx="200" cy="110" r="3" fill="#3aa876" />
+
+
+    <!-- Top Apex Canopy Node -->
+    <circle cx="200" cy="60" r="7" fill="#3aa876" />
+    <circle cx="200" cy="60" r="3" fill="#FFFFFF" />
+
+    <!-- Major Branch Node Points -->
+    <g>
+      <circle cx="130" cy="180" r="5" fill="#3aa876" />
+      <circle cx="270" cy="180" r="5" fill="#3aa876" />
+      <circle cx="120" cy="110" r="6" fill="#3aa876" />
+      <circle cx="280" cy="110" r="6" fill="#3aa876" />
+      <!-- Inner white core for tech node look -->
+      <circle cx="130" cy="180" r="2" fill="#FFFFFF" />
+      <circle cx="270" cy="180" r="2" fill="#FFFFFF" />
+      <circle cx="120" cy="110" r="2.5" fill="#FFFFFF" />
+      <circle cx="280" cy="110" r="2.5" fill="#FFFFFF" />
+    </g>
+
+
+    <g opacity="0.85">
+      <path d="M200,100 L200,75 L230,55" fill="none" stroke="#3aa876" stroke-width="1.5" stroke-dasharray="3,2"/>
+      <circle cx="230" cy="55" r="3.5" fill="#3aa876" />
+      <path d="M200,120 L160,90 L135,90" fill="none" stroke="#3aa876" stroke-width="1.5" stroke-dasharray="3,2"/>
+      <circle cx="135" cy="90" r="3.5" fill="#3aa876" />
+      <path d="M200,140 L245,100 L275,100" fill="none" stroke="#3aa876" stroke-width="1.5" stroke-dasharray="3,2"/>
+      <circle cx="275" cy="100" r="3.5" fill="#3aa876" />
+    </g>
+
+
+    <!-- Canopy Foliage Clusters (Giant Geometric / Organic Leaves) -->
+    <g fill="#3aa876" opacity="0.35">
+      <ellipse cx="200" cy="70" rx="45" ry="30" />
+      <ellipse cx="125" cy="120" rx="40" ry="26" />
+      <ellipse cx="275" cy="120" rx="40" ry="26" />
+      <ellipse cx="135" cy="190" rx="35" ry="22" />
+      <ellipse cx="265" cy="190" rx="35" ry="22" />
+    </g>
   </g>
 
-  <!-- 节点 -->
-  <g fill="url(#gtNode)">
-    <circle cx="32" cy="12" r="6.6" />
-    <circle cx="19" cy="30" r="5" />
-    <circle cx="45" cy="30" r="5" />
-    <circle cx="10" cy="48" r="3.9" />
-    <circle cx="25" cy="48" r="3.9" />
-    <circle cx="39" cy="48" r="3.9" />
-    <circle cx="54" cy="48" r="3.9" />
-  </g>
+
 </svg>
