@@ -6,7 +6,6 @@
 
 **关联文档：**
 
-- [`README.md`](../README.md) 中文段「缺陷与诊断」与 English 段「Diagnostics」均反向链接本文档。
 - [`docs/performance-refactor-plan.md`](performance-refactor-plan.md) 末尾 `2026-10-XX：Assembly/ 与 lib/ 代码审查与定向修复` 段落汇总了本批次落地的 5 条修复与验证证据。
 - [`docs/shown-indices-retirement-2026-10-09.md`](shown-indices-retirement-2026-10-09.md) 在「与后续审查的关系」一节补充了本次修复与既有 `_syncAfterStructureMutation` 路径的耦合说明。**完成状态总览：**
 

@@ -58,6 +58,17 @@
 | `#node` | Заменяет область содержимого узла; по умолчанию `node.name` |
 | `#actions` | Область действий в конце строки; без слота не рендерится, а её клики не выбирают строку |
 
+`#actions` сам по себе не изменяет данные. Для изменения данных приложение может вызывать API экземпляра вместе с `v-model:tree`.
+
+```vue
+<VueGiantTree :tree="treeData" root="root" v-model="selected">
+  <template #actions="{ node }">
+    <button @click="edit(node)">Изменить</button>
+    <button @click="remove(node)">Удалить</button>
+  </template>
+</VueGiantTree>
+```
+
 ## События
 
 | Событие | Полезная нагрузка | Описание |
@@ -65,6 +76,33 @@
 | `update:modelValue` | `TreeNodeData \| TreeNodeData[] \| string \| string[]` | Результат выбора изменился |
 | `update:tree` | `TreeInputItem[]` | Новый входной массив после изменения |
 | `item-contextmenu` | `(node: TreeNodeData, event: MouseEvent)` | Правый клик по строке; компонент **не** вызывает `preventDefault()` за вас |
+
+Компонент только испускает событие и не содержит UI меню. Правый клик по строке вызывает `item-contextmenu(node, event)`, где `node` — это `TreeNodeData` строки, а `event` — исходное `MouseEvent`. Компонент **не** вызывает `preventDefault()`, поэтому браузерное меню открывается как обычно; чтобы заменить его, вызовите `event.preventDefault()` в обработчике. Рендеринг, позиционирование и закрытие меню — задача потребителя; типичный подход — `Teleport` в `body` с позицией по `event.clientX/clientY`. Правый клик не вызывает выбор строки.
+
+```vue
+<script setup lang="ts">
+import { ref } from 'vue'
+import type { TreeNodeData } from 'vue3-giant-tree-wasm'
+
+const menu = ref<{ x: number; y: number; node: TreeNodeData } | null>(null)
+
+const onContextMenu = (node: TreeNodeData, event: MouseEvent) => {
+  event.preventDefault()
+  menu.value = { x: event.clientX, y: event.clientY, node }
+}
+</script>
+
+<template>
+  <VueGiantTree :tree="treeData" root="root" v-model="selected" @item-contextmenu="onContextMenu" />
+
+  <Teleport to="body">
+    <ul v-if="menu" class="my-menu" :style="{ left: menu.x + 'px', top: menu.y + 'px' }">
+      <li @click="edit(menu.node)">Изменить</li>
+      <li @click="remove(menu.node)">Удалить</li>
+    </ul>
+  </Teleport>
+</template>
+```
 
 ## Попробуйте
 

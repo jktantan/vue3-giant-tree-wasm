@@ -58,6 +58,22 @@
 | `#node` | 替换节点名称所在的主体内容区；未传时显示 `node.name` |
 | `#actions` | 行末操作区；未传时不渲染也不占空间，其点击不会触发行选中 |
 
+`#actions` 只提供操作入口，不会修改或重建树数据；编辑、删除后的数据同步由业务方自行处理。
+
+```vue
+<VueGiantTree :tree="treeData" root="root" v-model="selected">
+  <template #node="{ node }">
+    <strong>{{ node.name }}</strong>
+    <span v-if="node.disabled">禁用</span>
+  </template>
+
+  <template #actions="{ node }">
+    <button @click="edit(node)">编辑</button>
+    <button @click="remove(node)">删除</button>
+  </template>
+</VueGiantTree>
+```
+
 ## 事件
 
 | 事件 | 载荷 | 说明 |
@@ -65,6 +81,33 @@
 | `update:modelValue` | `TreeNodeData \| TreeNodeData[] \| string \| string[]` | 选中结果变化 |
 | `update:tree` | `TreeInputItem[]` | 增删改后的新输入数组 |
 | `item-contextmenu` | `(node: TreeNodeData, event: MouseEvent)` | 行上右键；组件**不会**自动 `preventDefault()` |
+
+组件只抛出事件，不内置菜单 UI。在行上右键会触发 `item-contextmenu(node, event)`，`node` 为该行 `TreeNodeData`，`event` 为原生 `MouseEvent`。组件**不会**自动调用 `preventDefault()`，浏览器原生菜单照常弹出；如需替换为自定义菜单，请在回调里自行 `event.preventDefault()`。菜单的渲染、定位与关闭由业务方负责，常见做法是 `Teleport` 到 `body` 并用 `event.clientX/clientY` 定位。右键不会触发行点击/选中。
+
+```vue
+<script setup lang="ts">
+import { ref } from 'vue'
+import type { TreeNodeData } from 'vue3-giant-tree-wasm'
+
+const menu = ref<{ x: number; y: number; node: TreeNodeData } | null>(null)
+
+const onContextMenu = (node: TreeNodeData, event: MouseEvent) => {
+  event.preventDefault()
+  menu.value = { x: event.clientX, y: event.clientY, node }
+}
+</script>
+
+<template>
+  <VueGiantTree :tree="treeData" root="root" v-model="selected" @item-contextmenu="onContextMenu" />
+
+  <Teleport to="body">
+    <ul v-if="menu" class="my-menu" :style="{ left: menu.x + 'px', top: menu.y + 'px' }">
+      <li @click="edit(menu.node)">编辑</li>
+      <li @click="remove(menu.node)">删除</li>
+    </ul>
+  </Teleport>
+</template>
+```
 
 ## 动手试试
 
