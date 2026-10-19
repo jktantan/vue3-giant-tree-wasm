@@ -220,6 +220,14 @@ export function updateNodeName(
   return target.updateNodeName(id, name)
 }
 
+export function updateNodeDisabled(
+  target: GiantTree,
+  id: string,
+  disabled: bool
+): bool {
+  return target.updateNodeDisabled(id, disabled)
+}
+
 export function getSubtreeIds(target: GiantTree, id: string): string[] {
   return target.getSubtreeIds(id)
 }

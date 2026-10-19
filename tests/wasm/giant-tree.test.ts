@@ -34,6 +34,7 @@ import {
   collapseTree,
   fuzzyTree,
   updateNodeName,
+  updateNodeDisabled,
   appendChild,
   removeSubtree,
   setNeighborTree,
@@ -163,6 +164,57 @@ describe('giant-tree: 集成测试', () => {
     expect(
       JSON.parse(getAllNodes(tree)).map((node: { id: string }) => node.id)
     ).toEqual(['B'])
+  })
+
+  it('增量禁用/启用节点维护选中聚合与输出', () => {
+    const tree = newTree('root', 26, SelectType.CHECKBOX)
+    for (const [id, parentId] of [
+      ['P', 'root'],
+      ['A', 'P'],
+      ['A1', 'A'],
+      ['A2', 'A'],
+      ['B', 'P'],
+    ])
+      pushNeighborNode(tree, id, id, parentId)
+    popNeighbor(tree)
+
+    checkNode(tree, 'A1', CheckType.CHECKED)
+    checkNode(tree, 'A2', CheckType.CHECKED)
+    expect(new Set(getCheckedIdList(tree))).toEqual(new Set(['A1', 'A2', 'A']))
+
+    // Disabling a checked leaf clears it and removes it from parent counts.
+    expect(updateNodeDisabled(tree, 'A1', true)).toBe(true)
+    const afterDisable = JSON.parse(getAllNodes(tree)) as Array<{
+      id: string
+      disabled: boolean
+      checked: number
+    }>
+    expect(afterDisable.find(node => node.id === 'A1')).toMatchObject({
+      disabled: true,
+      checked: CheckType.UNCHECKED,
+    })
+    expect(new Set(getCheckedIdList(tree))).toEqual(new Set(['A2', 'A']))
+
+    // Disabling the last eligible child makes the branch unchecked.
+    expect(updateNodeDisabled(tree, 'A2', true)).toBe(true)
+    expect(getCheckedIdList(tree)).toEqual([])
+
+    // Re-enabling does not silently restore the previous checked state.
+    expect(updateNodeDisabled(tree, 'A1', false)).toBe(true)
+    expect(updateNodeDisabled(tree, 'A2', false)).toBe(true)
+    expect(getCheckedIdList(tree)).toEqual([])
+    checkNode(tree, 'A1', CheckType.CHECKED)
+    // A now has one checked and one unchecked eligible child → half-checked.
+    expect(getCheckedIdList(tree)).toEqual(['A1'])
+    const afterEnable = JSON.parse(getAllNodes(tree)) as Array<{
+      id: string
+      disabled: boolean
+      checked: number
+    }>
+    expect(afterEnable.find(node => node.id === 'A')).toMatchObject({
+      disabled: false,
+      checked: CheckType.HALF_CHECKED,
+    })
   })
 
   it('删除中间的已选节点后保留剩余 checkbox 状态并更新父节点', () => {

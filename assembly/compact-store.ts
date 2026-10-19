@@ -163,6 +163,29 @@ export class CompactNodeStore {
     if (index >= 0 && index < this.selected.length) this.selected[index] = value
   }
 
+  /**
+   * Updates the disabled flag, its prefix sums and the parent's eligible-child
+   * count. Returns the parent index so the caller can roll aggregates upward.
+   */
+  updateDisabled(index: i32, disabled: bool): i32 {
+    const value: u8 = disabled ? 1 : 0
+    if (this.disabled[index] === value) return this.parent[index]
+    this.disabled[index] = value
+    const delta: i32 = disabled ? 1 : -1
+    const prefixBase = this.disabledPrefix.dataStart
+    for (let i: i32 = index + 1; i < this.disabledPrefix.length; i++)
+      store<i32>(
+        prefixBase + ((<usize>i) << 2),
+        load<i32>(prefixBase + ((<usize>i) << 2)) + delta
+      )
+    const parent = this.parent[index]
+    if (parent >= 0) {
+      if (disabled) this.childTotal[parent]--
+      else this.childTotal[parent]++
+    }
+    return parent
+  }
+
   updateChildState(parent: i32, previous: u8, next: u8): void {
     if (parent < 0 || previous === next) return
     if (previous === 2) this.childChecked[parent]--

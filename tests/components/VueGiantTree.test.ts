@@ -31,6 +31,7 @@ type TreeApi = {
   removeNode(id: string): boolean
   getBuildReady(): boolean
   getTreeSize(): number
+  getBuildMetrics(): { contentDiffHits: number; contentDiffMs: number }
   expandAll(): void
   collapseAll(): void
   fuzzySearchRaw(keyword: string): void
@@ -578,5 +579,110 @@ describe('VueGiantTree: 主组件', () => {
       .findAll('.tree-item')
       .find(row => row.text().includes('NodeA1'))!
     expect(a1Row.findAll('.item-guide-cell')).toHaveLength(1)
+  })
+
+  it('名称-only 替换走内容 diff，并保留结构状态', async () => {
+    const wrapper = mount(VueGiantTree, {
+      props: { modelValue: [], tree: makeTreeData(), root: 'root' },
+    })
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+    const before = treeApi(wrapper).getBuildMetrics().contentDiffHits
+
+    const next = makeTreeData().map(node =>
+      node.id === 'A' ? { ...node, name: 'Renamed A' } : node
+    )
+    await wrapper.setProps({ tree: next })
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+
+    expect(treeApi(wrapper).getBuildMetrics().contentDiffHits).toBe(before + 1)
+    expect(wrapper.text()).toContain('Renamed A')
+    expect(treeApi(wrapper).getTreeSize()).toBe(3)
+  })
+
+  it('结构变化不会误走内容 diff', async () => {
+    const wrapper = mount(VueGiantTree, {
+      props: { modelValue: [], tree: makeTreeData(), root: 'root' },
+    })
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+    const before = treeApi(wrapper).getBuildMetrics().contentDiffHits
+
+    await wrapper.setProps({
+      tree: [...makeTreeData(), { id: 'C', name: 'NodeC', parentId: 'root' }],
+    })
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+
+    expect(treeApi(wrapper).getBuildMetrics().contentDiffHits).toBe(before)
+    expect(treeApi(wrapper).getTreeSize()).toBe(4)
+    expect(wrapper.text()).toContain('NodeC')
+  })
+
+  it('disabled-only 替换走内容 diff 并更新禁用语义', async () => {
+    const wrapper = mount(VueGiantTree, {
+      props: { modelValue: [], tree: makeTreeData(), root: 'root' },
+    })
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+    const before = treeApi(wrapper).getBuildMetrics().contentDiffHits
+
+    const next = makeTreeData().map(node =>
+      node.id === 'B' ? { ...node, disabled: true } : node
+    )
+    await wrapper.setProps({ tree: next })
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+
+    expect(treeApi(wrapper).getBuildMetrics().contentDiffHits).toBe(before + 1)
+    const bRow = wrapper
+      .findAll('.tree-item')
+      .find(row => row.text().includes('NodeB'))!
+    expect(bRow.classes()).toContain('disabled')
+    expect(treeApi(wrapper).getTreeSize()).toBe(3)
+  })
+
+  it('原地改名后替换数组也能命中内容 diff', async () => {
+    const nodes = makeTreeData()
+    const wrapper = mount(VueGiantTree, {
+      props: { modelValue: [], tree: nodes, root: 'root' },
+    })
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+    const before = treeApi(wrapper).getBuildMetrics().contentDiffHits
+
+    nodes[0].name = '原地改名'
+    await wrapper.setProps({ tree: [...nodes] })
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+
+    expect(treeApi(wrapper).getBuildMetrics().contentDiffHits).toBe(before + 1)
+    expect(wrapper.text()).toContain('原地改名')
+  })
+
+  it('大量 disabled 变化回退全量重建，避免逐节点重写前缀', async () => {
+    const nodes = Array.from({ length: 100 }, (_, i) => ({
+      id: `x${i}`,
+      name: `X${i}`,
+      parentId: 'root',
+    }))
+    const wrapper = mount(VueGiantTree, {
+      props: { modelValue: [], tree: nodes, root: 'root' },
+    })
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+    const before = treeApi(wrapper).getBuildMetrics().contentDiffHits
+
+    const next = nodes.map((node, i) =>
+      i < 65 ? { ...node, disabled: true } : node
+    )
+    await wrapper.setProps({ tree: next })
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+
+    expect(treeApi(wrapper).getBuildMetrics().contentDiffHits).toBe(before)
+    expect(treeApi(wrapper).getTreeSize()).toBe(100)
+    expect(wrapper.findAll('.tree-item')[0].classes()).toContain('disabled')
   })
 })

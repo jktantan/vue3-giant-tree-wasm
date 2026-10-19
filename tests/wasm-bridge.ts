@@ -60,6 +60,7 @@ export const {
   collapseTree,
   setCheckedOutputMode,
   updateNodeName,
+  updateNodeDisabled,
   appendChild,
   removeSubtree,
   beginStructureBatch,

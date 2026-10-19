@@ -224,6 +224,89 @@ export class GiantTree {
     return true
   }
 
+  /**
+   * Updates a node's disabled flag without rebuilding the tree. Checkbox
+   * aggregates and lazy-range eligibility are rolled up from the parent.
+   */
+  updateNodeDisabled(id: string, disabled: bool): bool {
+    if (!this.idToIndex.has(id)) return false
+    const index = this.idToIndex.get(id)
+    const node = this.fullTree[index]
+    if (node.disabled === disabled) return true
+    this._materializeLazyCheckboxRanges()
+    node.disabled = disabled
+    const parent = this.compactStore.updateDisabled(index, disabled)
+    if (this.selectType === SelectType.CHECKBOX) {
+      if (disabled) {
+        const previous = this.compactStore.checked[index]
+        if (previous !== 0) {
+          this.compactStore.checked[index] = 0
+          node.checked = CheckType.UNCHECKED
+          if (parent >= 0)
+            this.compactStore.updateChildState(parent, previous, 0)
+        }
+        this._recomputeAncestors(parent)
+      } else {
+        if (this.compactStore.childTotal[index] > 0) {
+          const next = this.compactStore.getAggregateState(index)
+          this.compactStore.checked[index] = next
+          node.checked = next
+          if (parent >= 0) this.compactStore.updateChildState(parent, 0, next)
+        }
+        this._recomputeAncestors(parent)
+      }
+    } else if (disabled) {
+      if (
+        this.selectType === SelectType.RADIO &&
+        this._radioCheckedIdx === index
+      ) {
+        this.fullTree[index].checked = CheckType.UNCHECKED
+        this.compactStore.checked[index] = 0
+        this._radioCheckedIdx = -1
+      } else if (
+        this.selectType === SelectType.SELECT &&
+        this._selectSelectedIdx === index
+      ) {
+        this.fullTree[index].selected = CheckType.UNCHECKED
+        this.compactStore.selected[index] = 0
+        this._selectSelectedIdx = -1
+      }
+    }
+    this._hasSearchCache = false
+    this._invalidateCache()
+    return true
+  }
+
+  private _recomputeAncestors(start: i32): void {
+    let ancestor = start
+    while (ancestor >= 0) {
+      const previous = this.compactStore.checked[ancestor]
+      if (this.compactStore.childTotal[ancestor] > 0) {
+        const next = this.compactStore.getAggregateState(ancestor)
+        if (previous !== next) {
+          this.compactStore.checked[ancestor] = next
+          this.fullTree[ancestor].checked = next as CheckType
+          this.compactStore.updateChildState(
+            this.compactStore.parent[ancestor],
+            previous,
+            next
+          )
+        }
+      } else if (previous !== 0) {
+        // No eligible children left (all disabled): the branch itself is no
+        // longer selectable, so remove it from its parent's aggregate.
+        this.compactStore.checked[ancestor] = 0
+        this.fullTree[ancestor].checked = CheckType.UNCHECKED
+        this.compactStore.updateChildState(
+          this.compactStore.parent[ancestor],
+          previous,
+          0
+        )
+      }
+      ancestor = this.compactStore.parent[ancestor]
+    }
+  }
+
   /** Returns a node and every descendant in preorder for Worker-side deletes. */
   getSubtreeIds(id: string): string[] {
     const ids: string[] = []

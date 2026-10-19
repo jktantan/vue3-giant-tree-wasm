@@ -42,7 +42,9 @@ describe('worker tree mode', () => {
     expect(treeRef.value?.getTreeSize()).toBe(3)
     expect(host.textContent).toContain('Worker A')
 
-    const expandA = host.querySelector('[aria-label="展开 Worker A"]') as HTMLElement
+    const expandA = host.querySelector(
+      '[aria-label="展开 Worker A"]'
+    ) as HTMLElement
     expect(expandA).toBeTruthy()
     expandA.click()
     const animationDeadline = performance.now() + 10_000
@@ -63,7 +65,9 @@ describe('worker tree mode', () => {
     // Once the expand transition settles, it intentionally retains the old
     // row plan. A structural worker snapshot must replace that plan, otherwise
     // edits appear but adds/removes are visually stuck until the next scroll.
-    expect(treeRef.value?.addNode({ id: 'A0', name: 'Worker A0', parentId: 'A' })).toBe(true)
+    expect(
+      treeRef.value?.addNode({ id: 'A0', name: 'Worker A0', parentId: 'A' })
+    ).toBe(true)
     const settledAddDeadline = performance.now() + 10_000
     while (
       performance.now() < settledAddDeadline &&
@@ -88,7 +92,9 @@ describe('worker tree mode', () => {
 
     // A leaf that gains a child must receive fresh MPTT boundaries in the
     // Worker snapshot so TreeItem switches from its spacer to an expand arrow.
-    expect(treeRef.value?.addNode({ id: 'B0', name: 'Worker B0', parentId: 'B' })).toBe(true)
+    expect(
+      treeRef.value?.addNode({ id: 'B0', name: 'Worker B0', parentId: 'B' })
+    ).toBe(true)
     const leafToBranchDeadline = performance.now() + 10_000
     while (
       performance.now() < leafToBranchDeadline &&
@@ -110,20 +116,28 @@ describe('worker tree mode', () => {
 
     treeRef.value?.expandAll()
     const expandAllDeadline = performance.now() + 10_000
-    while (performance.now() < expandAllDeadline && host.querySelectorAll('.tree-item').length !== 3) {
+    while (
+      performance.now() < expandAllDeadline &&
+      host.querySelectorAll('.tree-item').length !== 3
+    ) {
       await nextPaint()
     }
     expect(host.querySelectorAll('.tree-item')).toHaveLength(3)
     treeRef.value?.collapseAll()
     const collapseAllDeadline = performance.now() + 10_000
-    while (performance.now() < collapseAllDeadline && host.querySelectorAll('.tree-item').length !== 2) {
+    while (
+      performance.now() < collapseAllDeadline &&
+      host.querySelectorAll('.tree-item').length !== 2
+    ) {
       await nextPaint()
     }
     expect(host.querySelectorAll('.tree-item')).toHaveLength(2)
 
     // The settled animation plan keeps DOM stable; Worker selection snapshots
     // must still update its checkbox state rather than only the v-model value.
-    const checkA = host.querySelector('[aria-label="选择 Worker A"]') as HTMLElement
+    const checkA = host.querySelector(
+      '[aria-label="选择 Worker A"]'
+    ) as HTMLElement
     expect(checkA.getAttribute('aria-checked')).toBe('false')
     checkA.click()
     const checkDeadline = performance.now() + 10_000
@@ -136,7 +150,9 @@ describe('worker tree mode', () => {
     expect(checkA.getAttribute('aria-checked')).toBe('true')
 
     expect(treeRef.value?.updateNode('A', { name: 'Edited A' })).toBe(true)
-    expect(treeRef.value?.addNode({ id: 'A2', name: 'Worker A2', parentId: 'A' })).toBe(true)
+    expect(
+      treeRef.value?.addNode({ id: 'A2', name: 'Worker A2', parentId: 'A' })
+    ).toBe(true)
     const mutationDeadline = performance.now() + 10_000
     while (performance.now() < mutationDeadline && source.value.length !== 4) {
       await nextPaint()
@@ -153,8 +169,12 @@ describe('worker tree mode', () => {
     // Two synchronous structural calls share one worker transaction and one
     // controlled-model write, rather than rebuilding the derived tree twice.
     treeUpdateCount = 0
-    expect(treeRef.value?.addNode({ id: 'C', name: 'Worker C', parentId: 'root' })).toBe(true)
-    expect(treeRef.value?.addNode({ id: 'D', name: 'Worker D', parentId: 'root' })).toBe(true)
+    expect(
+      treeRef.value?.addNode({ id: 'C', name: 'Worker C', parentId: 'root' })
+    ).toBe(true)
+    expect(
+      treeRef.value?.addNode({ id: 'D', name: 'Worker D', parentId: 'root' })
+    ).toBe(true)
     const batchDeadline = performance.now() + 10_000
     while (performance.now() < batchDeadline && source.value.length !== 3) {
       await nextPaint()
@@ -167,6 +187,84 @@ describe('worker tree mode', () => {
     expect(metrics?.structuralBatches).toBeGreaterThan(0)
     expect(metrics?.structuralOperations).toBeGreaterThanOrEqual(2)
     expect(metrics?.lastRoundTripMs).toBeGreaterThanOrEqual(0)
+
+    app.unmount()
+    host.remove()
+  })
+
+  it('applies content-only updates without a full stream', async () => {
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const treeRef = ref<InstanceType<typeof VueGiantTree>>()
+    const source = ref([
+      { id: 'A', name: 'Content A', parentId: 'root' },
+      { id: 'A1', name: 'Content A1', parentId: 'A' },
+      { id: 'B', name: 'Content B', parentId: 'root' },
+    ])
+    const app = createApp({
+      setup: () => () =>
+        h(VueGiantTree, {
+          ref: treeRef,
+          tree: source.value,
+          root: 'root',
+          modelValue: [],
+          workerMode: true,
+          preorderedInput: true,
+          height: '300px',
+          'onUpdate:tree': (tree: typeof source.value) => {
+            source.value = tree
+          },
+        }),
+    })
+    app.mount(host)
+
+    const readyDeadline = performance.now() + 10_000
+    while (
+      performance.now() < readyDeadline &&
+      treeRef.value?.getTreeSize() !== 3
+    ) {
+      await nextPaint()
+    }
+    expect(host.textContent).toContain('Content A')
+    const hitsBefore = treeRef.value?.getBuildMetrics().contentDiffHits ?? 0
+
+    source.value = source.value.map(node =>
+      node.id === 'A'
+        ? { ...node, name: 'Content A renamed', disabled: true }
+        : node
+    )
+    await nextTick()
+
+    const updateDeadline = performance.now() + 10_000
+    while (
+      performance.now() < updateDeadline &&
+      (!host.textContent?.includes('Content A renamed') ||
+        !host.querySelector('[aria-disabled="true"]'))
+    ) {
+      await nextPaint()
+    }
+    expect(host.textContent).toContain('Content A renamed')
+    expect(host.querySelector('[aria-disabled="true"]')).toBeTruthy()
+    const hitsAfterFirst = treeRef.value?.getBuildMetrics().contentDiffHits ?? 0
+    expect(hitsAfterFirst).toBeGreaterThan(hitsBefore)
+
+    // Mutate a row in place and replace the array: the Worker snapshot must
+    // still detect the new name instead of trusting the previous object.
+    const bNode = source.value.find(node => node.id === 'B')!
+    bNode.name = 'Content B in place'
+    source.value = [...source.value]
+    await nextTick()
+    const inPlaceDeadline = performance.now() + 10_000
+    while (
+      performance.now() < inPlaceDeadline &&
+      !host.textContent?.includes('Content B in place')
+    ) {
+      await nextPaint()
+    }
+    expect(host.textContent).toContain('Content B in place')
+    expect(treeRef.value?.getBuildMetrics().contentDiffHits).toBeGreaterThan(
+      hitsAfterFirst
+    )
 
     app.unmount()
     host.remove()

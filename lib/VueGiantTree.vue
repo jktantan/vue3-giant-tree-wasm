@@ -41,10 +41,20 @@ import {
   clearInputNodeLayouts,
   setTrackInputLayouts,
   setUsePreorderedNeighborInput,
+  updateNodeName,
+  updateNodeDisabled,
 } from '../build/release'
 
 import { debounce } from 'throttle-debounce'
-import { computed, nextTick, onMounted, onUnmounted, ref, toRaw, watch } from 'vue'
+import {
+  computed,
+  nextTick,
+  onMounted,
+  onUnmounted,
+  ref,
+  toRaw,
+  watch,
+} from 'vue'
 import TreeItem from '@lib/TreeItem.vue'
 import {
   computeGuideLines,
@@ -162,6 +172,10 @@ const releaseTreeAnimation = () => {
   treeAnimation.value = undefined
 }
 let allNodesCache: TreeNodeData[] = []
+/** Previous input array, used to recognize content-only tree replacements. */
+let previousTreeInput: TreeInputItem[] | null = null
+/** id → allNodesCache index, so single-node updates stay O(1). */
+let allNodesIndexById = new Map<string, number>()
 let isTreeReady = false
 let isBuilding = false
 let activeSearchKeyword = ''
@@ -208,6 +222,10 @@ const rawTree = () => toRaw(props.tree)
 // echo back through props. Keep the acknowledged controlled value locally so
 // rapid replies compose instead of overwriting one another.
 let workerInput: TreeMutationItem[] = rawTree() as TreeMutationItem[]
+/** Previous content values for Worker mode, in input order. */
+let workerSnapshotNames: string[] = []
+let workerSnapshotParents: string[] = []
+let workerSnapshotDisabled: Uint8Array = new Uint8Array(0)
 let awaitingWorkerTreeEchoes = 0
 let skipNextPresentationOnlyReconcile = false
 const isUsingWorker = () => worker !== undefined
@@ -224,6 +242,8 @@ type BuildMetrics = {
   cacheRefreshMs: number
   shownIndicesMs: number
   selectionStatesMs: number
+  contentDiffMs: number
+  contentDiffHits: number
   totalMs: number
 }
 let buildMetrics: BuildMetrics = {
@@ -238,6 +258,8 @@ let buildMetrics: BuildMetrics = {
   cacheRefreshMs: 0,
   shownIndicesMs: 0,
   selectionStatesMs: 0,
+  contentDiffMs: 0,
+  contentDiffHits: 0,
   totalMs: 0,
 }
 const now = () => performance.now()
@@ -254,6 +276,8 @@ const resetBuildMetrics = () => {
     cacheRefreshMs: 0,
     shownIndicesMs: 0,
     selectionStatesMs: 0,
+    contentDiffMs: 0,
+    contentDiffHits: 0,
     totalMs: 0,
   }
 }
@@ -383,6 +407,126 @@ const refreshTree = () => {
     })
     .filter((node): node is TreeNodeData => node !== undefined)
 }
+/** Rebuild the id → cache index used by content-only updates. */
+const rebuildAllNodesIndex = () => {
+  const index = new Map<string, number>()
+  for (let i = 0; i < allNodesCache.length; i++)
+    index.set(allNodesCache[i].id, i)
+  allNodesIndexById = index
+}
+
+/** True when only `nameField` and the disabled flag changed. */
+const shallowEqualExceptContent = (
+  before: Record<string, unknown>,
+  after: Record<string, unknown>,
+  nameField: string
+): boolean => {
+  const beforeKeys = Object.keys(before).filter(
+    key => key !== nameField && key !== 'disabled'
+  )
+  const afterKeys = Object.keys(after).filter(
+    key => key !== nameField && key !== 'disabled'
+  )
+  if (beforeKeys.length !== afterKeys.length) return false
+  for (let i = 0; i < beforeKeys.length; i++) {
+    const key = beforeKeys[i]
+    if (!Object.prototype.hasOwnProperty.call(after, key)) return false
+    if (before[key] !== after[key]) return false
+  }
+  return true
+}
+
+/**
+ * Content-only reconciliation. Returns true when the new input keeps the same
+ * id/parent order and only changes `name` / `disabled`, so the MPTT index,
+ * visibility and selection state can all be reused. Structural edits,
+ * custom-field edits, search mode and JSON output fall back to the full path.
+ */
+const tryContentOnlyReconcile = (next: TreeInputItem[]): boolean => {
+  if (!isTreeReady || isBuilding) return false
+  if (activeSearchKeyword.length > 0) return false
+  if (!props.outputIdOnly || props.filterFn) return false
+  const previous = previousTreeInput
+  if (previous === null || previous.length !== next.length) return false
+  const idField = props.fieldKeys.idField ?? 'id'
+  const nameField = props.fieldKeys.nameField ?? 'name'
+  const parentIdField = props.fieldKeys.parentIdField ?? 'parentId'
+  const changes: Array<{
+    id: string
+    name: string
+    disabled: boolean
+    nameChanged: boolean
+    disabledChanged: boolean
+    inputIndex: number
+  }> = []
+  let disabledChanges = 0
+  for (let i = 0; i < next.length; i++) {
+    const before = previous[i] as unknown as Record<string, unknown>
+    const after = next[i] as unknown as Record<string, unknown>
+    const id = String(after[idField] ?? '')
+    if (String(before[idField] ?? '') !== id) return false
+    const cacheIndex = allNodesIndexById.get(id)
+    if (cacheIndex === undefined) return false
+    const cached = allNodesCache[cacheIndex]
+    if (cached === undefined) return false
+    const parentId = String(after[parentIdField] ?? '')
+    // Compare against the rendered cache, not the previous input objects: a
+    // caller may mutate rows in place and then replace the array, leaving
+    // `previous` pointing at the already-mutated values.
+    if (parentId !== cached.parentId) return false
+    if (
+      before !== after &&
+      !shallowEqualExceptContent(before, after, nameField)
+    )
+      return false
+    const name = String(after[nameField] ?? '')
+    const nameChanged = cached.name !== name
+    const disabled = after.disabled === true
+    const disabledChanged = cached.disabled !== disabled
+    if (!nameChanged && !disabledChanged) continue
+    if (disabledChanged) disabledChanges++
+    changes.push({
+      id,
+      name,
+      disabled,
+      nameChanged,
+      disabledChanged,
+      inputIndex: i,
+    })
+  }
+  // Each disabled update rewrites the disabledPrefix suffix (O(N)); applying
+  // thousands of them is far slower than one rebuild.
+  if (disabledChanges > 64) return false
+  previousTreeInput = next
+  if (changes.length === 0) return true
+
+  const startedAt = now()
+  let selectionChanged = false
+  for (let i = 0; i < changes.length; i++) {
+    const change = changes[i]
+    if (change.nameChanged) updateNodeName(tree, change.id, change.name)
+    if (change.disabledChanged) {
+      updateNodeDisabled(tree, change.id, change.disabled)
+      selectionChanged = true
+    }
+    const cacheIndex = allNodesIndexById.get(change.id)
+    if (cacheIndex === undefined) continue
+    const cached = allNodesCache[cacheIndex]
+    if (cached === undefined) continue
+    allNodesCache[cacheIndex] = {
+      ...cached,
+      name: change.name,
+      disabled: change.disabled,
+      extendData: next[change.inputIndex] as unknown as Record<string, unknown>,
+    }
+  }
+  refreshTree()
+  if (selectionChanged) emitCheckedResult()
+  buildMetrics.contentDiffMs += now() - startedAt
+  buildMetrics.contentDiffHits++
+  return true
+}
+
 const refreshAllNodesCache = () => {
   // ID-only trees do not need the full JSON serializer just to render rows.
   // Read the compact MPTT layout directly and rebuild the presentation cache
@@ -431,6 +575,8 @@ const refreshAllNodesCache = () => {
       extendData: safeItem,
     }
   })
+  rebuildAllNodesIndex()
+  previousTreeInput = props.tree as TreeInputItem[]
   refreshTree()
 }
 // A macrotask yields the main thread for rendering without relying on rAF.
@@ -587,6 +733,8 @@ const refreshChunkedNodesCache = async () => {
   clearInputNodeLayouts(tree)
   buildMetrics.layoutReleaseMs += now() - layoutReleaseStarted
   allNodesCache = cache
+  rebuildAllNodesIndex()
+  previousTreeInput = props.tree as TreeInputItem[]
   const refreshStarted = now()
   refreshTree()
   buildMetrics.cacheRefreshMs += now() - refreshStarted
@@ -886,6 +1034,95 @@ const postWorkerTransfer = (
   }
 }
 
+/**
+ * Worker-side content-only updates. Sends one batched command and lets the
+ * worker update its WASM instance; the full UTF-8 stream is only used when the
+ * change is structural or too large to be worth a message.
+ */
+const tryWorkerContentUpdates = (next: TreeInputItem[]): boolean => {
+  if (!worker || !isTreeReady || isBuilding) return false
+  if (activeSearchKeyword.length > 0) return false
+  if (!props.outputIdOnly || props.filterFn) return false
+  const previous = previousTreeInput
+  if (previous === null || previous.length !== next.length) return false
+  const idField = props.fieldKeys.idField ?? 'id'
+  const nameField = props.fieldKeys.nameField ?? 'name'
+  const parentIdField = props.fieldKeys.parentIdField ?? 'parentId'
+  const changes: Array<{
+    id: string
+    name: string
+    disabled: boolean
+    nameChanged: boolean
+    disabledChanged: boolean
+    inputIndex: number
+  }> = []
+  if (workerSnapshotNames.length !== next.length) return false
+  let disabledChanges = 0
+  for (let i = 0; i < next.length; i++) {
+    const before = previous[i] as unknown as Record<string, unknown>
+    const after = next[i] as unknown as Record<string, unknown>
+    const id = String(after[idField] ?? '')
+    if (String(before[idField] ?? '') !== id) return false
+    if (String(after[parentIdField] ?? '') !== workerSnapshotParents[i])
+      return false
+    if (
+      before !== after &&
+      !shallowEqualExceptContent(before, after, nameField)
+    )
+      return false
+    const name = String(after[nameField] ?? '')
+    const nameChanged = workerSnapshotNames[i] !== name
+    const disabled = after.disabled === true
+    const disabledChanged = (workerSnapshotDisabled[i] !== 0) !== disabled
+    if (!nameChanged && !disabledChanged) continue
+    if (disabledChanged) disabledChanges++
+    changes.push({
+      id,
+      name,
+      disabled,
+      nameChanged,
+      disabledChanged,
+      inputIndex: i,
+    })
+  }
+  // Applying thousands of disabled updates would repeatedly rewrite the
+  // worker's disabledPrefix suffix; the full stream is cheaper.
+  if (disabledChanges > 64) return false
+  if (changes.length === 0) {
+    previousTreeInput = next
+    workerInput = next as TreeMutationItem[]
+    return true
+  }
+  // A huge batch is no cheaper than the binary stream and risks a large
+  // structured clone, so fall back to the full path. Small trees still use the
+  // batched path; the floor keeps the threshold meaningful for a handful of
+  // nodes.
+  const maxUpdates = Math.max(64, Math.floor(next.length / 4))
+  if (changes.length > maxUpdates) return false
+  previousTreeInput = next
+  workerInput = next as TreeMutationItem[]
+  const updates: Array<{ id: string; name?: string; disabled?: boolean }> = []
+  for (let i = 0; i < changes.length; i++) {
+    const change = changes[i]
+    inputNodeById.set(
+      change.id,
+      next[change.inputIndex] as unknown as Record<string, unknown>
+    )
+    workerSnapshotNames[change.inputIndex] = change.name
+    workerSnapshotDisabled[change.inputIndex] = change.disabled ? 1 : 0
+    const update: { id: string; name?: string; disabled?: boolean } = {
+      id: change.id,
+    }
+    if (change.nameChanged) update.name = change.name
+    if (change.disabledChanged) update.disabled = change.disabled
+    updates.push(update)
+  }
+  const revision = postWorker('update-content', { updates })
+  if (revision === undefined) return false
+  buildMetrics.contentDiffHits++
+  return true
+}
+
 const workerConfig = () => ({
   root: props.root,
   lineHeight: props.lineHeight,
@@ -923,6 +1160,35 @@ const streamWorkerTree = async () => {
     if (start + size < input.length) await nextBuildTurn()
   }
   postWorker('stream-finish')
+  // Subsequent content-only updates diff against the input that was just
+  // streamed. `stream-finish` is posted first, so worker command ordering
+  // guarantees the content update runs on a complete tree.
+  rebuildWorkerContentSnapshot(input as TreeInputItem[])
+  previousTreeInput = input as TreeInputItem[]
+}
+
+/** Snapshot input-order content so in-place row mutations are still detected. */
+const rebuildWorkerContentSnapshot = (items: TreeInputItem[]) => {
+  const nameField = props.fieldKeys.nameField ?? 'name'
+  const parentIdField = props.fieldKeys.parentIdField ?? 'parentId'
+  const names = new Array<string>(items.length)
+  const parents = new Array<string>(items.length)
+  const disabled = new Uint8Array(items.length)
+  for (let i = 0; i < items.length; i++) {
+    const node = items[i] as unknown as Record<string, unknown>
+    names[i] = String(node[nameField] ?? '')
+    parents[i] = String(node[parentIdField] ?? '')
+    disabled[i] = node.disabled === true ? 1 : 0
+  }
+  workerSnapshotNames = names
+  workerSnapshotParents = parents
+  workerSnapshotDisabled = disabled
+}
+
+const invalidateWorkerContentSnapshot = () => {
+  workerSnapshotNames = []
+  workerSnapshotParents = []
+  workerSnapshotDisabled = new Uint8Array(0)
 }
 
 /** Worker 侧回传的结构变更：单条操作或一批操作。 */
@@ -936,6 +1202,7 @@ type WorkerMutation =
 const applyWorkerMutation = (mutation: WorkerMutation | undefined) => {
   if (!mutation) return
   const idField = props.fieldKeys.idField ?? 'id'
+  const parentIdField = props.fieldKeys.parentIdField ?? 'parentId'
   let next = workerInput
   const mutations =
     mutation.type === 'batch' ? (mutation.mutations ?? []) : [mutation]
@@ -948,13 +1215,17 @@ const applyWorkerMutation = (mutation: WorkerMutation | undefined) => {
           : node
       )
       changed = true
+      if (parentIdField in item.patch || 'disabled' in item.patch)
+        invalidateWorkerContentSnapshot()
     } else if (item.type === 'add') {
       next = [...next, item.node]
       changed = true
+      invalidateWorkerContentSnapshot()
     } else if (item.type === 'remove') {
       const removed = new Set<string>(item.ids)
       next = next.filter(node => !removed.has(String(node[idField] ?? '')))
       changed = true
+      invalidateWorkerContentSnapshot()
     }
   }
   if (!changed) return
@@ -1372,6 +1643,8 @@ const updateNode = (id: string, patch: TreeNodePatch): boolean => {
   const next = input.slice()
   next[index] = { ...next[index], ...patch }
   const nameField = props.fieldKeys.nameField ?? 'name'
+  if (nameField in patch)
+    updateNodeName(tree, id, String(next[index][nameField] ?? ''))
   const updatePresentation = (node: TreeNodeData) =>
     node.id === id
       ? {
@@ -1383,7 +1656,12 @@ const updateNode = (id: string, patch: TreeNodePatch): boolean => {
           extendData: next[index],
         }
       : node
-  allNodesCache = allNodesCache.map(updatePresentation)
+  const cacheIndex = allNodesIndexById.get(id)
+  if (cacheIndex !== undefined && allNodesCache[cacheIndex] !== undefined) {
+    allNodesCache[cacheIndex] = updatePresentation(allNodesCache[cacheIndex])
+  } else {
+    allNodesCache = allNodesCache.map(updatePresentation)
+  }
   currentTreeList.value = currentTreeList.value.map(updatePresentation)
   if (treeAnimation.value) {
     treeAnimation.value = {
@@ -1461,13 +1739,14 @@ const removeNode = (id: string): boolean => {
 watch(
   () => props.tree,
   tree => {
-    rebuildGuideLines()
     if (isUsingWorker()) {
       if (awaitingWorkerTreeEchoes > 0) {
         awaitingWorkerTreeEchoes--
         workerInput = tree as TreeMutationItem[]
         return
       }
+      if (tryWorkerContentUpdates(tree as TreeInputItem[])) return
+      rebuildGuideLines()
       workerInput = tree as TreeMutationItem[]
       refreshInputNodeById(tree as TreeMutationItem[])
       // 走二进制流式发送，而不是 postWorker('replace', { tree, ... })：
@@ -1480,8 +1759,13 @@ watch(
     }
     if (skipNextPresentationOnlyReconcile) {
       skipNextPresentationOnlyReconcile = false
+      previousTreeInput = tree as TreeInputItem[]
       return
     }
+    // Name-only replacements reuse the entire structural index. Geometry does
+    // not change, so guide lines do not need to be rebuilt either.
+    if (tryContentOnlyReconcile(tree as TreeInputItem[])) return
+    rebuildGuideLines()
     void reconcileTreeData()
   }
 )

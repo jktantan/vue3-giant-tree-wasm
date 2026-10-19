@@ -22,6 +22,7 @@ type WorkerFieldKeys = {
   leftNodeField?: string
   rightNodeField?: string
 }
+type ContentUpdate = { id: string; name?: string; disabled?: boolean }
 type WorkerConfig = {
   root: string
   lineHeight: number
@@ -46,6 +47,7 @@ type WorkerCommand = {
   checked: CheckType
   mode: CheckedOutputMode
   keyword: string
+  updates: ContentUpdate[]
   patch: Record<string, unknown>
 }
 /** `applyStructure` 的输出，随 snapshot 一起回传主线程。 */
@@ -56,6 +58,7 @@ let wasm: WasmModule
 let tree: TreeInstance | null = null
 let input: Input[] = []
 let inputReady = false
+let inputIndexById = new Map<string, number>()
 let config: WorkerConfig
 let scrollTop = 0
 let scrollHeight = 0
@@ -78,6 +81,10 @@ let lastSerializeMs = 0
 const idField = () => config.fieldKeys.idField ?? 'id'
 const parentField = () => config.fieldKeys.parentIdField ?? 'parentId'
 const idOf = (node: Input) => String(node[idField()] ?? '')
+const rebuildInputIndex = () => {
+  inputIndexById.clear()
+  for (let i = 0; i < input.length; i++) inputIndexById.set(idOf(input[i]), i)
+}
 const workerMetrics = () => ({
   commandsHandled,
   snapshotsSent,
@@ -149,6 +156,7 @@ const snapshot = (revision: number, mutation?: unknown) => {
 }
 const rebuild = (next: Input[]) => {
   input = next
+  rebuildInputIndex()
   // 复用 tree 实例：每次 newTree 会让旧实例的线性内存依赖 GC 异步回收，
   // 高频 replace 时分配速度超过回收速度，形成"内存棘轮"（实测 12 次
   // replace 20 万节点内存涨至 1980MB）。clear() 后 TLSF 分配器原地复用，
@@ -231,6 +239,7 @@ const ensureInput = () => {
     [parentField()]: node.parentId,
     disabled: node.disabled === true,
   }))
+  rebuildInputIndex()
   inputReady = true
 }
 const applyStructure = (m: WorkerCommand): StructureMutation | undefined => {
@@ -248,7 +257,10 @@ const applyStructure = (m: WorkerCommand): StructureMutation | undefined => {
         m.node.disabled === true
       )
     ) {
-      if (inputReady) input.push(m.node)
+      if (inputReady) {
+        input.push(m.node)
+        inputIndexById.set(idOf(m.node), input.length - 1)
+      }
       return { type: 'add', node: m.node }
     }
   } else if (m.type === 'remove') {
@@ -257,6 +269,7 @@ const applyStructure = (m: WorkerCommand): StructureMutation | undefined => {
       if (inputReady) {
         const removedSet = new Set(removed)
         input = input.filter(node => !removedSet.has(idOf(node)))
+        rebuildInputIndex()
       }
       return { type: 'remove', ids: removed }
     }
@@ -303,6 +316,7 @@ const handle = (m: WorkerCommand) => {
     scrollHeight = m.scrollHeight ?? 0
     input = []
     inputReady = false
+    inputIndexById.clear()
     createEmptyTree()
     return
   }
@@ -337,6 +351,29 @@ const handle = (m: WorkerCommand) => {
   // Preserve command order: a check/collapse/search after an add or delete
   // must observe that structural change, even before the timer fires.
   flushStructure()
+  if (m.type === 'update-content') {
+    const updates = m.updates ?? []
+    const nameField = config.fieldKeys.nameField ?? 'name'
+    for (let i = 0; i < updates.length; i++) {
+      const update = updates[i]
+      if (update.name !== undefined)
+        wasm.updateNodeName(tree, update.id, update.name)
+      if (update.disabled !== undefined)
+        wasm.updateNodeDisabled(tree, update.id, update.disabled)
+      if (inputReady) {
+        const index = inputIndexById.get(update.id)
+        if (index !== undefined) {
+          const patch: Record<string, unknown> = {}
+          if (update.name !== undefined) patch[nameField] = update.name
+          if (update.disabled !== undefined) patch.disabled = update.disabled
+          input[index] = { ...input[index], ...patch }
+        }
+      }
+    }
+    snapshot(revision)
+    scheduleCheckedResult(revision)
+    return
+  }
   if (m.type === 'boundary') {
     // 字段在类型上是可选的（别的命令不用它们），运行时则由主线程始终带上；
     // 这里兜底成保留上一次的值，避免把 undefined 灌进几何计算。
