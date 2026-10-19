@@ -165,13 +165,7 @@ export function serializeShownNodesCompact(
   for (let i: i32 = from; i < to; i++) {
     const node = shownNodes[i]
     const fullIndex = node.fullIndex
-    result += nodeToJsonCompact(
-      node,
-      fullIndex,
-      store,
-      i > from,
-      collapsedIds
-    )
+    result += nodeToJsonCompact(node, fullIndex, store, i > from, collapsedIds)
   }
   return result + ']'
 }
@@ -197,12 +191,16 @@ export function serializeMpttArrayCompact(
   store: CompactNodeStore
 ): string {
   if (tree.length === 0) return '[]'
-  let result: string = '['
+  // Collect one string per node and join once. `result += nodeJson` reallocs
+  // and copies the whole accumulated payload on every iteration, which is
+  // quadratic: 10k nodes took ~2.2s versus ~20ms with the parts array.
+  const parts: string[] = new Array<string>(tree.length + 2)
+  parts[0] = '['
   for (let i: i32 = 0; i < tree.length; i++) {
-    result += nodeToJsonCompact(tree[i], i, store, i > 0)
+    parts[i + 1] = nodeToJsonCompact(tree[i], i, store, i > 0)
   }
-  result += ']'
-  return result
+  parts[tree.length + 1] = ']'
+  return parts.join('')
 }
 
 /**

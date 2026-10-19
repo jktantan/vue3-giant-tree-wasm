@@ -84,6 +84,47 @@ export function resetShownFlags(fullTree: MpttTree[]): i32 {
 }
 
 /**
+ * Same visibility rebuild as `resetShownFlags`, but also collects the visible
+ * nodes so callers that need both can avoid a second full-tree scan. When
+ * `previousShown` is supplied, only those nodes are cleared first; they are
+ * exactly the nodes currently flagged `shown`.
+ */
+export function resetShownFlagsAndCollect(
+  fullTree: MpttTree[],
+  previousShown: MpttTree[] | null = null
+): MpttTree[] {
+  if (previousShown !== null) {
+    for (let i: i32 = 0; i < previousShown.length; i++)
+      previousShown[i].shown = false
+  } else {
+    for (let i: i32 = 0; i < fullTree.length; i++) fullTree[i].shown = false
+  }
+
+  const shownNodes: MpttTree[] = []
+  const collapsedBoundaries: i32[] = []
+
+  for (let i: i32 = 0; i < fullTree.length; i++) {
+    const node: MpttTree = fullTree[i]
+    while (
+      collapsedBoundaries.length > 0 &&
+      node.leftNode >= collapsedBoundaries[collapsedBoundaries.length - 1]
+    ) {
+      collapsedBoundaries.pop()
+    }
+    if (collapsedBoundaries.length === 0) {
+      node.shown = true
+      shownNodes.push(node)
+      if (node.collapsed && node.rightNode - node.leftNode > 1) {
+        collapsedBoundaries.push(node.rightNode)
+      }
+    }
+  }
+
+  collapsedBoundaries.splice(0)
+  return shownNodes
+}
+
+/**
  * 非递归设置子树的显示状态：单次遍历 + 栈跟踪折叠边界
  * Non-recursive subtree visibility setter: single pass + stack tracking collapsed boundaries
  * Нерекурсивная установка видимости поддерева: один проход + стек отслеживания свёрнутых границ

@@ -20,6 +20,7 @@ import {
   setCollapsedShown,
   incrementalUpdateShownNodes,
   resetShownFlags,
+  resetShownFlagsAndCollect,
 } from './tree-visibility'
 import {
   checkNodeInTree,
@@ -292,29 +293,27 @@ export class GiantTree {
   private _syncAfterStructureMutation(): void {
     const searchKeyword =
       this.tree === this.searchTree ? this._lastSearchKeyword : ''
-    this.idToIndex = buildIdIndex(this.fullTree)
+    // appendChild/removeSubtree already maintain idToIndex for the rest of the
+    // batch; only the positional fullIndex changes here. Rebuilding the string
+    // Map on every structural edit was an avoidable O(N) hash pass.
+    for (let i: i32 = 0; i < this.fullTree.length; i++)
+      this.fullTree[i].fullIndex = i
     this.tree = this.fullTree
     this.searchTree.splice(0)
     this._clearLazyCheckboxRanges()
     this._invalidateSearchCandidates()
-    resetShownFlags(this.fullTree)
+    // A normal structural edit only changes the old visible set, so clearing
+    // those flags is enough. In search mode fullTree may carry shown flags that
+    // are not in the search view, so fall back to a full clear.
+    const shownNodes = resetShownFlagsAndCollect(
+      this.fullTree,
+      searchKeyword.length > 0 ? null : this._shownNodes
+    )
     this.compactStore.load(this.fullTree)
-    this.compactStore.syncSelection(this.fullTree)
     if (this.selectType === SelectType.CHECKBOX) {
       // A removed or appended child changes the aggregate state of every
       // ancestor above it. Recompute branches from leaves toward the root.
-      for (let i: i32 = this.fullTree.length - 1; i >= 0; i--) {
-        if (this.compactStore.childTotal[i] === 0) continue
-        const previous = this.compactStore.checked[i]
-        const next = this.compactStore.getAggregateState(i)
-        this.compactStore.checked[i] = next
-        this.fullTree[i].checked = next as CheckType
-        this.compactStore.updateChildState(
-          this.compactStore.parent[i],
-          previous,
-          next
-        )
-      }
+      this.compactStore.recomputeAggregates(this.fullTree)
     } else {
       // RADIO/SELECT only ever keep at most one checked node at a time, but a
       // structural edit can change which id we kept. Re-derive the cached
@@ -325,7 +324,12 @@ export class GiantTree {
     }
     this._hasSearchCache = false
     if (searchKeyword.length > 0) this.fuzzySearch(searchKeyword)
-    else this._rebuildShownNodes()
+    else {
+      this._shownNodes = shownNodes
+      this.shownCount = shownNodes.length
+      this._syncLazyShownStates()
+      this._invalidateCache()
+    }
   }
 
   appendChild(

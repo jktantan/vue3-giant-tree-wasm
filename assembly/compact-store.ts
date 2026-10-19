@@ -74,42 +74,85 @@ export class CompactNodeStore {
     this.childTotal = new Int32Array(size)
     this.childChecked = new Int32Array(size)
     this.childHalf = new Int32Array(size)
+
+    const leftBase = this.left.dataStart
+    const rightBase = this.right.dataStart
+    const depthBase = this.depth.dataStart
+    const checkedBase = this.checked.dataStart
+    const selectedBase = this.selected.dataStart
+    const collapsedBase = this.collapsed.dataStart
+    const shownBase = this.shown.dataStart
+    const disabledBase = this.disabled.dataStart
+    const parentBase = this.parent.dataStart
+    const subtreeEndBase = this.subtreeEnd.dataStart
+    const disabledPrefixBase = this.disabledPrefix.dataStart
+    const childTotalBase = this.childTotal.dataStart
+    const childCheckedBase = this.childChecked.dataStart
+    const childHalfBase = this.childHalf.dataStart
+    // Growable stacks are intentionally sized by actual depth/width. Allocating
+    // two `size`-length Int32Arrays pushed a 1M-node build from 512MB to the
+    // allocator's next arena (1GB), even though wide trees only need a handful
+    // of entries here.
     const stack: i32[] = []
     const open: i32[] = []
     for (let i = 0; i < size; i++) {
       const node = tree[i]
-      this.left[i] = node.leftNode
-      this.right[i] = node.rightNode
-      this.depth[i] = node.deep
-      this.checked[i] = node.checked
-      this.selected[i] = node.selected
-      this.collapsed[i] = node.collapsed ? 1 : 0
-      this.shown[i] = node.shown ? 1 : 0
-      this.disabled[i] = node.disabled ? 1 : 0
-      this.disabledPrefix[i + 1] = this.disabledPrefix[i] + this.disabled[i]
+      const offset = <usize>i
+      store<i32>(leftBase + (offset << 2), node.leftNode)
+      store<i32>(rightBase + (offset << 2), node.rightNode)
+      store<i32>(depthBase + (offset << 2), node.deep)
+      const checked = <u8>node.checked
+      store<u8>(checkedBase + offset, checked)
+      store<u8>(selectedBase + offset, <u8>node.selected)
+      store<u8>(collapsedBase + offset, node.collapsed ? 1 : 0)
+      store<u8>(shownBase + offset, node.shown ? 1 : 0)
+      const disabled: u8 = node.disabled ? 1 : 0
+      store<u8>(disabledBase + offset, disabled)
+      store<i32>(
+        disabledPrefixBase + ((offset + 1) << 2),
+        load<i32>(disabledPrefixBase + (offset << 2)) + disabled
+      )
 
       // Preorder MPTT boundaries let us finalize completed subtrees while
       // loading node fields, avoiding a second full traversal below.
       while (
         open.length > 0 &&
-        this.right[open[open.length - 1]] <= this.left[i]
+        load<i32>(rightBase + ((<usize>open[open.length - 1]) << 2)) <=
+          node.leftNode
       )
-        this.subtreeEnd[open.pop()] = i
+        store<i32>(subtreeEndBase + ((<usize>open.pop()) << 2), i)
       while (
         stack.length > 0 &&
-        this.depth[stack[stack.length - 1]] >= this.depth[i]
+        load<i32>(depthBase + ((<usize>stack[stack.length - 1]) << 2)) >=
+          node.deep
       )
         stack.pop()
       if (stack.length > 0) {
-        this.parent[i] = stack[stack.length - 1]
-        if (this.disabled[i] === 0) this.childTotal[this.parent[i]]++
-        if (this.checked[i] === 2 && this.disabled[i] === 0)
-          this.childChecked[this.parent[i]]++
+        const parentIndex = stack[stack.length - 1]
+        store<i32>(parentBase + (offset << 2), parentIndex)
+        if (disabled === 0) {
+          const parentOffset = (<usize>parentIndex) << 2
+          store<i32>(
+            childTotalBase + parentOffset,
+            load<i32>(childTotalBase + parentOffset) + 1
+          )
+          if (checked === 2)
+            store<i32>(
+              childCheckedBase + parentOffset,
+              load<i32>(childCheckedBase + parentOffset) + 1
+            )
+          else if (checked === 1)
+            store<i32>(
+              childHalfBase + parentOffset,
+              load<i32>(childHalfBase + parentOffset) + 1
+            )
+        }
       }
       stack.push(i)
       open.push(i)
     }
-    while (open.length > 0) this.subtreeEnd[open.pop()] = size
+    while (open.length > 0)
+      store<i32>(subtreeEndBase + ((<usize>open.pop()) << 2), size)
   }
 
   setChecked(index: i32, value: u8): void {
@@ -197,6 +240,39 @@ export class CompactNodeStore {
         if (value === 2) store<i32>(checkedPtr, load<i32>(checkedPtr) + 1)
         else if (value === 1) store<i32>(halfPtr, load<i32>(halfPtr) + 1)
       }
+    }
+  }
+
+  /**
+   * Recomputes branch states after a structural edit. `load()` has already
+   * rebuilt the direct-child aggregates, so this only walks leaves upward and
+   * rewrites each branch plus its parent's counters.
+   */
+  recomputeAggregates(tree: MpttTree[]): void {
+    const checkedBase = this.checked.dataStart
+    const parentBase = this.parent.dataStart
+    const childTotalBase = this.childTotal.dataStart
+    const childCheckedBase = this.childChecked.dataStart
+    const childHalfBase = this.childHalf.dataStart
+    for (let i: i32 = this.checked.length - 1; i >= 0; i--) {
+      const offset = <usize>i
+      if (load<i32>(childTotalBase + (offset << 2)) === 0) continue
+      const previous = load<u8>(checkedBase + offset)
+      const next = aggregateStateAt(
+        childCheckedBase,
+        childTotalBase,
+        childHalfBase,
+        i
+      )
+      store<u8>(checkedBase + offset, next)
+      tree[i].checked = next
+      updateChildStateAt(
+        childCheckedBase,
+        childHalfBase,
+        load<i32>(parentBase + (offset << 2)),
+        previous,
+        next
+      )
     }
   }
 
