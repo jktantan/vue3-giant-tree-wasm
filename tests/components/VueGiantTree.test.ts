@@ -474,6 +474,74 @@ describe('VueGiantTree: 主组件', () => {
     expect(arrowAfter.className).toContain('giant-tree__icon-arrow-down')
   })
 
+  it('展开高于视口的分支时，兄弟行在动画期间保留并随容器下移', async () => {
+    const children = Array.from({ length: 30 }, (_, index) => ({
+      id: `c${index}`,
+      name: `Child${index}`,
+      parentId: 'P',
+    }))
+    const wrapper = mount(VueGiantTree, {
+      props: {
+        modelValue: [],
+        root: 'root',
+        tree: [
+          { id: 'P', name: 'Parent', parentId: 'root' },
+          ...children,
+          { id: 'S', name: 'Sibling', parentId: 'root' },
+        ],
+      },
+    })
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+
+    const parent = wrapper
+      .findAll('.tree-item')
+      .find(item => item.text().includes('Parent'))
+    await parent?.find('.item-icon').trigger('click')
+    await wrapper.vm.$nextTick()
+
+    // 展开后虚拟窗口被 30 个子行填满，Sibling 被挤出窗口；它仍必须留在
+    // DOM 中排在过渡容器之后，否则父节点下方会先塌成空白再长出内容。
+    expect(wrapper.find('.giant-tree__branch-transition').exists()).toBe(true)
+    expect(wrapper.text()).toContain('Sibling')
+
+    await new Promise(resolve => setTimeout(resolve, 520))
+    await wrapper.vm.$nextTick()
+  })
+
+  it('分支过渡时长随高度增加而变长（像素速度恒定）', async () => {
+    const children = Array.from({ length: 18 }, (_, index) => ({
+      id: `c${index}`,
+      name: `Child${index}`,
+      parentId: 'P',
+    }))
+    const wrapper = mount(VueGiantTree, {
+      props: {
+        modelValue: [],
+        root: 'root',
+        tree: [{ id: 'P', name: 'Parent', parentId: 'root' }, ...children],
+      },
+    })
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+
+    const parent = wrapper
+      .findAll('.tree-item')
+      .find(item => item.text().includes('Parent'))
+    await parent?.find('.item-icon').trigger('click')
+    await wrapper.vm.$nextTick()
+
+    const style =
+      wrapper.find('.giant-tree__branch-transition').attributes('style') ?? ''
+    const duration = Number(
+      /--giant-tree-branch-duration:\s*(\d+)ms/.exec(style)?.[1]
+    )
+    // 18 行 × 26px 远超单行分支的 120ms 下限，说明时长由高度换算而来，
+    // 而不是所有分支共用一个固定时长。
+    expect(duration).toBeGreaterThan(120)
+    await waitForBranchAnimation(wrapper)
+  })
+
   it('展开与折叠完成后过渡容器都已释放，折叠的行离开 DOM', async () => {
     const wrapper = mount(VueGiantTree, {
       props: {

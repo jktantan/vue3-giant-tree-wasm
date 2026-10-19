@@ -150,11 +150,29 @@ type TreeAnimation = {
   parentId: string
   /** 参与高度过渡的行：展开时是新出现的子行，折叠时是即将消失的子行。 */
   rows: TreeNodeData[]
+  /**
+   * 展开后虚拟窗口会把父节点之后的兄弟行挤出列表。动画期间仍要渲染它们，
+   * 否则父节点下方会先塌成空白，容器再从空白里长出来。
+   */
+  extraRows: TreeNodeData[]
   height: number
+  /** 本次过渡的时长，按高度换算（见 branchAnimationDuration）。 */
+  duration: number
 }
 const treeAnimation = ref<TreeAnimation>()
 const animationOpen = ref(false)
-const animationDuration = 220
+/**
+ * 分支展开/折叠按「每毫秒移动多少像素」计时，而不是固定总时长：同样速度下，
+ * 分支越高动画越久。上下限避免单行分支一闪而过、超高分支拖沓。
+ */
+const ANIMATION_PX_PER_MS = 1.2
+const ANIMATION_MIN_DURATION = 120
+const ANIMATION_MAX_DURATION = 400
+const branchAnimationDuration = (height: number) =>
+  Math.min(
+    ANIMATION_MAX_DURATION,
+    Math.max(ANIMATION_MIN_DURATION, Math.round(height / ANIMATION_PX_PER_MS))
+  )
 let animationTimer: ReturnType<typeof setTimeout> | undefined
 let frozenScrollTop = 0
 let pendingResizeHeight: number | undefined
@@ -839,6 +857,19 @@ const animationRowIds = computed(
 const animationParentId = computed(() => treeAnimation.value?.parentId)
 /** 容器里渲染的行。 */
 const transitionRows = computed(() => treeAnimation.value?.rows ?? [])
+/**
+ * 普通列表要渲染的行：当前视口行 + 展开动画期间被新窗口挤出的兄弟行。
+ * 后者追加在末尾，正好排在过渡容器之后，让它们跟随容器高度一起下移。
+ */
+const renderRows = computed(() => {
+  const extra = treeAnimation.value?.extraRows
+  if (!extra?.length) return currentTreeList.value
+  const ids = new Set(currentTreeList.value.map(item => item.id))
+  return [
+    ...currentTreeList.value,
+    ...extra.filter(item => !ids.has(item.id)),
+  ]
+})
 /** 容器方向，仅用于挂 CSS 类。 */
 const transitionDirection = computed(
   () => treeAnimation.value?.direction ?? 'expand'
@@ -846,6 +877,10 @@ const transitionDirection = computed(
 /** 过渡容器的高度：展开到 rows 总高、折叠到 0。 */
 const branchTransitionHeight = computed(() =>
   animationOpen.value ? (treeAnimation.value?.height ?? 0) : 0
+)
+/** 过渡容器的时长（ms），作为 CSS 变量交给样式表。 */
+const branchTransitionDuration = computed(
+  () => treeAnimation.value?.duration ?? ANIMATION_MAX_DURATION
 )
 
 const finishTreeAnimation = () => {
@@ -924,11 +959,27 @@ const startTreeAnimation = async (
       : rowsInside(beforeChange, parent)
   if (rows.length === 0) return
 
+  // 展开会让虚拟窗口立即切换成「父节点 + 填满视口的子行」，原来的兄弟行被
+  // 挤出窗口。若直接丢掉它们，父节点下方会在动画开始的第一帧塌成空白，
+  // 容器只能从空白里长出来；保留下来追加在容器之后，才能看到平滑的下移。
+  const afterIds = new Set(afterChange.map(item => item.id))
+  const parentIndex = beforeChange.findIndex(item => item.id === parent.id)
+  const extraRows =
+    direction === 'expand' && parentIndex >= 0
+      ? beforeChange
+          .slice(parentIndex + 1)
+          .filter(item => !afterIds.has(item.id))
+      : []
+
+  const height = rows.length * props.lineHeight
+  const duration = branchAnimationDuration(height)
   treeAnimation.value = {
     direction,
     parentId: parent.id,
     rows,
-    height: rows.length * props.lineHeight,
+    extraRows,
+    height,
+    duration,
   }
   frozenScrollTop = scrollTop
   // Collapse begins open and closes; expansion follows the inverse sequence.
@@ -946,7 +997,7 @@ const startTreeAnimation = async (
   })
   // transitionend is not guaranteed (e.g. a tab is backgrounded), so the
   // timeout always returns the component to normal virtual rendering.
-  animationTimer = setTimeout(finishTreeAnimation, animationDuration + 80)
+  animationTimer = setTimeout(finishTreeAnimation, duration + 80)
 }
 
 const fk = props.fieldKeys
@@ -1828,7 +1879,7 @@ defineExpose({
         容器按顺序插在父节点行之后。所以未变化的行——以及它们的箭头、焦点、子组件
         状态——不会因为展开/折叠动画被重新挂载。
       -->
-      <template v-for="item in currentTreeList" :key="item.id">
+      <template v-for="item in renderRows" :key="item.id">
         <tree-item
           v-if="!animationRowIds.has(item.id)"
           :style="{ height: lineHeight + 'px' }"
@@ -1857,7 +1908,10 @@ defineExpose({
           v-if="animationParentId === item.id"
           class="giant-tree__branch-transition"
           :class="`giant-tree__branch-transition--${transitionDirection}`"
-          :style="{ height: branchTransitionHeight + 'px' }"
+          :style="{
+            height: branchTransitionHeight + 'px',
+            '--giant-tree-branch-duration': branchTransitionDuration + 'ms',
+          }"
           @transitionend.self="finishTreeAnimation"
         >
           <tree-item
