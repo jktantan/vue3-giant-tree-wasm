@@ -216,6 +216,9 @@ const runAction = (action: ApiAction) => {
   const instance = treeRef.value
   switch (action) {
     case 'reload':
+      // clearAllChecked mutates the WASM/Worker selection state; assigning
+      // checked.value alone only clears the v-model output.
+      instance?.clearAllChecked()
       tree.value = createData()
       checked.value = []
       log(t.reload)
