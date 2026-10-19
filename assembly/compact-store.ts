@@ -1,5 +1,42 @@
 import { CheckType, MpttTree } from './models'
 
+// Hot loops address the typed arrays through their data pointer once. The
+// owning typed-array references stay alive for the whole call, so GC
+// ownership is unchanged; only per-element shadow-stack bookkeeping and
+// bounds checks are removed. Kept private to this module and inlined.
+// @ts-ignore: decorator
+@inline
+function updateChildStateAt(
+  childCheckedBase: usize,
+  childHalfBase: usize,
+  parent: i32,
+  previous: u8,
+  next: u8
+): void {
+  if (parent < 0 || previous === next) return
+  const offset = (<usize>parent) << 2
+  const checkedPtr = childCheckedBase + offset
+  const halfPtr = childHalfBase + offset
+  if (previous === 2) store<i32>(checkedPtr, load<i32>(checkedPtr) - 1)
+  else if (previous === 1) store<i32>(halfPtr, load<i32>(halfPtr) - 1)
+  if (next === 2) store<i32>(checkedPtr, load<i32>(checkedPtr) + 1)
+  else if (next === 1) store<i32>(halfPtr, load<i32>(halfPtr) + 1)
+}
+
+// @ts-ignore: decorator
+@inline
+function aggregateStateAt(
+  childCheckedBase: usize,
+  childTotalBase: usize,
+  childHalfBase: usize,
+  index: i32
+): u8 {
+  const offset = (<usize>index) << 2
+  const childChecked = load<i32>(childCheckedBase + offset)
+  if (childChecked === load<i32>(childTotalBase + offset)) return 2
+  return childChecked === 0 && load<i32>(childHalfBase + offset) === 0 ? 0 : 1
+}
+
 /**
  * 紧凑数值布局原型：把 MPTT 数值和状态字段放入连续 typed arrays。
  * 当前用于对拍和内存评估，字符串仍由对象模型保留；后续可逐模块替换读取方。
@@ -106,17 +143,28 @@ export class CompactNodeStore {
   syncSelection(tree: MpttTree[]): void {
     const size =
       tree.length < this.checked.length ? tree.length : this.checked.length
+    const checkedBase = this.checked.dataStart
+    const selectedBase = this.selected.dataStart
+    const disabledBase = this.disabled.dataStart
+    const parentBase = this.parent.dataStart
+    const childCheckedBase = this.childChecked.dataStart
+    const childHalfBase = this.childHalf.dataStart
     for (let i: i32 = 0; i < size; i++) {
-      this.checked[i] = tree[i].checked
-      this.selected[i] = tree[i].selected
-      this.childChecked[i] = 0
-      this.childHalf[i] = 0
+      const offset = <usize>i
+      store<u8>(checkedBase + offset, <u8>tree[i].checked)
+      store<u8>(selectedBase + offset, <u8>tree[i].selected)
+      store<i32>(childCheckedBase + (offset << 2), 0)
+      store<i32>(childHalfBase + (offset << 2), 0)
     }
     for (let i: i32 = 0; i < size; i++) {
-      const parent = this.parent[i]
-      if (parent >= 0 && this.disabled[i] === 0) {
-        if (this.checked[i] === 2) this.childChecked[parent]++
-        else if (this.checked[i] === 1) this.childHalf[parent]++
+      const offset = <usize>i
+      const parent = load<i32>(parentBase + (offset << 2))
+      if (parent >= 0 && load<u8>(disabledBase + offset) === 0) {
+        const value = load<u8>(checkedBase + offset)
+        const checkedPtr = childCheckedBase + ((<usize>parent) << 2)
+        const halfPtr = childHalfBase + ((<usize>parent) << 2)
+        if (value === 2) store<i32>(checkedPtr, load<i32>(checkedPtr) + 1)
+        else if (value === 1) store<i32>(halfPtr, load<i32>(halfPtr) + 1)
       }
     }
   }
@@ -125,19 +173,29 @@ export class CompactNodeStore {
   resetCheckboxSelection(tree: MpttTree[]): void {
     const size =
       tree.length < this.checked.length ? tree.length : this.checked.length
+    const checkedBase = this.checked.dataStart
+    const disabledBase = this.disabled.dataStart
+    const parentBase = this.parent.dataStart
+    const childCheckedBase = this.childChecked.dataStart
+    const childHalfBase = this.childHalf.dataStart
     for (let i: i32 = 0; i < size; i++) {
-      this.childChecked[i] = 0
-      this.childHalf[i] = 0
-      if (this.disabled[i] === 0) {
-        this.checked[i] = 0
+      const offset = <usize>i
+      store<i32>(childCheckedBase + (offset << 2), 0)
+      store<i32>(childHalfBase + (offset << 2), 0)
+      if (load<u8>(disabledBase + offset) === 0) {
+        store<u8>(checkedBase + offset, 0)
         tree[i].checked = CheckType.UNCHECKED
       }
     }
     for (let i: i32 = 0; i < size; i++) {
-      const parent = this.parent[i]
-      if (parent >= 0 && this.disabled[i] === 0) {
-        if (this.checked[i] === 2) this.childChecked[parent]++
-        else if (this.checked[i] === 1) this.childHalf[parent]++
+      const offset = <usize>i
+      const parent = load<i32>(parentBase + (offset << 2))
+      if (parent >= 0 && load<u8>(disabledBase + offset) === 0) {
+        const value = load<u8>(checkedBase + offset)
+        const checkedPtr = childCheckedBase + ((<usize>parent) << 2)
+        const halfPtr = childHalfBase + ((<usize>parent) << 2)
+        if (value === 2) store<i32>(checkedPtr, load<i32>(checkedPtr) + 1)
+        else if (value === 1) store<i32>(halfPtr, load<i32>(halfPtr) + 1)
       }
     }
   }
@@ -156,9 +214,23 @@ export class CompactNodeStore {
       this.disabled[targetIndex] !== 0
     )
       return
-    const targetPrevious = this.checked[targetIndex]
-    this.updateChildState(this.parent[targetIndex], targetPrevious, value)
-    this.checked[targetIndex] = value
+    const checkedBase = this.checked.dataStart
+    const disabledBase = this.disabled.dataStart
+    const parentBase = this.parent.dataStart
+    const childCheckedBase = this.childChecked.dataStart
+    const childHalfBase = this.childHalf.dataStart
+    const childTotalBase = this.childTotal.dataStart
+    const targetOffset = <usize>targetIndex
+
+    const targetPrevious = load<u8>(checkedBase + targetOffset)
+    updateChildStateAt(
+      childCheckedBase,
+      childHalfBase,
+      load<i32>(parentBase + (targetOffset << 2)),
+      targetPrevious,
+      value
+    )
+    store<u8>(checkedBase + targetOffset, value)
     tree[targetIndex].checked = value
     const subtreeEnd = this.subtreeEnd[targetIndex]
     // Fast path: when this subtree has no disabled descendants there is no
@@ -166,29 +238,56 @@ export class CompactNodeStore {
     // saves a typed-array load per child on the hot checkbox path.
     if (!this.hasDisabledInSubtree(targetIndex)) {
       for (let i = targetIndex + 1; i < subtreeEnd; i++) {
-        const previous = this.checked[i]
-        this.updateChildState(this.parent[i], previous, value)
-        this.checked[i] = value
+        const offset = <usize>i
+        const previous = load<u8>(checkedBase + offset)
+        updateChildStateAt(
+          childCheckedBase,
+          childHalfBase,
+          load<i32>(parentBase + (offset << 2)),
+          previous,
+          value
+        )
+        store<u8>(checkedBase + offset, value)
         tree[i].checked = value
       }
     } else {
       for (let i = targetIndex + 1; i < subtreeEnd; i++) {
-        if (this.disabled[i] === 0) {
-          const previous = this.checked[i]
-          this.updateChildState(this.parent[i], previous, value)
-          this.checked[i] = value
+        const offset = <usize>i
+        if (load<u8>(disabledBase + offset) === 0) {
+          const previous = load<u8>(checkedBase + offset)
+          updateChildStateAt(
+            childCheckedBase,
+            childHalfBase,
+            load<i32>(parentBase + (offset << 2)),
+            previous,
+            value
+          )
+          store<u8>(checkedBase + offset, value)
           tree[i].checked = value
         }
       }
     }
-    let ancestor = this.parent[targetIndex]
+    let ancestor = load<i32>(parentBase + (targetOffset << 2))
     while (ancestor >= 0) {
-      const next = this.getAggregateState(ancestor)
-      const previous = this.checked[ancestor]
-      this.updateChildState(this.parent[ancestor], previous, next)
-      this.checked[ancestor] = next
+      const ancestorOffset = <usize>ancestor
+      const next = aggregateStateAt(
+        childCheckedBase,
+        childTotalBase,
+        childHalfBase,
+        ancestor
+      )
+      const previous = load<u8>(checkedBase + ancestorOffset)
+      const ancestorParent = load<i32>(parentBase + (ancestorOffset << 2))
+      updateChildStateAt(
+        childCheckedBase,
+        childHalfBase,
+        ancestorParent,
+        previous,
+        next
+      )
+      store<u8>(checkedBase + ancestorOffset, next)
       tree[ancestor].checked = next
-      ancestor = this.parent[ancestor]
+      ancestor = ancestorParent
     }
   }
 
