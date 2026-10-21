@@ -80,7 +80,12 @@ const send = (action: ApiAction) => emit('action', action)
         </label>
         <label class="field">
           <span>{{ t.lineHeight }}</span>
-          <input v-model.number="settings.lineHeight" type="number" min="18" max="60" />
+          <input
+            v-model.number="settings.lineHeight"
+            type="number"
+            min="18"
+            max="60"
+          />
         </label>
         <label class="field">
           <span>{{ t.fontSize }}</span>
@@ -125,7 +130,7 @@ const send = (action: ApiAction) => emit('action', action)
       </label>
       <div v-if="settings.enableFilterFn" class="segmented">
         <button
-          v-for="c in (['A', 'B'] as const)"
+          v-for="c in ['A', 'B'] as const"
           :key="c"
           type="button"
           :class="{ active: settings.filterCategory === c }"
@@ -163,7 +168,12 @@ const send = (action: ApiAction) => emit('action', action)
         </label>
         <label class="field" title="showLine.width">
           <span>{{ t.lineWidth }}</span>
-          <input v-model.number="settings.showLineWidth" type="number" min="1" max="4" />
+          <input
+            v-model.number="settings.showLineWidth"
+            type="number"
+            min="1"
+            max="4"
+          />
         </label>
       </div>
       <div class="fields">
@@ -204,14 +214,30 @@ const send = (action: ApiAction) => emit('action', action)
           :placeholder="t.keywordPlaceholder"
           @keyup.enter="send('search')"
         />
-        <button type="button" class="primary" @click="send('search')">{{ t.search }}</button>
-        <button type="button" @click="send('clearSearch')">{{ t.clear }}</button>
+        <button type="button" class="primary" @click="send('search')">
+          {{ t.search }}
+        </button>
+        <button type="button" @click="send('clearSearch')">
+          {{ t.clear }}
+        </button>
       </div>
+      <label class="check" title="searchHighlight">
+        <input v-model="settings.searchHighlight" type="checkbox" />
+        <span>{{ t.searchHighlight }}</span>
+      </label>
       <div class="segmented">
-        <button type="button" title="switchDisplay(TREE)" @click="send('switchDisplayTree')">
+        <button
+          type="button"
+          title="switchDisplay(TREE)"
+          @click="send('switchDisplayTree')"
+        >
           {{ t.treeView }}
         </button>
-        <button type="button" title="switchDisplay(SEARCH)" @click="send('switchDisplaySearch')">
+        <button
+          type="button"
+          title="switchDisplay(SEARCH)"
+          @click="send('switchDisplaySearch')"
+        >
           {{ t.searchView }}
         </button>
       </div>
@@ -227,10 +253,16 @@ const send = (action: ApiAction) => emit('action', action)
           :placeholder="t.checkedIdsPlaceholder"
           @keyup.enter="send('setCheckedFromInput')"
         />
-        <button type="button" class="primary" @click="send('setCheckedFromInput')">
+        <button
+          type="button"
+          class="primary"
+          @click="send('setCheckedFromInput')"
+        >
           {{ t.apply }}
         </button>
-        <button type="button" @click="send('setCheckedRandom')">{{ t.random }}</button>
+        <button type="button" @click="send('setCheckedRandom')">
+          {{ t.random }}
+        </button>
       </div>
     </section>
 
@@ -251,7 +283,12 @@ const send = (action: ApiAction) => emit('action', action)
       <div class="fields">
         <label class="field" title="buildBatchSize">
           <span>{{ t.buildBatchSize }}</span>
-          <input v-model.number="settings.buildBatchSize" type="number" min="100" step="100" />
+          <input
+            v-model.number="settings.buildBatchSize"
+            type="number"
+            min="100"
+            step="100"
+          />
         </label>
         <label class="field" title="fieldKeys">
           <span>{{ t.fieldKeys }}</span>
@@ -269,22 +306,42 @@ const send = (action: ApiAction) => emit('action', action)
         <button type="button" title="expandAll()" @click="send('expandAll')">
           {{ t.expandAll }}
         </button>
-        <button type="button" title="collapseAll()" @click="send('collapseAll')">
+        <button
+          type="button"
+          title="collapseAll()"
+          @click="send('collapseAll')"
+        >
           {{ t.collapseAll }}
         </button>
-        <button type="button" title="clearAllChecked()" @click="send('clearAllChecked')">
+        <button
+          type="button"
+          title="clearAllChecked()"
+          @click="send('clearAllChecked')"
+        >
           {{ t.clearChecked }}
         </button>
-        <button type="button" title="refreshCheckedResult()" @click="send('refreshCheckedResult')">
+        <button
+          type="button"
+          title="refreshCheckedResult()"
+          @click="send('refreshCheckedResult')"
+        >
           {{ t.methodRefresh }}
         </button>
-        <button type="button" title="updateNode(id, patch)" @click="send('updateFirst')">
+        <button
+          type="button"
+          title="updateNode(id, patch)"
+          @click="send('updateFirst')"
+        >
           {{ t.methodUpdate }}
         </button>
         <button type="button" title="addNode(node)" @click="send('addChild')">
           {{ t.methodAdd }}
         </button>
-        <button type="button" title="removeNode(id)" @click="send('removeLast')">
+        <button
+          type="button"
+          title="removeNode(id)"
+          @click="send('removeLast')"
+        >
           {{ t.methodRemove }}
         </button>
         <button
@@ -294,7 +351,9 @@ const send = (action: ApiAction) => emit('action', action)
         >
           {{ t.methodMetrics }}
         </button>
-        <button type="button" class="primary" @click="send('reload')">{{ t.reload }}</button>
+        <button type="button" class="primary" @click="send('reload')">
+          {{ t.reload }}
+        </button>
       </div>
     </section>
   </div>

@@ -3,6 +3,7 @@ import { SelectType, CheckType } from '../build/release'
 import type {
   FilterFn,
   NodeIconResolver,
+  SearchHighlightPart,
   ShowLineStyle,
   TreeNodeData,
 } from './types'
@@ -31,6 +32,14 @@ const props = defineProps<{
   showLineColor?: string
   /** 连接线粗细（px）。 / Guide-line width in px. */
   showLineWidth?: number
+  /**
+   * 模糊搜索当前生效的关键词。空字符串表示不启用高亮；命中时会按关键词
+   * 切片，只标记关键词本身，祖先行等未命中的文本保持原样。
+   * The keyword applied by the current fuzzy search. Empty disables it; matches
+   * are split so only the keyword itself is marked, while non-matching text
+   * (for example ancestors completing the path) stays unstyled.
+   */
+  highlightKeyword?: string
 }>()
 
 const emit = defineEmits([
@@ -69,6 +78,36 @@ const nodeIconClass = computed<string | undefined>(() => {
 const collapsedClick = () => {
   emit('collapse-click', props.item.id, !props.item.collapsed)
 }
+
+/**
+ * 按当前关键词把节点名切成「普通文本 / 命中片段」。
+ *
+ * 匹配语义与 WASM 搜索保持一致（区分大小写的 `indexOf`），而且标记的是
+ * 用户输入的关键词原文，不是整个节点名；关键词为空或名称未命中时返回
+ * `null`，模板走无高亮的轻量分支。
+ *
+ * Split the node name into plain / matched runs for the active keyword. Uses the
+ * same case-sensitive `indexOf` semantics as the WASM search, and marks only the
+ * typed keyword rather than the whole name. Returns `null` when there is nothing
+ * to highlight, so the template keeps its lightweight path.
+ */
+const highlightParts = computed<SearchHighlightPart[] | null>(() => {
+  const keyword = props.highlightKeyword
+  if (!keyword) return null
+  const name = props.item.name
+  let from = 0
+  let at = name.indexOf(keyword)
+  if (at < 0) return null
+  const parts: SearchHighlightPart[] = []
+  while (at >= 0) {
+    if (at > from) parts.push({ text: name.slice(from, at), hit: false })
+    parts.push({ text: keyword, hit: true })
+    from = at + keyword.length
+    at = name.indexOf(keyword, from)
+  }
+  if (from < name.length) parts.push({ text: name.slice(from), hit: false })
+  return parts
+})
 
 /**
  * 连接线模式：为每个缩进格计算该画什么线。
@@ -312,8 +351,16 @@ const contextMenu = (event: MouseEvent) => {
       aria-hidden="true"
     ></div>
     <div class="item-text">
-      <slot name="node" :node="item">
-        <span>{{ item.name }}</span>
+      <slot name="node" :node="item" :highlights="highlightParts">
+        <span v-if="highlightParts === null">{{ item.name }}</span>
+        <span v-else>
+          <template v-for="(part, index) in highlightParts" :key="index">
+            <mark v-if="part.hit" class="giant-tree__search-hit">{{
+              part.text
+            }}</mark>
+            <template v-else>{{ part.text }}</template>
+          </template>
+        </span>
       </slot>
     </div>
     <div v-if="$slots.actions" class="item-actions" @click.stop>

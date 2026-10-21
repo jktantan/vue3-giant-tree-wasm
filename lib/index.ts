@@ -30,4 +30,5 @@ export type {
   ShowLineStyle,
   ShowLineOptions,
   ResolvedShowLineOptions,
+  SearchHighlightPart,
 } from './types'

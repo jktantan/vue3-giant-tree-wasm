@@ -82,6 +82,7 @@ const MESSAGES = {
     // 搜索
     keyword: '关键词',
     keywordPlaceholder: '例如 节点 n1',
+    searchHighlight: '搜索关键词高亮',
     search: '搜索',
     clear: '清除',
     view: '显示模式',
@@ -123,7 +124,8 @@ const MESSAGES = {
     instanceMethods: 'Instance methods',
     searchGroup: 'Fuzzy search',
     checkedIdsGroup: 'Programmatic selection',
-    sizeHint: 'Anything above 10k is generated only after you click, so the page stays fast.',
+    sizeHint:
+      'Anything above 10k is generated only after you click, so the page stays fast.',
     sizeHeavy: 'big',
     nodeCount: (n: number) => `${n} nodes`,
     sizeLabels: {
@@ -188,6 +190,7 @@ const MESSAGES = {
     rootLabel: 'Root',
     keyword: 'Keyword',
     keywordPlaceholder: 'e.g. Node n1',
+    searchHighlight: 'Highlight keyword',
     search: 'Search',
     clear: 'Clear',
     view: 'View',
@@ -226,7 +229,8 @@ const MESSAGES = {
     instanceMethods: 'Методы экземпляра',
     searchGroup: 'Нечёткий поиск',
     checkedIdsGroup: 'Программный выбор',
-    sizeHint: 'Всё выше 10k создаётся только по клику, чтобы страница оставалась быстрой.',
+    sizeHint:
+      'Всё выше 10k создаётся только по клику, чтобы страница оставалась быстрой.',
     sizeHeavy: 'много',
     nodeCount: (n: number) => `${n} узлов`,
     sizeLabels: {
@@ -295,6 +299,7 @@ const MESSAGES = {
     rootLabel: 'Корень',
     keyword: 'Ключевое слово',
     keywordPlaceholder: 'например, Node n1',
+    searchHighlight: 'Подсветка ключевого слова',
     search: 'Найти',
     clear: 'Очистить',
     view: 'Представление',

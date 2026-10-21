@@ -28,6 +28,14 @@ $giant-tree__trans: all 0.3s ease-in-out;
 $giant-tree__line-color: #d0d4dc !default;
 $giant-tree__line-width: 1px !default;
 
+/*
+模糊搜索命中片段（searchHighlight）：关键词底色与文字颜色。
+默认文字颜色继承所在行，不改变原有排版观感；宿主可用 CSS 变量
+--giant-tree-search-hit-bg / --giant-tree-search-hit-color 在运行时覆盖。
+ */
+$giant-tree__search-hit-bg: #ffe58f !default;
+$giant-tree__search-hit-color: inherit !default;
+
 $shadow-top-inset: inset 0 12px 10px -12px rgb(0 0 0 / 60%); /* 上内阴影 */
 $shadow-bottom-inset: inset 0 -12px 10px -12px rgb(0 0 0 / 60%); /* 上内阴影 */
 $shadow-horizontal-inset: $shadow-top-inset, $shadow-bottom-inset;

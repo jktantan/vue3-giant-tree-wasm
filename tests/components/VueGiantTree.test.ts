@@ -285,6 +285,59 @@ describe('VueGiantTree: 主组件', () => {
     await wrapper.vm.$nextTick()
     expect(wrapper.findAll('.tree-item')).toHaveLength(2)
   })
+  it('开启 searchHighlight 时只高亮输入的关键词片段', async () => {
+    const wrapper = mount(VueGiantTree, {
+      props: {
+        modelValue: [],
+        root: 'root',
+        searchHighlight: true,
+        tree: [
+          { id: 'parent', name: 'Parent Group', parentId: 'root' },
+          { id: 'child', name: 'Match A and Match B', parentId: 'parent' },
+          { id: 'hidden', name: 'Hidden child', parentId: 'child' },
+        ],
+      },
+    })
+    await flushPromises()
+    ;(wrapper.vm as TreeApi).fuzzySearchRaw('Match')
+    await wrapper.vm.$nextTick()
+
+    const hits = wrapper.findAll('.giant-tree__search-hit')
+    expect(hits.map(hit => hit.text())).toEqual(['Match', 'Match'])
+
+    // 祖先只是因为补全路径出现，名称不含关键词，不应被高亮。
+    const parent = wrapper
+      .findAll('.tree-item')
+      .find(item => item.text() === 'Parent Group')
+    expect(parent?.find('.giant-tree__search-hit').exists()).toBe(false)
+  })
+
+  it('searchHighlight 默认关闭，清空搜索后高亮消失', async () => {
+    const tree = [
+      { id: 'parent', name: 'Parent Group', parentId: 'root' },
+      { id: 'child', name: 'Match A', parentId: 'parent' },
+    ]
+    const off = mount(VueGiantTree, {
+      props: { modelValue: [], root: 'root', tree },
+    })
+    await flushPromises()
+    ;(off.vm as TreeApi).fuzzySearchRaw('Match')
+    await off.vm.$nextTick()
+    expect(off.find('.giant-tree__search-hit').exists()).toBe(false)
+
+    const on = mount(VueGiantTree, {
+      props: { modelValue: [], root: 'root', searchHighlight: true, tree },
+    })
+    await flushPromises()
+    ;(on.vm as TreeApi).fuzzySearchRaw('Match')
+    await on.vm.$nextTick()
+    expect(on.find('.giant-tree__search-hit').exists()).toBe(true)
+
+    ;(on.vm as TreeApi).fuzzySearchRaw('')
+    await on.vm.$nextTick()
+    expect(on.find('.giant-tree__search-hit').exists()).toBe(false)
+  })
+
   it('搜索结果首次收缩只影响被点击的节点', async () => {
     const wrapper = mount(VueGiantTree, {
       props: {

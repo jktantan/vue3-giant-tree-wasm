@@ -13,20 +13,52 @@ hit so the results remain reachable paths in the tree. Both parts run in WASM
 - results go into a separate `searchTree`, so the main tree's collapse state is untouched:
   expanding inside search results never changes the main tree.
 
-| Limit | Value | Meaning |
-| --- | --- | --- |
+| Limit                      | Value        | Meaning                                                                 |
+| -------------------------- | ------------ | ----------------------------------------------------------------------- |
 | Maximum matches per search | `5000` nodes | Collection stops there, so a huge result set cannot stall serialization |
 
 ## Methods
 
-| Method | Description |
-| --- | --- |
-| `fuzzySearch(keyword)` | Fuzzy search with **300ms debounce**, meant to be bound to an input; an empty string clears it |
-| `fuzzySearchRaw(keyword)` | Immediate, no debounce; an empty string clears it |
-| `switchDisplay(displayType)` | Switches between the `DisplayType.TREE` and `DisplayType.SEARCH` views |
+| Method                       | Description                                                                                    |
+| ---------------------------- | ---------------------------------------------------------------------------------------------- |
+| `fuzzySearch(keyword)`       | Fuzzy search with **300ms debounce**, meant to be bound to an input; an empty string clears it |
+| `fuzzySearchRaw(keyword)`    | Immediate, no debounce; an empty string clears it                                              |
+| `switchDisplay(displayType)` | Switches between the `DisplayType.TREE` and `DisplayType.SEARCH` views                         |
 
 The search view keeps its own expansion state: expanding a branch while searching leaves the main
 tree exactly as collapsed as it was.
+
+## Keyword highlighting
+
+Turn on `search-highlight` and each result wraps only **the typed keyword** in
+`<mark class="giant-tree__search-hit">`; the rest of the name stays untouched:
+
+```vue
+<VueGiantTree :tree="rows" root="root" search-highlight v-model="selected" />
+```
+
+- Off by default. Ancestors that only complete the path are not highlighted unless their own name matches.
+- Matching uses the same case-sensitive substring rule as the WASM search, and every occurrence is marked.
+- Clearing the search (`fuzzySearchRaw('')`) removes the highlight immediately.
+- Styles live in `lib/assets/style/highlight.scss`; override them with the
+  `--giant-tree-search-hit-bg` / `--giant-tree-search-hit-color` CSS variables.
+
+When you render rows through the `#node` slot, the built-in `<mark>` does not apply. The slot
+receives `highlights` (`SearchHighlightPart[] | null`) with the runs already split; render by `hit`:
+
+```vue
+<template #node="{ node, highlights }">
+  <span v-if="!highlights">{{ node.name }}</span>
+  <span v-else>
+    <template v-for="(part, i) in highlights" :key="i">
+      <mark v-if="part.hit" class="giant-tree__search-hit">{{
+        part.text
+      }}</mark>
+      <template v-else>{{ part.text }}</template>
+    </template>
+  </span>
+</template>
+```
 
 ## Usage
 
@@ -76,3 +108,4 @@ const TreePlayground = defineClientComponent(() =>
 Try it: search for `n1` — it matches `n1` and `n10`…`n19`, and each result is shown together with
 its ancestors. Now press "Collapse all": that only affects the search view; clear the keyword and
 the main tree is unchanged.
+"Highlight keyword" is on by default here, so each `n1` is marked on its own; uncheck it to compare.

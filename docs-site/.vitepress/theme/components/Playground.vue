@@ -3,7 +3,15 @@
  * 完整演示场：覆盖组件的全部 prop、实例方法、插槽与事件。
  * 只在客户端加载（`playground.md` 用 `defineClientComponent`），避免 SSR 期执行浏览器 API。
  */
-import { computed, nextTick, onMounted, reactive, ref, shallowRef, watch } from 'vue'
+import {
+  computed,
+  nextTick,
+  onMounted,
+  reactive,
+  ref,
+  shallowRef,
+  watch,
+} from 'vue'
 import {
   VueGiantTree,
   SelectType,
@@ -38,13 +46,18 @@ const logs = ref<LogEntry[]>([])
 // 同样用 shallowRef：选中结果在「仅输出 ID」关闭、且选了上万节点时是对象数组，
 // 而它会被 formatCheckedResult() 完整 JSON.stringify 出来 —— 深度响应式代理会让
 // 这次遍历慢一个数量级。这里始终整体替换数组，浅层引用足够。
-const checked = shallowRef<TreeNodeData | TreeNodeData[] | string | string[]>([])
+const checked = shallowRef<TreeNodeData | TreeNodeData[] | string | string[]>(
+  []
+)
 const nodeCount = ref(0)
 const metrics = ref({ build: '—', worker: '—' })
 let addedCount = 0
 
 const log = (text: string) => {
-  logs.value = [{ at: Math.round(performance.now()), text }, ...logs.value].slice(0, 50)
+  logs.value = [
+    { at: Math.round(performance.now()), text },
+    ...logs.value,
+  ].slice(0, 50)
 }
 
 const idField = () => (settings.fieldKeysMode === 'custom' ? 'key' : 'id')
@@ -53,7 +66,9 @@ const idField = () => (settings.fieldKeysMode === 'custom' ? 'key' : 'id')
 const createData = (): TreeInputItem[] => {
   // `preorderedInput` 只有数据真的是前序排列时才有意义（否则组件会静默回退到通用构建），
   // 所以开关打开时换成前序生成器。
-  const build = settings.preorderedInput ? buildPreorderedTreeData : buildTreeData
+  const build = settings.preorderedInput
+    ? buildPreorderedTreeData
+    : buildTreeData
   const nodes = build(settings.size, {
     disabledEvery: settings.enableDisabled ? 9 : 0,
     categoryEvery: 4,
@@ -147,7 +162,10 @@ const nodeIcon = computed<boolean | NodeIconResolver>(() => {
       return node =>
         node.extendData?.category === 'B'
           ? false
-          : { collapsed: 'playground-icon-folder', expanded: 'playground-icon-folder-open' }
+          : {
+              collapsed: 'playground-icon-folder',
+              expanded: 'playground-icon-folder-open',
+            }
     default:
       return false
   }
@@ -287,8 +305,16 @@ const runAction = (action: ApiAction) => {
       const parentId = firstId() || 'root'
       const node =
         settings.fieldKeysMode === 'custom'
-          ? { key: `新增${addedCount}`, label: `${t.nodeLabel} 新增${addedCount}`, parent: parentId }
-          : { id: `新增${addedCount}`, name: `${t.nodeLabel} 新增${addedCount}`, parentId }
+          ? {
+              key: `新增${addedCount}`,
+              label: `${t.nodeLabel} 新增${addedCount}`,
+              parent: parentId,
+            }
+          : {
+              id: `新增${addedCount}`,
+              name: `${t.nodeLabel} 新增${addedCount}`,
+              parentId,
+            }
       const ok = instance?.addNode(node)
       log(`addNode(${JSON.stringify(node)}) → ${ok}`)
       break
@@ -337,13 +363,17 @@ const runAction = (action: ApiAction) => {
 }
 
 const onContextMenu = (node: TreeNodeData, event: MouseEvent) => {
-  log(`item-contextmenu(${node.id}) @ ${event.clientX},${event.clientY}（未调用 preventDefault）`)
+  log(
+    `item-contextmenu(${node.id}) @ ${event.clientX},${event.clientY}（未调用 preventDefault）`
+  )
 }
 
 /** 行内操作：直接作用在点击的那一行上。 */
 const renameNode = (node: TreeNodeData) => {
   const nameField = settings.fieldKeysMode === 'custom' ? 'label' : 'name'
-  const ok = treeRef.value?.updateNode(node.id, { [nameField]: `改名 ${node.id}` })
+  const ok = treeRef.value?.updateNode(node.id, {
+    [nameField]: `改名 ${node.id}`,
+  })
   log(`updateNode(${node.id}) → ${ok}`)
   void refreshCount()
 }
@@ -352,8 +382,16 @@ const addChildNode = (node: TreeNodeData) => {
   addedCount += 1
   const row =
     settings.fieldKeysMode === 'custom'
-      ? { key: `新增${addedCount}`, label: `${t.nodeLabel} 新增${addedCount}`, parent: node.id }
-      : { id: `新增${addedCount}`, name: `${t.nodeLabel} 新增${addedCount}`, parentId: node.id }
+      ? {
+          key: `新增${addedCount}`,
+          label: `${t.nodeLabel} 新增${addedCount}`,
+          parent: node.id,
+        }
+      : {
+          id: `新增${addedCount}`,
+          name: `${t.nodeLabel} 新增${addedCount}`,
+          parentId: node.id,
+        }
   const ok = treeRef.value?.addNode(row)
   log(`addNode(under ${node.id}) → ${ok}`)
   void refreshCount()
@@ -373,7 +411,9 @@ watch(
     () => settings.enableDisabled,
   ],
   async ([size, mode, preordered]) => {
-    log(`${t.dataChanged}: ${size}${mode === 'custom' ? ` / ${t.customFields}` : ''}${preordered ? ` / ${t.preorder}` : ''}`)
+    log(
+      `${t.dataChanged}: ${size}${mode === 'custom' ? ` / ${t.customFields}` : ''}${preordered ? ` / ${t.preorder}` : ''}`
+    )
     // 按数据量自动切换 Worker（见 AUTO_WORKER_PRESETS 的说明）：大档位开、小档位关。
     // 这里双向设置是有意的 —— 只开不关的话，从大档位切回小档位会残留着 Worker，
     // 小数据反而白付一次往返。
@@ -447,6 +487,7 @@ onMounted(async () => {
             :select-type="selectType"
             :show-line="showLine"
             :node-icon="nodeIcon"
+            :search-highlight="settings.searchHighlight"
             :filter-fn="filterFn"
             :output-id-only="settings.outputIdOnly"
             :checked-output-mode="outputMode"
@@ -457,8 +498,19 @@ onMounted(async () => {
             :field-keys="fieldKeys"
             @item-contextmenu="onContextMenu"
           >
-            <template v-if="settings.useNodeSlot || settings.mptt" #node="{ node }">
-              <span>{{ node.name }}</span>
+            <template
+              v-if="settings.useNodeSlot || settings.mptt"
+              #node="{ node, highlights }"
+            >
+              <span v-if="!highlights">{{ node.name }}</span>
+              <span v-else>
+                <template v-for="(part, index) in highlights" :key="index">
+                  <mark v-if="part.hit" class="giant-tree__search-hit">{{
+                    part.text
+                  }}</mark>
+                  <template v-else>{{ part.text }}</template>
+                </template>
+              </span>
               <code v-if="settings.mptt" class="playground__mptt">
                 L{{ node.leftNode }} R{{ node.rightNode }}
               </code>
@@ -490,7 +542,8 @@ onMounted(async () => {
         </div>
 
         <p v-if="settings.useActionsSlot" class="playground__note">
-          {{ t.rowActions }}：{{ t.editNode }} / {{ t.addChildNode }} / {{ t.deleteNode }}
+          {{ t.rowActions }}：{{ t.editNode }} / {{ t.addChildNode }} /
+          {{ t.deleteNode }}
         </p>
       </div>
 
@@ -510,14 +563,24 @@ onMounted(async () => {
 
           <div class="result-col result-col--meta">
             <dl class="result-meta">
-              <div><dt>{{ t.rows }}</dt><dd>{{ tree.length }}</dd></div>
+              <div>
+                <dt>{{ t.rows }}</dt>
+                <dd>{{ tree.length }}</dd>
+              </div>
               <div>
                 <dt>{{ t.fieldMode }}</dt>
                 <dd>
-                  {{ settings.fieldKeysMode === 'custom' ? t.fieldKeysCustom : t.fieldKeysDefault }}
+                  {{
+                    settings.fieldKeysMode === 'custom'
+                      ? t.fieldKeysCustom
+                      : t.fieldKeysDefault
+                  }}
                 </dd>
               </div>
-              <div><dt>{{ t.sizeLabel }}</dt><dd>{{ t.sizeLabels[settings.size] }}</dd></div>
+              <div>
+                <dt>{{ t.sizeLabel }}</dt>
+                <dd>{{ t.sizeLabels[settings.size] }}</dd>
+              </div>
             </dl>
             <dl class="result-meta">
               <div>

@@ -108,6 +108,16 @@ const props = withDefaults(
      * (solid / `#d0d4dc` / 1px); `ShowLineOptions` further customizes shape, color, width.
      */
     showLine?: boolean | ShowLineOptions
+    /**
+     * 是否高亮模糊搜索命中的关键词片段。默认 `false`，保持既有视觉不变；
+     * 开启后只高亮输入的关键词本身，未命中关键词的祖先行不受影响。
+     * 样式见 `lib/assets/style/highlight.scss`。
+     *
+     * Whether to highlight the matched keyword inside fuzzy search results.
+     * Defaults to `false`; only the typed keyword is highlighted, while ancestor
+     * rows that merely complete the path stay unstyled.
+     */
+    searchHighlight?: boolean
   }>(),
   {
     width: '100%',
@@ -126,6 +136,7 @@ const props = withDefaults(
     workerMode: false,
     preorderedInput: false,
     showLine: false,
+    searchHighlight: false,
   }
 )
 const emit = defineEmits([
@@ -196,7 +207,16 @@ let previousTreeInput: TreeInputItem[] | null = null
 let allNodesIndexById = new Map<string, number>()
 let isTreeReady = false
 let isBuilding = false
-let activeSearchKeyword = ''
+/**
+ * 当前生效的搜索关键词。必须是响应式的：模板用它为可见行计算关键词高亮，
+ * 且只在搜索真正执行时更新（而不是输入框每次按键），避免防抖窗口内
+ * 旧结果按新关键词高亮。
+ *
+ * The keyword currently applied to the tree. Reactive because the template uses
+ * it to highlight visible rows; updated when the search actually runs, not on
+ * every input keystroke, so debounced results never render mismatched highlights.
+ */
+const activeSearchKeyword = ref('')
 let worker: Worker | undefined
 let workerRevision = 0
 let workerCheckedIds: string[] = []
@@ -462,7 +482,7 @@ const shallowEqualExceptContent = (
  */
 const tryContentOnlyReconcile = (next: TreeInputItem[]): boolean => {
   if (!isTreeReady || isBuilding) return false
-  if (activeSearchKeyword.length > 0) return false
+  if (activeSearchKeyword.value.length > 0) return false
   if (!props.outputIdOnly || props.filterFn) return false
   const previous = previousTreeInput
   if (previous === null || previous.length !== next.length) return false
@@ -1092,7 +1112,7 @@ const postWorkerTransfer = (
  */
 const tryWorkerContentUpdates = (next: TreeInputItem[]): boolean => {
   if (!worker || !isTreeReady || isBuilding) return false
-  if (activeSearchKeyword.length > 0) return false
+  if (activeSearchKeyword.value.length > 0) return false
   if (!props.outputIdOnly || props.filterFn) return false
   const previous = previousTreeInput
   if (previous === null || previous.length !== next.length) return false
@@ -1552,7 +1572,7 @@ const checkClick = (id: string, checkType: CheckType) => {
 
 /** 模糊搜索（无防抖，立即执行）/ Fuzzy search (no debounce, immediate) / Нечёткий поиск (без антидребезга, немедленно) */
 const rawFuzzySearch = (keyword: string) => {
-  activeSearchKeyword = keyword
+  activeSearchKeyword.value = keyword
   if (isUsingWorker()) {
     postWorker('search', { keyword })
     return
@@ -1623,8 +1643,8 @@ const switchDisplay = (displayType: DisplayType) => {
   if (isUsingWorker()) {
     // Search commands already select the worker's search view. Clearing search
     // returns to TREE; explicit view switching is otherwise a no-op here.
-    if (displayType === DisplayType.TREE && activeSearchKeyword) {
-      activeSearchKeyword = ''
+    if (displayType === DisplayType.TREE && activeSearchKeyword.value) {
+      activeSearchKeyword.value = ''
       postWorker('search', { keyword: '' })
     }
     return
@@ -1665,7 +1685,7 @@ const reconcileTreeData = async () => {
 
     for (const id of expandedIds) collapseTree(tree, id, false)
     if (checkedIds.length > 0) setCheckedNodes(tree, checkedIds)
-    if (activeSearchKeyword) fuzzyTree(tree, activeSearchKeyword)
+    if (activeSearchKeyword.value) fuzzyTree(tree, activeSearchKeyword.value)
   } finally {
     isBuilding = false
   }
@@ -1893,6 +1913,7 @@ defineExpose({
           :show-line-style="showLineConfig.options.style"
           :show-line-color="showLineConfig.options.color"
           :show-line-width="showLineConfig.options.width"
+          :highlight-keyword="searchHighlight ? activeSearchKeyword : ''"
           @check-click="checkClick"
           @item-click="itemClick"
           @item-contextmenu="contextMenuClick"
@@ -1928,6 +1949,7 @@ defineExpose({
             :show-line-style="showLineConfig.options.style"
             :show-line-color="showLineConfig.options.color"
             :show-line-width="showLineConfig.options.width"
+            :highlight-keyword="searchHighlight ? activeSearchKeyword : ''"
             @check-click="checkClick"
             @item-click="itemClick"
             @item-contextmenu="contextMenuClick"

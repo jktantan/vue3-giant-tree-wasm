@@ -440,3 +440,54 @@ describe('TreeItem: 连接线模式 (showLine)', () => {
     )
   })
 })
+
+describe('TreeItem: 搜索关键词高亮', () => {
+  const mountWithKeyword = (name: string, highlightKeyword?: string) =>
+    mount(TreeItem, {
+      props: {
+        item: makeItem({ name }),
+        fontSize: '14px',
+        selectType: SelectType.CHECKBOX,
+        highlightKeyword,
+      },
+    })
+
+  it('只把关键词片段包进 mark，其余文本保持原样', () => {
+    const wrapper = mountWithKeyword('Match A and Match B', 'Match')
+    expect(
+      wrapper.findAll('.giant-tree__search-hit').map(hit => hit.text())
+    ).toEqual(['Match', 'Match'])
+    expect(wrapper.find('.item-text').text()).toBe('Match A and Match B')
+  })
+
+  it('关键词为空时不产生高亮节点', () => {
+    const wrapper = mountWithKeyword('Match A')
+    expect(wrapper.find('.giant-tree__search-hit').exists()).toBe(false)
+  })
+
+  it('名称未命中关键词时不产生高亮节点', () => {
+    const wrapper = mountWithKeyword('Parent Group', 'Match')
+    expect(wrapper.find('.giant-tree__search-hit').exists()).toBe(false)
+    expect(wrapper.find('.item-text').text()).toBe('Parent Group')
+  })
+
+  it('与 WASM 搜索一致：区分大小写', () => {
+    const wrapper = mountWithKeyword('match a', 'Match')
+    expect(wrapper.find('.giant-tree__search-hit').exists()).toBe(false)
+  })
+
+  it('通过 node 插槽的 highlights 暴露切片', () => {
+    const wrapper = mount(TreeItem, {
+      props: {
+        item: makeItem({ name: 'Hello World' }),
+        fontSize: '14px',
+        selectType: SelectType.CHECKBOX,
+        highlightKeyword: 'World',
+      },
+      slots: {
+        node: `<span class="slot-name">{{ node.name }}|{{ highlights[1].text }}|{{ highlights[1].hit }}</span>`,
+      },
+    })
+    expect(wrapper.find('.slot-name').text()).toBe('Hello World|World|true')
+  })
+})

@@ -44,6 +44,8 @@ const useNodeSlot = ref(false)
 const showMpttBoundaries = ref(true)
 /** 是否开启连接线。开启时由 `showLineConfig` 派生具体样式 / 颜色 / 粗细。 */
 const showLine = ref(false)
+/** 搜索命中关键词高亮；demo 的 #node 插槽会消费 highlights 片段。 */
+const searchHighlight = ref(false)
 type ShowLineStyleMode = 'solid' | 'dashed' | 'dotted'
 const showLineStyle = ref<ShowLineStyleMode>('solid')
 /** 用户选择颜色：键名映射到 CSS color；「默认」用组件内置 `#d0d4dc`。 */
@@ -536,6 +538,10 @@ const switchDisplay = (type: DisplayType) => {
               <input type="checkbox" v-model="showLine" />
               显示连接线（├/└ 分支线）
             </label>
+            <label class="toggle-label">
+              <input type="checkbox" v-model="searchHighlight" />
+              搜索关键词高亮
+            </label>
             <div v-if="showLine" class="show-line-controls">
               <div class="btn-group show-line-style-group">
                 <span class="control-caption">样式</span>
@@ -855,12 +861,25 @@ const switchDisplay = (type: DisplayType) => {
             :filter-fn="filterFn"
             :node-icon="nodeIcon"
             :show-line="showLineConfig"
+            :search-highlight="searchHighlight"
             :worker-mode="true"
             :preordered-input="true"
             v-model="checkedResult"
           >
-            <template #node="{ node }">
-              <span>{{ node.name }}</span>
+            <template #node="{ node, highlights }">
+              <!--
+                demo 始终使用 #node 插槽，因此默认 fallback 的关键词高亮不会自动出现；
+                这里消费组件透传的 highlights 片段，保证高亮开关在 demo 中可见。
+              -->
+              <span v-if="!highlights">{{ node.name }}</span>
+              <span v-else>
+                <template v-for="(part, index) in highlights" :key="index">
+                  <mark v-if="part.hit" class="giant-tree__search-hit">{{
+                    part.text
+                  }}</mark>
+                  <template v-else>{{ part.text }}</template>
+                </template>
+              </span>
               <span
                 v-if="showMpttBoundaries"
                 class="mptt-boundary-badge"

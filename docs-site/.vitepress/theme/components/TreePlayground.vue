@@ -53,6 +53,8 @@ const dataOptions = () => ({
 const data = ref(buildTreeData(size.value, dataOptions()))
 const checked = ref<TreeNodeData | TreeNodeData[] | string | string[]>([])
 const keyword = ref('')
+/** 模糊搜索页默认展示关键词高亮，其他页面不启用。 */
+const highlight = ref(props.preset === 'fuzzy-search')
 const useLine = ref(props.preset === 'guide-lines' || props.showLine)
 const icons = ref(props.preset === 'node-icons' || props.nodeIcon)
 const nodeCount = ref(data.value.length)
@@ -124,11 +126,19 @@ const querySize = () => {
         <span>{{ t.sizeLabel }}</span>
         <select
           :value="size"
-          @change="reload(($event.target as HTMLSelectElement).value as TreePreset)"
+          @change="
+            reload(($event.target as HTMLSelectElement).value as TreePreset)
+          "
         >
-          <option value="small">{{ t.sizeLabels.small }} · {{ t.nodeCount(39) }}</option>
-          <option value="medium">{{ t.sizeLabels.medium }} · {{ t.nodeCount(258) }}</option>
-          <option value="10k">{{ t.sizeLabels['10k'] }} · {{ t.nodeCount(10000) }}</option>
+          <option value="small">
+            {{ t.sizeLabels.small }} · {{ t.nodeCount(39) }}
+          </option>
+          <option value="medium">
+            {{ t.sizeLabels.medium }} · {{ t.nodeCount(258) }}
+          </option>
+          <option value="10k">
+            {{ t.sizeLabels['10k'] }} · {{ t.nodeCount(10000) }}
+          </option>
         </select>
       </label>
 
@@ -154,6 +164,10 @@ const querySize = () => {
         </label>
         <button type="button" @click="doSearch">{{ t.search }}</button>
         <button type="button" @click="clearSearch">{{ t.clear }}</button>
+        <label class="tree-playground__field">
+          <span>{{ t.searchHighlight }}</span>
+          <input type="checkbox" v-model="highlight" />
+        </label>
       </template>
 
       <template v-if="preset === 'check-and-output'">
@@ -181,7 +195,9 @@ const querySize = () => {
       </template>
 
       <template v-if="preset === 'check-and-output' || preset === 'crud'">
-        <button type="button" @click="clearChecked">{{ t.clearChecked }}</button>
+        <button type="button" @click="clearChecked">
+          {{ t.clearChecked }}
+        </button>
       </template>
 
       <button type="button" @click="expandAll">{{ t.expandAll }}</button>
@@ -199,6 +215,7 @@ const querySize = () => {
         height="420px"
         :select-type="selectType"
         :show-line="useLine"
+        :search-highlight="highlight"
         :node-icon="icons ? nodeIconResolver : false"
         :filter-fn="
           preset === 'check-and-output' && enableFilterFn ? filterFn : undefined
@@ -208,8 +225,12 @@ const querySize = () => {
     </div>
 
     <div class="tree-playground__output">
-      <p><strong>{{ t.totalNodes }}：</strong>{{ nodeCount }}</p>
-      <p><strong>{{ t.checkedResult }}：</strong>{{ resultText }}</p>
+      <p>
+        <strong>{{ t.totalNodes }}：</strong>{{ nodeCount }}
+      </p>
+      <p>
+        <strong>{{ t.checkedResult }}：</strong>{{ resultText }}
+      </p>
     </div>
   </div>
 </template>

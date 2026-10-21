@@ -116,6 +116,21 @@ export interface TreeNodeData {
 }
 
 /**
+ * 搜索命中高亮片段：`hit: true` 的片段就是用户输入的关键词原文。
+ * 通过 `#node` 插槽的 `highlights` prop 暴露，便于自定义渲染复用同一套切片。
+ *
+ * A fuzzy-search highlight run: `hit: true` marks the typed keyword itself.
+ * Exposed through the `#node` slot's `highlights` prop so custom renderers can
+ * reuse the same slicing.
+ */
+export interface SearchHighlightPart {
+  /** 片段文本。 / Run text. */
+  text: string
+  /** 是否为命中关键词的片段。 / Whether this run is the matched keyword. */
+  hit: boolean
+}
+
+/**
  * 树输入项：用户传入的原始树节点数据（邻接表格式）
  * Tree input item: raw tree node data from user (adjacency list format)
  * Элемент ввода дерева: исходные данные узла дерева от пользователя (формат списка смежности)

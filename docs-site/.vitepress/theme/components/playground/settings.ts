@@ -2,12 +2,7 @@ import type { TreePreset } from '../treeData'
 
 export type SelectTypeName = 'CHECKBOX' | 'RADIO' | 'SELECT'
 export type ShowLineStyleName = 'solid' | 'dashed' | 'dotted'
-export type NodeIconMode =
-  | 'off'
-  | 'default'
-  | 'business'
-  | 'single'
-  | 'partial'
+export type NodeIconMode = 'off' | 'default' | 'business' | 'single' | 'partial'
 export type OutputModeName = 'All' | 'RootOnly' | 'LeafOnly' | 'Custom'
 export type FieldKeysMode = 'default' | 'custom'
 
@@ -30,6 +25,8 @@ export interface PlaygroundSettings {
   showLineColor: string
   showLineWidth: number
   nodeIcon: NodeIconMode
+  /** 高亮模糊搜索命中的关键词片段。 */
+  searchHighlight: boolean
   /** 给树容器加深色背景，用于检查自定义图标在暗色下的效果。 */
   darkIconBg: boolean
   /** 用 `#node` 插槽把 MPTT 的 leftNode/rightNode 打在节点名后面。 */
@@ -65,6 +62,7 @@ export const DEFAULT_SETTINGS: PlaygroundSettings = {
   showLineColor: '#d0d4dc',
   showLineWidth: 1,
   nodeIcon: 'off',
+  searchHighlight: false,
   darkIconBg: false,
   mptt: false,
   useNodeSlot: false,
