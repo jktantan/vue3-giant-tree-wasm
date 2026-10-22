@@ -12,6 +12,7 @@ import {
   newTree,
   newTreeWithKeys,
   setBoundary,
+  setLineHeight,
   SelectType,
   CheckedOutputMode,
   clear,
@@ -21,8 +22,15 @@ import {
   getShownHeight,
   collapseTree,
   collapseAll,
+  expandByIds,
   checkNode,
   getCheckedIdList,
+  getCheckedIndices,
+  appendChild,
+  removeSubtree,
+  getSubtreeIds,
+  beginStructureBatch,
+  endStructureBatch,
   CheckType,
   DisplayType,
   fuzzyTree,
@@ -57,9 +65,9 @@ import {
 } from 'vue'
 import TreeItem from '@lib/TreeItem.vue'
 import {
-  computeGuideLines,
+  computePackedGuideLines,
+  decodeGuideLine,
   resolveShowLineOptions,
-  type GuideLineInfo,
 } from './guide'
 import type {
   TreeNodeData,
@@ -264,8 +272,11 @@ let workerInput: TreeMutationItem[] = rawTree() as TreeMutationItem[]
 let workerSnapshotNames: string[] = []
 let workerSnapshotParents: string[] = []
 let workerSnapshotDisabled: Uint8Array = new Uint8Array(0)
-let awaitingWorkerTreeEchoes = 0
-let skipNextPresentationOnlyReconcile = false
+let pendingWorkerTreeEcho: TreeMutationItem[] | null = null
+let pendingPresentationEcho: TreeMutationItem[] | null = null
+let workerConfigRestreamPending = false
+let pendingConfigRebuild: { restoreSelection: boolean } | null = null
+let isConfigRebuilding = false
 const isUsingWorker = () => worker !== undefined
 let buildStartedAt = 0
 type BuildMetrics = {
@@ -360,7 +371,7 @@ const ro = new ResizeObserver((entries: ResizeObserverEntry[]) => {
  * Because the geometry never depends on the collapsed state, one pass covers
  * every render path (main thread, worker viewport slice, search view).
  */
-const guideByNode = ref<Map<string, GuideLineInfo>>(new Map())
+const guideByNode = ref<Map<string, number>>(new Map())
 /**
  * `props.showLine` 的归一化结果：`enabled=false` 时模板走轻量占位分支，避免无谓渲染；
  * `enabled=true` 时把 `style` / `color` / `width` 透传给 `TreeItem`，由 CSS 变量生效。
@@ -379,8 +390,9 @@ const showLineConfig = computed(() => resolveShowLineOptions(props.showLine))
  */
 const applyGuide = (node: TreeNodeData): TreeNodeData => {
   if (!showLineConfig.value.enabled) return node
-  const guide = guideByNode.value.get(node.id)
-  if (guide === undefined) return node
+  const packed = guideByNode.value.get(node.id)
+  if (packed === undefined) return node
+  const guide = decodeGuideLine(packed)
   if (
     node.isLastChild === guide.isLastChild &&
     node.guideMask === guide.guideMask &&
@@ -395,14 +407,15 @@ const applyGuide = (node: TreeNodeData): TreeNodeData => {
     markerLine: guide.markerLine,
   }
 }
-/** 重算连接线字段；运行时切换 showLine 或替换 tree/root/fieldKeys 时调用。 */
-const rebuildGuideLines = () => {
+/**
+ * 重算连接线字段；运行时切换 showLine 或替换 tree/root/fieldKeys 时调用。
+ * `items` 允许调用方传入尚未回传的最新输入（增量增删时使用）。
+ */
+const rebuildGuideLines = (
+  items: TreeInputItem[] = rawTree() as TreeInputItem[]
+) => {
   guideByNode.value = showLineConfig.value.enabled
-    ? computeGuideLines(
-        props.tree as TreeInputItem[],
-        props.root,
-        props.fieldKeys
-      )
+    ? computePackedGuideLines(items, props.root, props.fieldKeys)
     : new Map()
 }
 const refreshTree = () => {
@@ -445,33 +458,90 @@ const refreshTree = () => {
     })
     .filter((node): node is TreeNodeData => node !== undefined)
 }
-/** Rebuild the id → cache index used by content-only updates. */
-const rebuildAllNodesIndex = () => {
-  const index = new Map<string, number>()
-  for (let i = 0; i < allNodesCache.length; i++)
-    index.set(allNodesCache[i].id, i)
-  allNodesIndexById = index
-}
-
-/** True when only `nameField` and the disabled flag changed. */
+/**
+ * True when only `nameField` and the disabled flag changed. Allocation-free:
+ * this runs once per row on large trees (1M rows), where two `Object.keys`
+ * arrays per pair dominated the content-diff pass.
+ */
 const shallowEqualExceptContent = (
   before: Record<string, unknown>,
   after: Record<string, unknown>,
   nameField: string
 ): boolean => {
-  const beforeKeys = Object.keys(before).filter(
-    key => key !== nameField && key !== 'disabled'
-  )
-  const afterKeys = Object.keys(after).filter(
-    key => key !== nameField && key !== 'disabled'
-  )
-  if (beforeKeys.length !== afterKeys.length) return false
-  for (let i = 0; i < beforeKeys.length; i++) {
-    const key = beforeKeys[i]
+  let compared = 0
+  for (const key in before) {
+    if (!Object.prototype.hasOwnProperty.call(before, key)) continue
+    if (key === nameField || key === 'disabled') continue
+    compared++
     if (!Object.prototype.hasOwnProperty.call(after, key)) return false
     if (before[key] !== after[key]) return false
   }
-  return true
+  let afterCount = 0
+  for (const key in after) {
+    if (!Object.prototype.hasOwnProperty.call(after, key)) continue
+    if (key === nameField || key === 'disabled') continue
+    afterCount++
+  }
+  return compared === afterCount
+}
+
+/** Baseline values a content diff compares each row against. */
+type ContentChange = {
+  id: string
+  name: string
+  disabled: boolean
+  nameChanged: boolean
+  disabledChanged: boolean
+  inputIndex: number
+}
+type ContentBaseline = {
+  parentId: string
+  name: string
+  disabled: boolean
+}
+
+/**
+ * Shared content-only diff for the main-thread cache and the worker snapshot.
+ * Returns null when the inputs are not a pure name/disabled update, so callers
+ * can fall back to a structural rebuild.
+ */
+const diffContentChanges = (
+  previous: TreeInputItem[],
+  next: TreeInputItem[],
+  idField: string,
+  nameField: string,
+  parentIdField: string,
+  baselineFor: (inputIndex: number, id: string) => ContentBaseline | undefined
+): ContentChange[] | null => {
+  const changes: ContentChange[] = []
+  for (let i = 0; i < next.length; i++) {
+    const before = previous[i] as unknown as Record<string, unknown>
+    const after = next[i] as unknown as Record<string, unknown>
+    const id = String(after[idField] ?? '')
+    if (String(before[idField] ?? '') !== id) return null
+    const baseline = baselineFor(i, id)
+    if (baseline === undefined) return null
+    if (String(after[parentIdField] ?? '') !== baseline.parentId) return null
+    if (
+      before !== after &&
+      !shallowEqualExceptContent(before, after, nameField)
+    )
+      return null
+    const name = String(after[nameField] ?? '')
+    const disabled = after.disabled === true
+    const nameChanged = baseline.name !== name
+    const disabledChanged = baseline.disabled !== disabled
+    if (!nameChanged && !disabledChanged) continue
+    changes.push({
+      id,
+      name,
+      disabled,
+      nameChanged,
+      disabledChanged,
+      inputIndex: i,
+    })
+  }
+  return changes
 }
 
 /**
@@ -489,49 +559,31 @@ const tryContentOnlyReconcile = (next: TreeInputItem[]): boolean => {
   const idField = props.fieldKeys.idField ?? 'id'
   const nameField = props.fieldKeys.nameField ?? 'name'
   const parentIdField = props.fieldKeys.parentIdField ?? 'parentId'
-  const changes: Array<{
-    id: string
-    name: string
-    disabled: boolean
-    nameChanged: boolean
-    disabledChanged: boolean
-    inputIndex: number
-  }> = []
+  // Compare against the rendered cache, not the previous input objects: a
+  // caller may mutate rows in place and then replace the array, leaving
+  // `previous` pointing at the already-mutated values.
+  const changes = diffContentChanges(
+    previous,
+    next,
+    idField,
+    nameField,
+    parentIdField,
+    (_inputIndex, id) => {
+      const cacheIndex = allNodesIndexById.get(id)
+      if (cacheIndex === undefined) return undefined
+      const cached = allNodesCache[cacheIndex]
+      if (cached === undefined) return undefined
+      return {
+        parentId: cached.parentId,
+        name: cached.name,
+        disabled: cached.disabled,
+      }
+    }
+  )
+  if (changes === null) return false
   let disabledChanges = 0
-  for (let i = 0; i < next.length; i++) {
-    const before = previous[i] as unknown as Record<string, unknown>
-    const after = next[i] as unknown as Record<string, unknown>
-    const id = String(after[idField] ?? '')
-    if (String(before[idField] ?? '') !== id) return false
-    const cacheIndex = allNodesIndexById.get(id)
-    if (cacheIndex === undefined) return false
-    const cached = allNodesCache[cacheIndex]
-    if (cached === undefined) return false
-    const parentId = String(after[parentIdField] ?? '')
-    // Compare against the rendered cache, not the previous input objects: a
-    // caller may mutate rows in place and then replace the array, leaving
-    // `previous` pointing at the already-mutated values.
-    if (parentId !== cached.parentId) return false
-    if (
-      before !== after &&
-      !shallowEqualExceptContent(before, after, nameField)
-    )
-      return false
-    const name = String(after[nameField] ?? '')
-    const nameChanged = cached.name !== name
-    const disabled = after.disabled === true
-    const disabledChanged = cached.disabled !== disabled
-    if (!nameChanged && !disabledChanged) continue
-    if (disabledChanged) disabledChanges++
-    changes.push({
-      id,
-      name,
-      disabled,
-      nameChanged,
-      disabledChanged,
-      inputIndex: i,
-    })
-  }
+  for (let i = 0; i < changes.length; i++)
+    if (changes[i].disabledChanged) disabledChanges++
   // Each disabled update rewrites the disabledPrefix suffix (O(N)); applying
   // thousands of them is far slower than one rebuild.
   if (disabledChanges > 64) return false
@@ -565,23 +617,27 @@ const tryContentOnlyReconcile = (next: TreeInputItem[]): boolean => {
   return true
 }
 
-const refreshAllNodesCache = () => {
-  // ID-only trees do not need the full JSON serializer just to render rows.
-  // Read the compact MPTT layout directly and rebuild the presentation cache
-  // from the original input data. This avoids a large synchronous
-  // serialize/parse round-trip when switching to a large tree.
+const refreshAllNodesCache = (
+  source?: Array<TreeInputItem & Record<string, unknown>>
+) => {
+  // Fallback path used only when input-order layouts are unavailable. ID-only
+  // trees do not need the full JSON serializer just to render rows, so read the
+  // compact MPTT layout and rebuild the presentation cache from the input.
+  const input =
+    source ?? (rawTree() as Array<TreeInputItem & Record<string, unknown>>)
   const ids = getAllNodeIds(tree) as string[]
   const layouts = getAllNodeLayouts(tree) as number[]
   const idField = props.fieldKeys.idField ?? 'id'
   const nameField = props.fieldKeys.nameField ?? 'name'
   const parentIdField = props.fieldKeys.parentIdField ?? 'parentId'
   const inputById = new Map<string, TreeInputItem & Record<string, unknown>>()
-  for (const item of rawTree() as Array<
-    TreeInputItem & Record<string, unknown>
-  >) {
+  for (const item of input) {
     inputById.set(String(item[idField] ?? ''), item)
   }
-  allNodesCache = ids.map((id, index) => {
+  const cache = new Array<TreeNodeData>(ids.length)
+  const indexById = new Map<string, number>()
+  for (let index = 0; index < ids.length; index++) {
+    const id = ids[index]
     const item = inputById.get(id)
     const offset = index * 4
     // Defensive fallback: if the input array is missing an id present in the
@@ -599,7 +655,7 @@ const refreshAllNodesCache = () => {
       item ??
       ({ id: '', name: '', parentId: '', disabled: false } as TreeInputItem &
         Record<string, unknown>)
-    return {
+    cache[index] = {
       id,
       name: String(safeItem[nameField] ?? id),
       parentId: String(safeItem[parentIdField] ?? ''),
@@ -612,10 +668,72 @@ const refreshAllNodesCache = () => {
       disabled: layouts[offset + 3] !== 0,
       extendData: safeItem,
     }
-  })
-  rebuildAllNodesIndex()
-  previousTreeInput = props.tree as TreeInputItem[]
+    indexById.set(id, index)
+  }
+  allNodesCache = cache
+  allNodesIndexById = indexById
+  previousTreeInput = input as TreeInputItem[]
   refreshTree()
+}
+
+/**
+ * Preferred cache build: one bridge call returns the input-order → fullTree
+ * layout map, then rows are assembled in input order. This skips the 1M-string
+ * `getAllNodeIds` copy and the duplicate inputById map used by the fallback.
+ */
+const refreshNodesCacheFromInputLayouts = () => {
+  const input = rawTree() as Array<TreeInputItem & Record<string, unknown>>
+  const layoutBridgeStarted = now()
+  const layouts = getInputNodeLayouts(tree) as number[]
+  buildMetrics.layoutBridgeMs += now() - layoutBridgeStarted
+  if (input.length === 0 || layouts.length !== input.length * 5) {
+    clearInputNodeLayouts(tree)
+    refreshAllNodesCache()
+    return
+  }
+  const idField = props.fieldKeys.idField ?? 'id'
+  const nameField = props.fieldKeys.nameField ?? 'name'
+  const parentIdField = props.fieldKeys.parentIdField ?? 'parentId'
+  const assemblyStarted = now()
+  const cache = new Array<TreeNodeData>(getSize(tree))
+  const indexById = new Map<string, number>()
+  let filled = 0
+  for (let index = 0; index < input.length; index++) {
+    const offset = index * 5
+    const fullIndex = layouts[offset]
+    if (fullIndex < 0) continue
+    const node = input[index]
+    const id = String(node[idField] ?? '')
+    cache[fullIndex] = {
+      id,
+      name: String(node[nameField] ?? ''),
+      parentId: String(node[parentIdField] ?? ''),
+      leftNode: layouts[offset + 1],
+      rightNode: layouts[offset + 2],
+      deep: layouts[offset + 3],
+      checked: CheckType.UNCHECKED,
+      selected: CheckType.UNCHECKED,
+      collapsed: true,
+      disabled: layouts[offset + 4] !== 0,
+      extendData: node,
+    }
+    indexById.set(id, fullIndex)
+    filled++
+  }
+  clearInputNodeLayouts(tree)
+  // A build that didn't track layouts (or rejected every row) falls back to
+  // the id-based cache instead of rendering an empty list.
+  if (filled === 0 && getSize(tree) > 0) {
+    refreshAllNodesCache()
+    return
+  }
+  allNodesCache = cache
+  allNodesIndexById = indexById
+  previousTreeInput = props.tree as TreeInputItem[]
+  buildMetrics.cacheAssemblyMs += now() - assemblyStarted
+  const refreshStarted = now()
+  refreshTree()
+  buildMetrics.cacheRefreshMs += now() - refreshStarted
 }
 // A macrotask yields the main thread for rendering without relying on rAF.
 // Browser test iframes can throttle rAF to seconds while backgrounded.
@@ -733,11 +851,12 @@ const refreshChunkedNodesCache = async () => {
   const idField = props.fieldKeys.idField ?? 'id'
   const nameField = props.fieldKeys.nameField ?? 'name'
   const parentIdField = props.fieldKeys.parentIdField ?? 'parentId'
-  const input = props.tree as Array<TreeInputItem & Record<string, unknown>>
+  const input = rawTree() as Array<TreeInputItem & Record<string, unknown>>
   const layoutBridgeStarted = now()
   const layouts = getInputNodeLayouts(tree) as number[]
   buildMetrics.layoutBridgeMs += now() - layoutBridgeStarted
   const cache = new Array<TreeNodeData>(getSize(tree))
+  const indexById = new Map<string, number>()
   for (let start = 0; start < input.length; start += size) {
     const end = Math.min(start + size, input.length)
     const assemblyStarted = now()
@@ -746,8 +865,9 @@ const refreshChunkedNodesCache = async () => {
       const offset = index * 5
       const fullIndex = layouts[offset]
       if (fullIndex < 0) continue
+      const id = String(node[idField] ?? '')
       cache[fullIndex] = {
-        id: String(node[idField] ?? ''),
+        id,
         name: String(node[nameField] ?? ''),
         parentId: String(node[parentIdField] ?? ''),
         leftNode: layouts[offset + 1],
@@ -759,6 +879,7 @@ const refreshChunkedNodesCache = async () => {
         disabled: layouts[offset + 4] !== 0,
         extendData: node,
       }
+      indexById.set(id, fullIndex)
     }
     buildMetrics.cacheAssemblyMs += now() - assemblyStarted
     if (start + size < input.length) {
@@ -771,8 +892,8 @@ const refreshChunkedNodesCache = async () => {
   clearInputNodeLayouts(tree)
   buildMetrics.layoutReleaseMs += now() - layoutReleaseStarted
   allNodesCache = cache
-  rebuildAllNodesIndex()
-  previousTreeInput = props.tree as TreeInputItem[]
+  allNodesIndexById = indexById
+  previousTreeInput = input as TreeInputItem[]
   const refreshStarted = now()
   refreshTree()
   buildMetrics.cacheRefreshMs += now() - refreshStarted
@@ -783,7 +904,35 @@ const refreshChunkedNodesCache = async () => {
 }
 const refreshNodesCache = async () => {
   if (canUseChunkedBuild()) await refreshChunkedNodesCache()
-  else refreshAllNodesCache()
+  else refreshNodesCacheFromInputLayouts()
+}
+
+/**
+ * Applies one structural edit to the live WASM tree and rebuilds only the JS
+ * presentation cache. The previous main-thread path cleared the tree and
+ * reparsed the whole input (plus a per-branch expand/check restore), which made
+ * a single add/remove cost a full O(N) rebuild.
+ */
+const refreshAfterIncremental = (
+  next: TreeMutationItem[],
+  apply: () => boolean
+): boolean => {
+  if (!isTreeReady || isBuilding) return false
+  beginStructureBatch(tree)
+  let applied = false
+  try {
+    applied = apply()
+  } finally {
+    endStructureBatch(tree)
+  }
+  if (!applied) return false
+  refreshAllNodesCache(next as Array<TreeInputItem & Record<string, unknown>>)
+  if (showLineConfig.value.enabled) rebuildGuideLines(next as TreeInputItem[])
+  listHeight.value = getShownHeight(tree)
+  refreshTree()
+  emitCheckedResult()
+  pendingPresentationEcho = next
+  return true
 }
 /** 滚动 rAF 标记：合并同一帧内的多次滚动事件 */
 let scrollRafId = 0
@@ -806,38 +955,67 @@ const handleScroll = (event: Event) => {
  * 根据 outputIdOnly 配置发射选中结果
  * Emit checked result according to outputIdOnly config
  */
+/** Resolve checked full-tree indices to IDs from the rendered cache. */
+const checkedIdsFromIndices = (indices: number[]): string[] => {
+  const ids = new Array<string>(indices.length)
+  let count = 0
+  for (let i = 0; i < indices.length; i++) {
+    const row = allNodesCache[indices[i]]
+    if (row !== undefined) ids[count++] = row.id
+  }
+  ids.length = count
+  return ids
+}
+
+/** Original input row for an id, from whichever store the current mode owns. */
+const recordForId = (id: string): Record<string, unknown> | undefined => {
+  if (isUsingWorker()) return inputNodeById.get(id)
+  const index = allNodesIndexById.get(id)
+  if (index === undefined) return undefined
+  return allNodesCache[index]?.extendData
+}
+
 /** 按防抖输出选中结果 / Emit checked result with debounce / Выдать результат выбора с антидребезгом */
 const emitCheckedResult = () => {
+  // Main-thread mode returns indices and resolves IDs from the JS cache; this
+  // avoids copying every selected ID string through the WASM boundary (a full
+  // 1M-node selection used to cost ~300ms per click).
   const ids = isUsingWorker()
     ? workerCheckedIds
-    : (getCheckedIdList(tree) as string[])
-  const records = ids
-    .map(id => inputNodeById.get(id))
-    .filter((item): item is Record<string, unknown> => item !== undefined)
-  if (props.checkedOutputMode === CheckedOutputMode.Custom && props.filterFn) {
-    // Custom 模式：获取完整节点数据，用 filterFn 过滤后再决定输出 ID 还是 JSON
-    // Custom mode: get full node data, filter with filterFn, then decide ID or JSON output
-    // Пользовательский режим: получить полные данные узлов, отфильтровать filterFn, затем решить, выводить ID или JSON
-    // getCheckedNodes 返回的是 extendData 原始 JSON（非 TreeNodeData 结构），直接传给 filterFn
-    const idField = props.fieldKeys.idField ?? 'id'
-    const filtered = records.filter(item => props.filterFn!(item))
-    const result = props.outputIdOnly
-      ? filtered.map(item => item[idField])
-      : filtered
-    emit('update:modelValue', result)
-  } else if (!props.outputIdOnly) {
+    : allNodesCache.length > 0
+      ? checkedIdsFromIndices(getCheckedIndices(tree) as number[])
+      : (getCheckedIdList(tree) as string[])
+  const customMode =
+    props.checkedOutputMode === CheckedOutputMode.Custom && !!props.filterFn
+  // Records are only needed for Custom filtering or full-JSON output. In the
+  // default ID-only path the previous code still resolved every id through a
+  // Map and then discarded the result.
+  if (!customMode && props.outputIdOnly) {
     emit(
       'update:modelValue',
-      props.selectType === SelectType.CHECKBOX ? records : (records[0] ?? null)
-    )
-  } else {
-    // 走到这里 outputIdOnly 恒为 true：CHECKBOX 输出 ID 数组，RADIO/SELECT 输出单个 ID（无选中为 null）
-    // Reaching this branch means outputIdOnly is always true: CHECKBOX emits
-    // the ID array, RADIO/SELECT emits a single ID (null when nothing is selected).
-    const result =
       props.selectType === SelectType.CHECKBOX ? ids : (ids[0] ?? null)
-    emit('update:modelValue', result)
+    )
+    return
   }
+  const records = ids
+    .map(recordForId)
+    .filter((item): item is Record<string, unknown> => item !== undefined)
+  if (customMode) {
+    // Custom 模式：用 filterFn 过滤原始行，再决定输出 ID 还是 JSON
+    // Custom mode: filter raw rows with filterFn, then decide ID or JSON output
+    // Пользовательский режим: отфильтровать исходные строки filterFn, затем решить ID или JSON
+    const idField = props.fieldKeys.idField ?? 'id'
+    const filtered = records.filter(item => props.filterFn!(item))
+    emit(
+      'update:modelValue',
+      props.outputIdOnly ? filtered.map(item => item[idField]) : filtered
+    )
+    return
+  }
+  emit(
+    'update:modelValue',
+    props.selectType === SelectType.CHECKBOX ? records : (records[0] ?? null)
+  )
 }
 
 /** rAF 包裹的滚动处理：跟随浏览器渲染帧，减少无效回调 */
@@ -885,10 +1063,7 @@ const renderRows = computed(() => {
   const extra = treeAnimation.value?.extraRows
   if (!extra?.length) return currentTreeList.value
   const ids = new Set(currentTreeList.value.map(item => item.id))
-  return [
-    ...currentTreeList.value,
-    ...extra.filter(item => !ids.has(item.id)),
-  ]
+  return [...currentTreeList.value, ...extra.filter(item => !ids.has(item.id))]
 })
 /** 容器方向，仅用于挂 CSS 类。 */
 const transitionDirection = computed(
@@ -933,10 +1108,15 @@ const finishTreeAnimation = () => {
 const syncAnimationRows = () => {
   const animation = treeAnimation.value
   if (!animation) return
-  const latestById = new Map(allNodesCache.map(item => [item.id, item]))
+  // Reuse the id→index map instead of rebuilding an O(N) Map of the whole
+  // cache on every click while a branch transition is running.
+  const latestFor = (id: string) => {
+    const index = allNodesIndexById.get(id)
+    return index === undefined ? undefined : allNodesCache[index]
+  }
   treeAnimation.value = {
     ...animation,
-    rows: animation.rows.map(item => latestById.get(item.id) ?? item),
+    rows: animation.rows.map(item => latestFor(item.id) ?? item),
   }
 }
 
@@ -1020,34 +1200,59 @@ const startTreeAnimation = async (
   animationTimer = setTimeout(finishTreeAnimation, duration + 80)
 }
 
-const fk = props.fieldKeys
-const hasCustomKeys =
-  fk.idField ||
-  fk.nameField ||
-  fk.parentIdField ||
-  fk.leftNodeField ||
-  fk.rightNodeField
-const tree = hasCustomKeys
-  ? newTreeWithKeys(
-      props.root,
-      props.lineHeight,
-      props.selectType,
-      fk.idField ?? 'id',
-      fk.nameField ?? 'name',
-      fk.parentIdField ?? 'parentId',
-      fk.leftNodeField ?? 'leftNode',
-      fk.rightNodeField ?? 'rightNode',
-      false
-    )
-  : newTree(props.root, props.lineHeight, props.selectType, false)
+type TreeInstance = ReturnType<typeof newTree>
 
-// 初始化 CHECKBOX 输出模式
+/** Signature of the props that force a fresh WASM tree instance. */
+const mainConfigSignature = (): string =>
+  [
+    props.root,
+    props.selectType,
+    props.preorderedInput ? 1 : 0,
+    props.fieldKeys.idField ?? 'id',
+    props.fieldKeys.nameField ?? 'name',
+    props.fieldKeys.parentIdField ?? 'parentId',
+    props.fieldKeys.leftNodeField ?? 'leftNode',
+    props.fieldKeys.rightNodeField ?? 'rightNode',
+  ].join('\u0000')
+let currentMainConfigSignature = ''
+const createMainTree = (): TreeInstance => {
+  const fk = props.fieldKeys
+  const hasCustomKeys =
+    fk.idField ||
+    fk.nameField ||
+    fk.parentIdField ||
+    fk.leftNodeField ||
+    fk.rightNodeField
+  const instance = hasCustomKeys
+    ? newTreeWithKeys(
+        props.root,
+        props.lineHeight,
+        props.selectType,
+        fk.idField ?? 'id',
+        fk.nameField ?? 'name',
+        fk.parentIdField ?? 'parentId',
+        fk.leftNodeField ?? 'leftNode',
+        fk.rightNodeField ?? 'rightNode',
+        false
+      )
+    : newTree(props.root, props.lineHeight, props.selectType, false)
+  currentMainConfigSignature = mainConfigSignature()
+  return instance
+}
+let tree: TreeInstance = createMainTree()
+
+// Worker-only reverse index: snapshots carry rows without their original input
+// objects, and JSON output needs those objects. Main-thread mode resolves the
+// same records from `allNodesCache`, so it never pays this second 1M-entry map.
 const inputNodeById = new Map<string, Record<string, unknown>>()
-const inputIdField = props.fieldKeys.idField ?? 'id'
-for (const item of rawTree() as Array<
-  TreeInputItem & Record<string, unknown>
->) {
-  inputNodeById.set(String(item[inputIdField] ?? ''), item)
+const ensureInputNodeById = () => {
+  if (inputNodeById.size > 0) return
+  const idField = props.fieldKeys.idField ?? 'id'
+  for (const item of rawTree() as Array<
+    TreeInputItem & Record<string, unknown>
+  >) {
+    inputNodeById.set(String(item[idField] ?? ''), item)
+  }
 }
 
 const refreshInputNodeById = (items: TreeMutationItem[]) => {
@@ -1061,6 +1266,19 @@ const refreshInputNodeById = (items: TreeMutationItem[]) => {
 const cloneForWorker = <T,>(value: T): T =>
   JSON.parse(JSON.stringify(value)) as T
 
+/** Commands whose payload is already primitive/plain and needs no JSON scrub. */
+const primitiveWorkerCommands = new Set([
+  'boundary',
+  'check',
+  'collapse',
+  'collapse-all',
+  'search',
+  'clear-check',
+  'set-output',
+  'set-check',
+  'stream-finish',
+])
+
 const postWorker = (type: string, payload: Record<string, unknown> = {}) => {
   if (!worker) return undefined
   try {
@@ -1068,7 +1286,10 @@ const postWorker = (type: string, payload: Record<string, unknown> = {}) => {
     workerCommandStartedAt.set(revision, now())
     workerMetrics.commandsSent++
     workerMetrics.pendingCommands = workerCommandStartedAt.size
-    worker.postMessage(cloneForWorker({ type, revision, ...payload }))
+    const message = { type, revision, ...payload }
+    worker.postMessage(
+      primitiveWorkerCommands.has(type) ? message : cloneForWorker(message)
+    )
     return revision
   } catch {
     worker.terminate()
@@ -1119,43 +1340,23 @@ const tryWorkerContentUpdates = (next: TreeInputItem[]): boolean => {
   const idField = props.fieldKeys.idField ?? 'id'
   const nameField = props.fieldKeys.nameField ?? 'name'
   const parentIdField = props.fieldKeys.parentIdField ?? 'parentId'
-  const changes: Array<{
-    id: string
-    name: string
-    disabled: boolean
-    nameChanged: boolean
-    disabledChanged: boolean
-    inputIndex: number
-  }> = []
   if (workerSnapshotNames.length !== next.length) return false
-  let disabledChanges = 0
-  for (let i = 0; i < next.length; i++) {
-    const before = previous[i] as unknown as Record<string, unknown>
-    const after = next[i] as unknown as Record<string, unknown>
-    const id = String(after[idField] ?? '')
-    if (String(before[idField] ?? '') !== id) return false
-    if (String(after[parentIdField] ?? '') !== workerSnapshotParents[i])
-      return false
-    if (
-      before !== after &&
-      !shallowEqualExceptContent(before, after, nameField)
-    )
-      return false
-    const name = String(after[nameField] ?? '')
-    const nameChanged = workerSnapshotNames[i] !== name
-    const disabled = after.disabled === true
-    const disabledChanged = (workerSnapshotDisabled[i] !== 0) !== disabled
-    if (!nameChanged && !disabledChanged) continue
-    if (disabledChanged) disabledChanges++
-    changes.push({
-      id,
-      name,
-      disabled,
-      nameChanged,
-      disabledChanged,
-      inputIndex: i,
+  const changes = diffContentChanges(
+    previous,
+    next,
+    idField,
+    nameField,
+    parentIdField,
+    inputIndex => ({
+      parentId: workerSnapshotParents[inputIndex],
+      name: workerSnapshotNames[inputIndex],
+      disabled: workerSnapshotDisabled[inputIndex] !== 0,
     })
-  }
+  )
+  if (changes === null) return false
+  let disabledChanges = 0
+  for (let i = 0; i < changes.length; i++)
+    if (changes[i].disabledChanged) disabledChanges++
   // Applying thousands of disabled updates would repeatedly rewrite the
   // worker's disabledPrefix suffix; the full stream is cheaper.
   if (disabledChanges > 64) return false
@@ -1203,39 +1404,84 @@ const workerConfig = () => ({
   preorderedInput: props.preorderedInput,
 })
 
+let workerStreaming = false
+let workerStreamQueued = false
 const streamWorkerTree = async () => {
   if (!worker) return
-  postWorker('stream-start', {
-    config: workerConfig(),
-    scrollTop,
-    scrollHeight,
-  })
-  const size = Math.max(1, Math.floor(props.buildBatchSize))
-  const idField = props.fieldKeys.idField ?? 'id'
-  const nameField = props.fieldKeys.nameField ?? 'name'
-  const parentIdField = props.fieldKeys.parentIdField ?? 'parentId'
-  const input = rawTree()
-  for (let start = 0; start < input.length; start += size) {
-    if (!worker) return
-    const payload = encodeNeighborBatch(
-      input.slice(start, start + size) as Array<
-        TreeInputItem & Record<string, unknown>
-      >,
-      idField,
-      nameField,
-      parentIdField
-    )
-    postWorkerTransfer('stream-batch', { payload: payload.buffer }, [
-      payload.buffer,
-    ])
-    if (start + size < input.length) await nextBuildTurn()
+  if (workerStreaming) {
+    workerStreamQueued = true
+    return
   }
-  postWorker('stream-finish')
-  // Subsequent content-only updates diff against the input that was just
-  // streamed. `stream-finish` is posted first, so worker command ordering
-  // guarantees the content update runs on a complete tree.
-  rebuildWorkerContentSnapshot(input as TreeInputItem[])
-  previousTreeInput = input as TreeInputItem[]
+  workerStreaming = true
+  try {
+    postWorker('stream-start', {
+      config: workerConfig(),
+      scrollTop,
+      scrollHeight,
+    })
+    const size = Math.max(1, Math.floor(props.buildBatchSize))
+    const idField = props.fieldKeys.idField ?? 'id'
+    const nameField = props.fieldKeys.nameField ?? 'name'
+    const parentIdField = props.fieldKeys.parentIdField ?? 'parentId'
+    const input = rawTree()
+    for (let start = 0; start < input.length; start += size) {
+      if (!worker) return
+      const payload = encodeNeighborBatch(
+        input.slice(start, start + size) as Array<
+          TreeInputItem & Record<string, unknown>
+        >,
+        idField,
+        nameField,
+        parentIdField
+      )
+      postWorkerTransfer('stream-batch', { payload: payload.buffer }, [
+        payload.buffer,
+      ])
+      if (start + size < input.length) await nextBuildTurn()
+    }
+    postWorker('stream-finish')
+    // Subsequent content-only updates diff against the input that was just
+    // streamed. `stream-finish` is posted first, so worker command ordering
+    // guarantees the content update runs on a complete tree.
+    rebuildWorkerContentSnapshot(input as TreeInputItem[])
+    previousTreeInput = input as TreeInputItem[]
+  } finally {
+    workerStreaming = false
+    if (workerStreamQueued) {
+      workerStreamQueued = false
+      void streamWorkerTree()
+    }
+  }
+}
+
+let workerRestreamQueued = false
+
+/**
+ * Coalesces prop changes that require the worker to receive a new config or a
+ * new input stream (root / selectType / fieldKeys / preorderedInput / tree).
+ */
+const scheduleWorkerRestream = () => {
+  workerConfigRestreamPending = true
+  if (workerRestreamQueued) return
+  workerRestreamQueued = true
+  queueMicrotask(() => {
+    workerRestreamQueued = false
+    if (!worker) {
+      workerConfigRestreamPending = false
+      return
+    }
+    workerConfigRestreamPending = false
+    workerInput = rawTree() as TreeMutationItem[]
+    pendingWorkerTreeEcho = null
+    workerCheckedIds = []
+    invalidateWorkerContentSnapshot()
+    // fieldKeys may have changed, so the reverse index must be rebuilt with
+    // the new mapping before resolving records or snapshot rows.
+    inputNodeById.clear()
+    ensureInputNodeById()
+    rebuildGuideLines()
+    void streamWorkerTree()
+  })
 }
 
 /** Snapshot input-order content so in-place row mutations are still detected. */
@@ -1301,13 +1547,16 @@ const applyWorkerMutation = (mutation: WorkerMutation | undefined) => {
   }
   if (!changed) return
   workerInput = next
-  awaitingWorkerTreeEchoes++
+  pendingWorkerTreeEcho = next
   refreshInputNodeById(next)
   emit('update:tree', next)
 }
 
 const startWorker = () => {
   if (!props.workerMode || typeof Worker === 'undefined') return false
+  // Worker snapshot rows carry only the four tree fields; JSON/records output
+  // still needs the original input objects. Build that reverse index here, once.
+  ensureInputNodeById()
   worker = new Worker(new URL('./tree.worker.ts', import.meta.url), {
     type: 'module',
   })
@@ -1425,9 +1674,9 @@ const startWorker = () => {
 
 const initializeMainTree = async () => {
   clear(tree)
-  // Input-order layouts are only consumed by refreshChunkedNodesCache().
-  // Avoid allocating/filling an O(N) bridge in the normal build path.
-  setTrackInputLayouts(tree, canUseChunkedBuild())
+  // Input-order layouts feed every cache build path now: they replace the
+  // getAllNodeIds string copy plus the duplicate inputById map.
+  setTrackInputLayouts(tree, true)
   setUsePreorderedNeighborInput(tree, props.preorderedInput)
   isBuilding = true
   resetBuildMetrics()
@@ -1440,6 +1689,60 @@ const initializeMainTree = async () => {
   setBoundary(tree, scrollTop, scrollHeight)
   listHeight.value = getShownHeight(tree)
   refreshTree()
+  if (pendingConfigRebuild !== null && !isConfigRebuilding) {
+    const pending = pendingConfigRebuild
+    pendingConfigRebuild = null
+    void rebuildMainTreeForConfig(pending.restoreSelection)
+  }
+}
+
+/**
+ * Recreates the main-thread WASM instance when a prop that is baked into the
+ * constructor changes (root / selectType / fieldKeys / preorderedInput).
+ * Expansion is preserved; selection is preserved only when selectType did not
+ * change, because RADIO/SELECT and CHECKBOX store different single-node state.
+ */
+const rebuildMainTreeForConfig = async (restoreSelection: boolean) => {
+  if (isUsingWorker()) return
+  if (isBuilding || isConfigRebuilding) {
+    pendingConfigRebuild = { restoreSelection }
+    return
+  }
+  isConfigRebuilding = true
+  const expandedIds = allNodesCache
+    .filter(node => !node.collapsed && node.rightNode - node.leftNode > 1)
+    .map(node => node.id)
+  const checkedIds = restoreSelection
+    ? (getCheckedIdList(tree) as string[]).slice()
+    : []
+
+  try {
+    releaseTreeAnimation()
+    tree = createMainTree()
+    setCheckedOutputMode(tree, props.checkedOutputMode)
+    await initializeMainTree()
+    if (expandedIds.length > 0) expandByIds(tree, expandedIds)
+    if (checkedIds.length > 0) {
+      if (props.selectType === SelectType.CHECKBOX)
+        setCheckedNodes(tree, checkedIds)
+      else setCheckedNode(tree, checkedIds[0])
+    }
+    if (activeSearchKeyword.value) fuzzyTree(tree, activeSearchKeyword.value)
+    rebuildGuideLines()
+
+    scrollTop = container.value?.scrollTop ?? scrollTop
+    startOffset.value = scrollTop - (scrollTop % Math.max(1, props.lineHeight))
+    setBoundary(tree, scrollTop, scrollHeight)
+    listHeight.value = getShownHeight(tree)
+    refreshTree()
+    emitCheckedResult()
+  } finally {
+    isConfigRebuilding = false
+    const pending = pendingConfigRebuild
+    pendingConfigRebuild = null
+    if (pending !== null)
+      void rebuildMainTreeForConfig(pending.restoreSelection)
+  }
 }
 
 setCheckedOutputMode(tree, props.checkedOutputMode)
@@ -1676,14 +1979,14 @@ const reconcileTreeData = async () => {
 
   releaseTreeAnimation()
   clear(tree)
-  setTrackInputLayouts(tree, canUseChunkedBuild())
+  setTrackInputLayouts(tree, true)
   setUsePreorderedNeighborInput(tree, props.preorderedInput)
   isBuilding = true
   try {
     if (props.tree.length > 0) await loadTree()
     await refreshNodesCache()
 
-    for (const id of expandedIds) collapseTree(tree, id, false)
+    if (expandedIds.length > 0) expandByIds(tree, expandedIds)
     if (checkedIds.length > 0) setCheckedNodes(tree, checkedIds)
     if (activeSearchKeyword.value) fuzzyTree(tree, activeSearchKeyword.value)
   } finally {
@@ -1702,6 +2005,8 @@ const reconcileTreeData = async () => {
 /** Update raw input data through v-model:tree. Node IDs are immutable. */
 const updateNode = (id: string, patch: TreeNodePatch): boolean => {
   const idField = props.fieldKeys.idField ?? 'id'
+  const nameField = props.fieldKeys.nameField ?? 'name'
+  const parentIdField = props.fieldKeys.parentIdField ?? 'parentId'
   const input = props.tree as TreeMutationItem[]
   if (idField in patch && String(patch[idField]) !== id) return false
   const index = input.findIndex(item => String(item[idField] ?? '') === id)
@@ -1713,17 +2018,97 @@ const updateNode = (id: string, patch: TreeNodePatch): boolean => {
 
   const next = input.slice()
   next[index] = { ...next[index], ...patch }
-  const nameField = props.fieldKeys.nameField ?? 'name'
-  if (nameField in patch)
+  const oldParent = String(input[index][parentIdField] ?? '')
+  const newParent = String(next[index][parentIdField] ?? '')
+  const parentChanged = parentIdField in patch && newParent !== oldParent
+  const disabledChanged =
+    'disabled' in patch &&
+    (input[index].disabled === true) !== (next[index].disabled === true)
+  const nameChanged =
+    nameField in patch &&
+    String(input[index][nameField] ?? '') !==
+      String(next[index][nameField] ?? '')
+
+  if (parentChanged) {
+    if (
+      newParent !== props.root &&
+      !input.some(item => String(item[idField] ?? '') === newParent)
+    )
+      return false
+    const moved = isTreeReady ? (getSubtreeIds(tree, id) as string[]) : []
+    if (moved.length === 0) {
+      // Waiting for the initial build, or the WASM tree does not know this id
+      // yet: let the controlled prop echo take the full reconcile path.
+      emit('update:tree', next)
+      return true
+    }
+    const movedSet = new Set(moved)
+    if (movedSet.has(newParent)) return false
+    const rowById = new Map<string, TreeMutationItem>()
+    for (const item of input) {
+      const rowId = String(item[idField] ?? '')
+      if (movedSet.has(rowId)) rowById.set(rowId, item)
+    }
+    // Capture expand/collapse state before detaching: appendChild creates new
+    // nodes collapsed by default, and a moved expanded branch must stay open.
+    const collapsedById = new Map<string, boolean>()
+    for (const movedId of moved) {
+      const cacheIndex = allNodesIndexById.get(movedId)
+      const row =
+        cacheIndex === undefined ? undefined : allNodesCache[cacheIndex]
+      collapsedById.set(movedId, row?.collapsed ?? true)
+    }
+    if (rowById.size !== movedSet.size) {
+      emit('update:tree', next)
+      return true
+    }
+    refreshAfterIncremental(next, () => {
+      if (!removeSubtree(tree, id)) return false
+      // Re-append in preorder so children find their parent and sibling order
+      // is preserved. The moved root is attached to the new parent last.
+      for (const movedId of moved) {
+        const row = rowById.get(movedId)!
+        const parent =
+          movedId === id ? newParent : String(row[parentIdField] ?? '')
+        const name =
+          movedId === id
+            ? String(next[index][nameField] ?? movedId)
+            : String(row[nameField] ?? movedId)
+        if (
+          !appendChild(
+            tree,
+            movedId,
+            name,
+            parent,
+            row.disabled === true,
+            collapsedById.get(movedId) ?? true
+          )
+        )
+          return false
+      }
+      return true
+    })
+    emit('update:tree', next)
+    return true
+  }
+
+  // Content-only patch: update WASM state plus the presentation cache without
+  // rebuilding MPTT boundaries or the tree.
+  if (nameChanged)
     updateNodeName(tree, id, String(next[index][nameField] ?? ''))
+  if (disabledChanged)
+    updateNodeDisabled(tree, id, next[index].disabled === true)
+
   const updatePresentation = (node: TreeNodeData) =>
     node.id === id
       ? {
           ...node,
           name:
             nameField in patch
-              ? String(patch[nameField] ?? node.name)
+              ? String(next[index][nameField] ?? node.name)
               : node.name,
+          disabled:
+            'disabled' in patch ? next[index].disabled === true : node.disabled,
           extendData: next[index],
         }
       : node
@@ -1740,10 +2125,12 @@ const updateNode = (id: string, patch: TreeNodePatch): boolean => {
       rows: treeAnimation.value.rows.map(updatePresentation),
     }
   }
-  refreshInputNodeById(next)
-  // Content-only patches do not change parentage, order, or MPTT boundaries.
+  if (disabledChanged) {
+    refreshTree()
+    emitCheckedResult()
+  }
   // The v-model echo is intentionally ignored by the structural reconciler.
-  skipNextPresentationOnlyReconcile = true
+  pendingPresentationEcho = next
   emit('update:tree', next)
   return true
 }
@@ -1751,6 +2138,7 @@ const updateNode = (id: string, patch: TreeNodePatch): boolean => {
 /** Insert a node under root or an existing parent through v-model:tree. */
 const addNode = (node: TreeMutationItem): boolean => {
   const idField = props.fieldKeys.idField ?? 'id'
+  const nameField = props.fieldKeys.nameField ?? 'name'
   const parentIdField = props.fieldKeys.parentIdField ?? 'parentId'
   const input = props.tree as TreeMutationItem[]
   const id = String(node[idField] ?? '')
@@ -1769,7 +2157,17 @@ const addNode = (node: TreeMutationItem): boolean => {
     return true
   }
 
-  emit('update:tree', [...input, { ...node }])
+  const next: TreeMutationItem[] = [...input, { ...node }]
+  refreshAfterIncremental(next, () =>
+    appendChild(
+      tree,
+      id,
+      String(next[next.length - 1][nameField] ?? id),
+      parentId,
+      node.disabled === true
+    )
+  )
+  emit('update:tree', next)
   return true
 }
 
@@ -1800,21 +2198,81 @@ const removeNode = (id: string): boolean => {
     pendingIds.push(...(childrenByParent.get(currentId) ?? []))
   }
 
-  emit(
-    'update:tree',
-    input.filter(item => !idsToRemove.has(String(item[idField] ?? '')))
+  const next = input.filter(
+    item => !idsToRemove.has(String(item[idField] ?? ''))
   )
+  refreshAfterIncremental(next, () => removeSubtree(tree, id))
+  emit('update:tree', next)
   return true
 }
+
+watch(
+  () => props.lineHeight,
+  value => {
+    if (isUsingWorker()) {
+      postWorker('set-line-height', { lineHeight: value })
+      return
+    }
+    if (!isTreeReady) return
+    setLineHeight(tree, value)
+    startOffset.value = scrollTop - (scrollTop % Math.max(1, value))
+    setBoundary(tree, scrollTop, scrollHeight)
+    listHeight.value = getShownHeight(tree)
+    refreshTree()
+  }
+)
+
+// root / selectType / fieldKeys / preorderedInput are baked into the WASM
+// instance constructor, so changing them requires a fresh instance (main) or a
+// fresh stream with a new config (worker).
+watch(
+  () => [
+    props.root,
+    props.selectType,
+    props.preorderedInput,
+    props.fieldKeys.idField,
+    props.fieldKeys.nameField,
+    props.fieldKeys.parentIdField,
+    props.fieldKeys.leftNodeField,
+    props.fieldKeys.rightNodeField,
+  ],
+  (next, previous) => {
+    const restoreSelection = next[1] === previous?.[1]
+    if (isUsingWorker()) {
+      scheduleWorkerRestream()
+      return
+    }
+    if (!isTreeReady || isBuilding) {
+      pendingConfigRebuild = { restoreSelection }
+      return
+    }
+    void rebuildMainTreeForConfig(restoreSelection)
+  }
+)
 
 watch(
   () => props.tree,
   tree => {
     if (isUsingWorker()) {
-      if (awaitingWorkerTreeEchoes > 0) {
-        awaitingWorkerTreeEchoes--
-        workerInput = tree as TreeMutationItem[]
+      if (workerConfigRestreamPending) return
+      if (workerStreaming) {
+        workerStreamQueued = true
         return
+      }
+      if (pendingWorkerTreeEcho !== null) {
+        const expected = pendingWorkerTreeEcho
+        pendingWorkerTreeEcho = null
+        // Only skip when the parent returned the array we emitted; otherwise
+        // this is an external replacement and must be streamed. Vue refs wrap
+        // assigned arrays in a reactive proxy, so compare raw targets too.
+        if (
+          tree === expected ||
+          toRaw(tree) === expected ||
+          toRaw(tree) === toRaw(expected)
+        ) {
+          workerInput = tree as TreeMutationItem[]
+          return
+        }
       }
       if (tryWorkerContentUpdates(tree as TreeInputItem[])) return
       rebuildGuideLines()
@@ -1828,11 +2286,24 @@ watch(
       void streamWorkerTree()
       return
     }
-    if (skipNextPresentationOnlyReconcile) {
-      skipNextPresentationOnlyReconcile = false
-      previousTreeInput = tree as TreeInputItem[]
-      return
+    if (pendingPresentationEcho !== null) {
+      const expected = pendingPresentationEcho
+      pendingPresentationEcho = null
+      // Only skip the echo when the parent returned the array we emitted.
+      // A different array may carry extra external edits and must reconcile.
+      if (
+        tree === expected ||
+        toRaw(tree) === expected ||
+        toRaw(tree) === toRaw(expected)
+      ) {
+        previousTreeInput = tree as TreeInputItem[]
+        return
+      }
     }
+    // A config change owns the rebuild; reconciling against the stale instance
+    // would parse with the old root/field keys.
+    if (isConfigRebuilding) return
+    if (currentMainConfigSignature !== mainConfigSignature()) return
     // Name-only replacements reuse the entire structural index. Geometry does
     // not change, so guide lines do not need to be rebuilt either.
     if (tryContentOnlyReconcile(tree as TreeInputItem[])) return
@@ -1966,5 +2437,3 @@ defineExpose({
     </div>
   </div>
 </template>
-
-<style scoped></style>

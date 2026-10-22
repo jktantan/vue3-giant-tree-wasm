@@ -28,6 +28,7 @@ beforeAll(() => {
 /** 组件实例公开方法的类型化视图，避免测试里出现 any。 */
 type TreeApi = {
   updateNode(id: string, patch: Record<string, unknown>): boolean
+  addNode(node: Record<string, unknown>): boolean
   removeNode(id: string): boolean
   getBuildReady(): boolean
   getTreeSize(): number
@@ -115,6 +116,42 @@ describe('VueGiantTree: 主组件', () => {
     expect(wrapper.emitted('item-click')).toBeFalsy()
   })
 
+  it('JSON 输出使用最新输入行（外部替换 tree 后不残留旧对象）', async () => {
+    const first = [
+      { id: 'A', name: 'A', parentId: 'root', meta: 'old' },
+    ] as TreeInputItem[]
+    const wrapper = mount(VueGiantTree, {
+      props: {
+        modelValue: [],
+        tree: first,
+        root: 'root',
+        outputIdOnly: false,
+      },
+    })
+    await flushPromises()
+
+    treeApi(wrapper).setChecked('A')
+    await flushPromises()
+    let emitted = wrapper.emitted('update:modelValue')!
+    let last = emitted[emitted.length - 1][0] as Array<Record<string, unknown>>
+    expect(last[0].meta).toBe('old')
+
+    await wrapper.setProps({
+      tree: [
+        { id: 'A', name: 'A', parentId: 'root', meta: 'new' },
+      ] as TreeInputItem[],
+    })
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+
+    treeApi(wrapper).clearAllChecked()
+    treeApi(wrapper).setChecked('A')
+    await flushPromises()
+    emitted = wrapper.emitted('update:modelValue')!
+    last = emitted[emitted.length - 1][0] as Array<Record<string, unknown>>
+    expect(last[0].meta).toBe('new')
+  })
+
   it('结构操作通过 update:tree 回写，且不需要重挂载组件', async () => {
     const wrapper = mount(VueGiantTree, {
       props: { modelValue: [], tree: makeTreeData(), root: 'root' },
@@ -133,6 +170,143 @@ describe('VueGiantTree: 主组件', () => {
     expect(treeApi(wrapper).removeNode('A')).toBe(true)
     const prunedTree = wrapper.emitted('update:tree')![1][0] as TreeInputItem[]
     expect(prunedTree.map(node => node.id)).toEqual(['B'])
+  })
+
+  it('运行时修改 lineHeight 会更新虚拟滚动几何', async () => {
+    const wrapper = mount(VueGiantTree, {
+      props: {
+        modelValue: [],
+        tree: makeTreeData(),
+        root: 'root',
+        lineHeight: 26,
+      },
+    })
+    await flushPromises()
+    treeApi(wrapper).expandAll()
+    await wrapper.vm.$nextTick()
+
+    const phantom = wrapper.find('.infinite-list-phantom')
+    expect(phantom.attributes('style')).toContain('height: 78px')
+
+    await wrapper.setProps({ lineHeight: 40 })
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+    expect(phantom.attributes('style')).toContain('height: 120px')
+  })
+
+  it('运行时修改 selectType / root / fieldKeys 会重建 WASM 实例', async () => {
+    const wrapper = mount(VueGiantTree, {
+      props: {
+        modelValue: [],
+        tree: makeTreeData(),
+        root: 'root',
+      },
+    })
+    await flushPromises()
+    expect(wrapper.findAll('[role="checkbox"]').length).toBeGreaterThan(0)
+
+    await wrapper.setProps({ selectType: SelectType.RADIO })
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+    expect(wrapper.findAll('[role="checkbox"]')).toHaveLength(0)
+    expect(wrapper.findAll('[role="radio"]').length).toBeGreaterThan(0)
+
+    const custom = [
+      { key: 'A', label: 'Custom A', parent: 'ROOT' },
+      { key: 'B', label: 'Custom B', parent: 'ROOT' },
+    ]
+    await wrapper.setProps({
+      root: 'ROOT',
+      fieldKeys: {
+        idField: 'key',
+        nameField: 'label',
+        parentIdField: 'parent',
+      },
+      tree: custom,
+    })
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+    expect(treeApi(wrapper).getTreeSize()).toBe(2)
+    expect(wrapper.text()).toContain('Custom A')
+    expect(wrapper.text()).toContain('Custom B')
+  })
+
+  it('主线程 addNode 增量更新可见行，无需整树重建', async () => {
+    const wrapper = mount(VueGiantTree, {
+      props: { modelValue: [], tree: makeTreeData(), root: 'root' },
+    })
+    await flushPromises()
+    treeApi(wrapper).expandAll()
+    await wrapper.vm.$nextTick()
+    expect(wrapper.findAll('.tree-item')).toHaveLength(3)
+
+    expect(
+      treeApi(wrapper).addNode({ id: 'A2', name: 'NodeA2', parentId: 'A' })
+    ).toBe(true)
+    const emitted = wrapper.emitted('update:tree')!
+    const updated = emitted[emitted.length - 1][0] as TreeInputItem[]
+    expect(updated.map(node => node.id)).toEqual(['A', 'A1', 'B', 'A2'])
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+
+    expect(treeApi(wrapper).getTreeSize()).toBe(4)
+    expect(wrapper.text()).toContain('NodeA2')
+    await wrapper.setProps({ tree: updated })
+    await flushPromises()
+  })
+
+  it('主线程 removeNode 增量删除整个子树', async () => {
+    const wrapper = mount(VueGiantTree, {
+      props: { modelValue: [], tree: makeTreeData(), root: 'root' },
+    })
+    await flushPromises()
+    treeApi(wrapper).expandAll()
+    await wrapper.vm.$nextTick()
+
+    expect(treeApi(wrapper).removeNode('A')).toBe(true)
+    const emitted = wrapper.emitted('update:tree')!
+    const updated = emitted[emitted.length - 1][0] as TreeInputItem[]
+    expect(updated.map(node => node.id)).toEqual(['B'])
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+
+    expect(treeApi(wrapper).getTreeSize()).toBe(1)
+    expect(wrapper.text()).toContain('NodeB')
+    expect(wrapper.text()).not.toContain('NodeA1')
+    await wrapper.setProps({ tree: updated })
+    await flushPromises()
+  })
+
+  it('主线程 updateNode 支持移动子树与禁用状态', async () => {
+    const wrapper = mount(VueGiantTree, {
+      props: { modelValue: [], tree: makeTreeData(), root: 'root' },
+    })
+    await flushPromises()
+    treeApi(wrapper).expandAll()
+    await wrapper.vm.$nextTick()
+
+    expect(treeApi(wrapper).updateNode('A', { parentId: 'B' })).toBe(true)
+    const emitted = wrapper.emitted('update:tree')!
+    const moved = emitted[emitted.length - 1][0] as TreeInputItem[]
+    expect(moved.find(node => node.id === 'A')?.parentId).toBe('B')
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+    expect(wrapper.findAll('.tree-item').map(row => row.text())).toEqual([
+      'NodeB',
+      'NodeA',
+      'NodeA1',
+    ])
+
+    // Moving a node into its own descendant must be rejected.
+    expect(treeApi(wrapper).updateNode('A', { parentId: 'A1' })).toBe(false)
+
+    expect(treeApi(wrapper).updateNode('B', { disabled: true })).toBe(true)
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+    const rows = wrapper.findAll('.tree-item')
+    expect(rows[0].classes()).toContain('disabled')
+    await wrapper.setProps({ tree: moved })
+    await flushPromises()
   })
 
   it('显式分批构建保留默认输入的可见节点与禁用语义', async () => {

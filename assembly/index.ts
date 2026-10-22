@@ -205,6 +205,11 @@ export function getCheckedIdList(target: GiantTree): string[] {
   return target.getCheckedIdList()
 }
 
+/** Returns checked fullTree indices so JS can resolve IDs from its own cache. */
+export function getCheckedIndices(target: GiantTree): i32[] {
+  return target.getCheckedIndices()
+}
+
 export function setCheckedOutputMode(
   target: GiantTree,
   mode: CheckedOutputMode
@@ -237,9 +242,10 @@ export function appendChild(
   id: string,
   name: string,
   parentId: string,
-  disabled: bool = false
+  disabled: bool = false,
+  collapsed: bool = true
 ): bool {
-  return target.appendChild(id, name, parentId, disabled)
+  return target.appendChild(id, name, parentId, disabled, collapsed)
 }
 
 export function removeSubtree(target: GiantTree, id: string): bool {
@@ -329,8 +335,16 @@ export function setBoundary(
   target.setBoundary(scrollTop, scrollHeight)
 }
 
+export function setLineHeight(target: GiantTree, value: f32): void {
+  target.setLineHeight(value)
+}
+
 export function fuzzyTree(target: GiantTree, keyword: string): string {
   return target.fuzzySearch(keyword)
+}
+
+export function isSearchTruncated(target: GiantTree): bool {
+  return target.wasSearchTruncated()
 }
 
 export function checkNode(
@@ -355,6 +369,10 @@ export function setCheckedNodes(target: GiantTree, ids: string[]): void {
 
 export function getShownHeight(target: GiantTree): f32 {
   return target.getShownHeight()
+}
+
+export function expandByIds(target: GiantTree, ids: string[]): void {
+  target.expandByIds(ids)
 }
 
 export function collapseAll(target: GiantTree, isCollapse: boolean): void {

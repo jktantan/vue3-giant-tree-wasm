@@ -8,6 +8,7 @@ import {
   setBoundary,
   clear,
   fuzzyTree,
+  isSearchTruncated,
   collapseTree,
   switchDisplayTree,
   checkNode,
@@ -113,6 +114,46 @@ describe('tree-search: 模糊搜索', () => {
     const nodes = JSON.parse(getShownNodes(tree)) as any[]
     const topLevel = nodes.filter((n: any) => n.deep === 0)
     expect(topLevel.length).toBe(3)
+  })
+
+  it('搜索结果达到上限时给出截断标志', () => {
+    const tree = newTree('', 26, SelectType.CHECKBOX)
+    for (let i = 0; i < 6000; i++)
+      pushNeighborNode(tree, `n${i}`, `match ${i}`, '')
+    popNeighbor(tree)
+    fuzzyTree(tree, 'match')
+    expect(isSearchTruncated(tree)).toBe(true)
+    fuzzyTree(tree, '')
+    expect(isSearchTruncated(tree)).toBe(false)
+
+    const small = newTree('', 26, SelectType.CHECKBOX)
+    for (let i = 0; i < 100; i++)
+      pushNeighborNode(small, `m${i}`, `match ${i}`, '')
+    popNeighbor(small)
+    fuzzyTree(small, 'match')
+    expect(isSearchTruncated(small)).toBe(false)
+  })
+
+  it('切到 SEARCH 视图保留全部搜索结果，并可来回切换', () => {
+    const tree = buildSearchTree()
+    fuzzyTree(tree, 'Apple')
+    setBoundary(tree, 0, 5000)
+    const searchRows = JSON.parse(getShownNodes(tree)).map(
+      (node: { id: string }) => node.id
+    )
+
+    switchDisplayTree(tree, DisplayType.SEARCH)
+    expect(
+      JSON.parse(getShownNodes(tree)).map((node: { id: string }) => node.id)
+    ).toEqual(searchRows)
+
+    switchDisplayTree(tree, DisplayType.TREE)
+    expect(getShownHeight(tree)).toBeGreaterThan(0)
+
+    switchDisplayTree(tree, DisplayType.SEARCH)
+    expect(
+      JSON.parse(getShownNodes(tree)).map((node: { id: string }) => node.id)
+    ).toEqual(searchRows)
   })
 
   it('连续搜索不同关键词', () => {

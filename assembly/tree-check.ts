@@ -19,14 +19,14 @@ import { serializeCheckedArray, serializeCheckedNode } from './tree-serializer'
  */
 export function checkNodeInTree(
   fullTree: MpttTree[],
-  idToIndex: Map<string, i32>,
+  idToIndex: Map<string, MpttTree>,
   id: string,
   checked: CheckType,
   selectType: SelectType
 ): void {
   if (idToIndex.has(id)) {
-    const i: i32 = idToIndex.get(id)
-    const node: MpttTree = fullTree[i]
+    const node: MpttTree = idToIndex.get(id)
+    const i: i32 = node.fullIndex
     if (node.disabled) return
     node.checked = checked
     setSubTreeChecked(fullTree, node, checked, i + 1)
@@ -145,7 +145,7 @@ export function getParentNodeCheckType(
 export function setCheckedNodesInTree(
   fullTree: MpttTree[],
   ids: string[],
-  idToIndex: Map<string, i32>
+  idToIndex: Map<string, MpttTree>
 ): void {
   // Pass 1: 将所有非禁用节点重置为 UNCHECKED
   // Pass 1: reset all non-disabled nodes to UNCHECKED
@@ -165,8 +165,8 @@ export function setCheckedNodesInTree(
   for (let i = 0; i < ids.length; i++) {
     const id = ids[i]
     if (!idToIndex.has(id)) continue
-    const idx: i32 = idToIndex.get(id)
-    const node: MpttTree = fullTree[idx]
+    const node: MpttTree = idToIndex.get(id)
+    const idx: i32 = node.fullIndex
     if (node.disabled) continue
 
     node.checked = CheckType.CHECKED
@@ -190,7 +190,7 @@ export function setCheckedNodesInTree(
 
   for (let a: i32 = 0; a < ancestors.length; a++) {
     const anc: MpttTree = ancestors[a]
-    const ancIdx: i32 = idToIndex.get(anc.id)
+    const ancIdx: i32 = idToIndex.get(anc.id).fullIndex
     anc.checked = getParentNodeCheckType(fullTree, anc, ancIdx + 1)
   }
 

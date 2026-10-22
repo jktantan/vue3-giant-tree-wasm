@@ -112,12 +112,12 @@ export interface GuideLineInfo {
  * @param root 根标识。 / Root identifier.
  * @param fieldKeys 字段键名映射。 / Field key mapping.
  */
-export function computeGuideLines(
+export function computePackedGuideLines(
   items: TreeInputItem[],
   root: string,
   fieldKeys: TreeFieldKeys
-): Map<string, GuideLineInfo> {
-  const result = new Map<string, GuideLineInfo>()
+): Map<string, number> {
+  const result = new Map<string, number>()
   if (items.length === 0) return result
 
   const idField = fieldKeys.idField ?? 'id'
@@ -185,7 +185,17 @@ export function computeGuideLines(
         : isLastChild
           ? 'upper'
           : 'full'
-    result.set(id, { isLastChild, guideMask, markerLine })
+    // Encode {isLastChild, guideMask, markerLine} into one number: map values
+    // stay unboxed and avoid 1M per-node objects when showLine is enabled.
+    const markerCode =
+      markerLine === 'upper'
+        ? 1
+        : markerLine === 'lower'
+          ? 2
+          : markerLine === 'full'
+            ? 3
+            : 0
+    result.set(id, guideMask * 8 + (isLastChild ? 4 : 0) + markerCode)
 
     // 始终下钻（不按折叠剪枝）：保证任意渲染路径都能拿到完整字段。
     const children = childrenByParent.get(id)
@@ -204,5 +214,44 @@ export function computeGuideLines(
     }
   }
 
+  return result
+}
+
+/** Decode the packed guide-line value stored by `computePackedGuideLines`. */
+export function decodeGuideLine(packed: number): GuideLineInfo {
+  const guideMask = Math.floor(packed / 8)
+  const rest = packed - guideMask * 8
+  const markerCode = rest & 3
+  return {
+    isLastChild: (rest & 4) !== 0,
+    guideMask,
+    markerLine:
+      markerCode === 1
+        ? 'upper'
+        : markerCode === 2
+          ? 'lower'
+          : markerCode === 3
+            ? 'full'
+            : 'none',
+  }
+}
+
+/**
+ * 从邻接表输入预计算全部节点的连接线字段（面向公开 API 的对象形式）。
+ * 组件内部使用 `computePackedGuideLines` + `decodeGuideLine`，避免为 100 万
+ * 节点各分配一个对象。
+ *
+ * Precomputes guide-line fields in object form for the public API. The component
+ * itself uses `computePackedGuideLines` and decodes on demand to avoid one
+ * object per node at 1M scale.
+ */
+export function computeGuideLines(
+  items: TreeInputItem[],
+  root: string,
+  fieldKeys: TreeFieldKeys
+): Map<string, GuideLineInfo> {
+  const packed = computePackedGuideLines(items, root, fieldKeys)
+  const result = new Map<string, GuideLineInfo>()
+  packed.forEach((value, id) => result.set(id, decodeGuideLine(value)))
   return result
 }

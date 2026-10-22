@@ -51,6 +51,24 @@ describe('tree-serializer: 序列化', () => {
     expect(() => JSON.parse(getShownNodes(tree))).not.toThrow()
   })
 
+  it('大视口逐行序列化完整且可解析', () => {
+    const tree = newTree('', 26, SelectType.CHECKBOX)
+    clear(tree)
+    for (let i = 0; i < 500; i++)
+      pushNeighborNode(tree, `n${i}`, `Node "${i}" \\ value`, '')
+    popNeighbor(tree)
+    setBoundary(tree, 0, 26 * 400)
+    const nodes = JSON.parse(getShownNodes(tree)) as Array<{
+      id: string
+      leftNode: number
+    }>
+    // ceil((0 + 400 * 26) / 26) + 1, clamped to the 500 available rows.
+    expect(nodes.length).toBe(401)
+    expect(nodes[0].id).toBe('n0')
+    expect(nodes[nodes.length - 1].id).toBe('n400')
+    expect(nodes.every(node => typeof node.leftNode === 'number')).toBe(true)
+  })
+
   it('checked/selected 状态正确反映在序列化结果中', () => {
     const tree = newTree('', 26, SelectType.CHECKBOX)
     clear(tree)

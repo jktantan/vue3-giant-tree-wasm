@@ -25,13 +25,16 @@ import {
   getCheckedNodes,
   getCheckedIds,
   getCheckedIdList,
+  getCheckedIndices,
   setCheckedOutputMode,
   setBoundary,
+  setLineHeight,
   clear,
   checkNode,
   setCheckedNodes,
   clearCheckedNodes,
   collapseTree,
+  expandByIds,
   fuzzyTree,
   updateNodeName,
   updateNodeDisabled,
@@ -137,6 +140,151 @@ describe('giant-tree: 集成测试', () => {
     expect(
       JSON.parse(getAllNodes(tree)).map((node: { id: string }) => node.id)
     ).toEqual(['A'])
+  })
+
+  it('缺失 id 的输入行按叶节点处理，不会递归回根节点桶', () => {
+    const tree = newTree('', 26, SelectType.CHECKBOX)
+    setNeighborTree(
+      tree,
+      JSON.stringify([
+        { id: null, name: 'Missing id', parentId: '' },
+        { id: 'a', name: 'A', parentId: '' },
+      ])
+    )
+    expect(getSize(tree)).toBe(2)
+    expect(
+      JSON.parse(getAllNodes(tree)).map((node: { id: string }) => node.id)
+    ).toEqual(['', 'a'])
+  })
+
+  it('setLineHeight 运行时更新虚拟滚动几何', () => {
+    const tree = newTree('root', 26, SelectType.CHECKBOX)
+    for (const id of ['A', 'B', 'C']) pushNeighborNode(tree, id, id, 'root')
+    popNeighbor(tree)
+    setBoundary(tree, 0, 500)
+    expect(getShownHeight(tree)).toBe(78)
+    setLineHeight(tree, 40)
+    setBoundary(tree, 0, 500)
+    expect(getShownHeight(tree)).toBe(120)
+    expect(JSON.parse(getShownNodes(tree))).toHaveLength(3)
+  })
+
+  it('expandByIds 一次重建多个分支的可见集合', () => {
+    const tree = newTree('root', 26, SelectType.CHECKBOX)
+    for (const [id, parentId] of [
+      ['A', 'root'],
+      ['A1', 'A'],
+      ['B', 'root'],
+      ['B1', 'B'],
+    ])
+      pushNeighborNode(tree, id, id, parentId)
+    popNeighbor(tree)
+    setBoundary(tree, 0, 500)
+    expect(
+      JSON.parse(getShownNodes(tree)).map((node: { id: string }) => node.id)
+    ).toEqual(['A', 'B'])
+
+    expandByIds(tree, ['A', 'B'])
+    expect(
+      JSON.parse(getShownNodes(tree)).map((node: { id: string }) => node.id)
+    ).toEqual(['A', 'A1', 'B', 'B1'])
+  })
+
+  it('顶层追加使用下一个空闲边界，删除邻居后仍保持合法范围', () => {
+    const tree = newTree('root', 26, SelectType.CHECKBOX)
+    for (const id of ['A', 'B']) pushNeighborNode(tree, id, id, 'root')
+    popNeighbor(tree)
+
+    expect(appendChild(tree, 'C', 'C', 'root')).toBe(true)
+    const afterAppend = JSON.parse(getAllNodes(tree)) as Array<{
+      id: string
+      leftNode: number
+      rightNode: number
+    }>
+    const b = afterAppend.find(node => node.id === 'B')!
+    const c = afterAppend.find(node => node.id === 'C')!
+    expect(c.leftNode).toBe(b.rightNode + 1)
+    expect(c.rightNode).toBe(c.leftNode + 1)
+
+    expect(removeSubtree(tree, 'B')).toBe(true)
+    const afterRemove = JSON.parse(getAllNodes(tree)) as typeof afterAppend
+    const remainingC = afterRemove.find(node => node.id === 'C')!
+    expect(remainingC.leftNode).toBeLessThan(remainingC.rightNode)
+    expect(afterRemove.findIndex(node => node.id === 'C')).toBe(
+      afterRemove.length - 1
+    )
+  })
+
+  it('向已有父节点追加子节点时同步扩展祖先右边界', () => {
+    const tree = newTree('root', 26, SelectType.CHECKBOX)
+    for (const [id, parentId] of [
+      ['A', 'root'],
+      ['A1', 'A'],
+      ['X', 'root'],
+      ['X1', 'X'],
+      ['B', 'root'],
+    ])
+      pushNeighborNode(tree, id, id, parentId)
+    popNeighbor(tree)
+
+    expect(appendChild(tree, 'A2', 'A2', 'A')).toBe(true)
+    const nodes = JSON.parse(getAllNodes(tree)) as Array<{
+      id: string
+      leftNode: number
+      rightNode: number
+    }>
+    const a = nodes.find(node => node.id === 'A')!
+    const a2 = nodes.find(node => node.id === 'A2')!
+    const x = nodes.find(node => node.id === 'X')!
+    const b = nodes.find(node => node.id === 'B')!
+    expect(a2.leftNode).toBeGreaterThan(a.leftNode)
+    expect(a2.rightNode).toBeLessThan(a.rightNode)
+    // Siblings after A shift right, so every enclosing/right-hand range stays
+    // ordered and disjoint.
+    expect(x.leftNode).toBeGreaterThan(a.rightNode)
+    expect(b.leftNode).toBeGreaterThan(x.rightNode)
+
+    expect(removeSubtree(tree, 'A2')).toBe(true)
+    const afterRemove = JSON.parse(getAllNodes(tree)) as typeof nodes
+    const aAfter = afterRemove.find(node => node.id === 'A')!
+    // A1 is still present, so A remains a branch spanning exactly one child.
+    expect(aAfter.rightNode - aAfter.leftNode).toBe(3)
+  })
+
+  it('getCheckedIndices 与各输出模式的 ID 列表一致', () => {
+    const tree = newTree('root', 26, SelectType.CHECKBOX)
+    for (const [id, parentId] of [
+      ['A', 'root'],
+      ['A1', 'A'],
+      ['A2', 'A'],
+      ['B', 'root'],
+      ['B1', 'B'],
+    ])
+      pushNeighborNode(tree, id, id, parentId)
+    popNeighbor(tree)
+    checkNode(tree, 'A', CheckType.CHECKED)
+    checkNode(tree, 'B1', CheckType.CHECKED)
+    const ids = getAllNodeIds(tree) as string[]
+    const resolve = () =>
+      (getCheckedIndices(tree) as number[]).map(index => ids[index])
+
+    expect(resolve()).toEqual(getCheckedIdList(tree))
+
+    setCheckedOutputMode(tree, CheckedOutputMode.LeafOnly)
+    expect(resolve()).toEqual(getCheckedIdList(tree))
+
+    setCheckedOutputMode(tree, CheckedOutputMode.RootOnly)
+    expect(resolve()).toEqual(getCheckedIdList(tree))
+
+    setCheckedOutputMode(tree, CheckedOutputMode.All)
+    const radio = newTree('root', 26, SelectType.RADIO)
+    for (const id of ['R1', 'R2']) pushNeighborNode(radio, id, id, 'root')
+    popNeighbor(radio)
+    checkNode(radio, 'R2', CheckType.CHECKED)
+    const radioIds = getAllNodeIds(radio) as string[]
+    expect(
+      (getCheckedIndices(radio) as number[]).map(index => radioIds[index])
+    ).toEqual(['R2'])
   })
 
   it('增量新增、编辑和删除维护 MPTT 子树范围', () => {

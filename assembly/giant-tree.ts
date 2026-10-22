@@ -25,19 +25,19 @@ import {
 import {
   checkNodeInTree,
   setCheckedNodesInTree,
-  getCheckedNodesFromTree,
-  getCheckedIdListFromTree,
   getCheckedIdsFromTree,
   clearAllChecked,
 } from './tree-check'
-import { fuzzySearchTree } from './tree-search'
+import { fuzzySearchTree, lastSearchTruncated } from './tree-search'
 import { LazyCheckRangeStore } from './lazy-check-range-store'
 import {
   serializeShownSlice,
   serializeShownNodesCompact,
   serializeMpttArray,
   serializeMpttArrayCompact,
+  serializeCheckedArray,
   serializeCheckedArrayCompact,
+  serializeCheckedNode,
 } from './tree-serializer'
 import { CompactNodeStore } from './compact-store'
 
@@ -103,6 +103,11 @@ export class GiantTree {
   preserveExtendData: bool = true
   compactStore: CompactNodeStore = new CompactNodeStore()
   lazyCheckRanges: LazyCheckRangeStore = new LazyCheckRangeStore()
+  /**
+   * Compact-array selection path. Kept as a switch because the raw WASM API
+   * exposes the legacy object-field path; the Vue component always uses the
+   * compact path. New integrations should not disable it.
+   */
   useCompactSelection: bool = true
   useLazyCheckboxRanges: bool = false
   private _hasLazyCheckboxRanges: bool = false
@@ -175,7 +180,7 @@ export class GiantTree {
   _shownNodes: MpttTree[] = []
 
   /** id→fullTree 索引映射 / id→fullTree index map / Маппинг id→индекс в fullTree */
-  idToIndex: Map<string, i32> = new Map()
+  idToIndex: Map<string, MpttTree> = new Map()
 
   /** 搜索复用：临时 ID 集合 / Reusable search temp: ID set / Переиспользуемый набор ID для поиска */
   _searchIdSet: Set<string> = new Set<string>()
@@ -188,6 +193,8 @@ export class GiantTree {
   useSearchCandidateIndex: bool = false
   _lastSearchKeyword: string = ''
   _hasSearchCache: bool = false
+  /** Set when the last non-empty search stopped at MAX_RESULTS. */
+  _searchTruncated: bool = false
   /** Collapse state is local to the search view, which initially exposes every matching path. */
   _searchCollapsedIds: Set<string> = new Set<string>()
 
@@ -217,8 +224,8 @@ export class GiantTree {
   /** Update display text without changing topology or MPTT boundaries. */
   updateNodeName(id: string, name: string): bool {
     if (!this.idToIndex.has(id)) return false
-    const index = this.idToIndex.get(id)
-    this.fullTree[index].name = name
+    const node = this.idToIndex.get(id)
+    node.name = name
     this._invalidateSearchCandidates()
     this._invalidateCache()
     return true
@@ -230,8 +237,8 @@ export class GiantTree {
    */
   updateNodeDisabled(id: string, disabled: bool): bool {
     if (!this.idToIndex.has(id)) return false
-    const index = this.idToIndex.get(id)
-    const node = this.fullTree[index]
+    const node = this.idToIndex.get(id)
+    const index = node.fullIndex
     if (node.disabled === disabled) return true
     this._materializeLazyCheckboxRanges()
     node.disabled = disabled
@@ -311,7 +318,7 @@ export class GiantTree {
   getSubtreeIds(id: string): string[] {
     const ids: string[] = []
     if (!this.idToIndex.has(id)) return ids
-    const start = this.idToIndex.get(id)
+    const start = this.idToIndex.get(id).fullIndex
     const right = this.fullTree[start].rightNode
     for (let i = start; i < this.fullTree.length; i++) {
       if (this.fullTree[i].leftNode >= right) break
@@ -419,21 +426,23 @@ export class GiantTree {
     id: string,
     name: string,
     parentId: string,
-    disabled: bool = false
+    disabled: bool = false,
+    collapsed: bool = true
   ): bool {
     if (!id.length || this.idToIndex.has(id)) return false
     this._materializeLazyCheckboxRanges()
     let insertIndex = this.fullTree.length
+    // Top-level nodes extend the preorder list: the next free boundary starts
+    // one slot after the current last closing boundary.
     let left =
       this.fullTree.length > 0
-        ? this.fullTree[this.fullTree.length - 1].rightNode
-        : 1
+        ? this.fullTree[this.fullTree.length - 1].rightNode + 1
+        : 0
     let depth: i32 = 0
-    let needsShift = false
     if (parentId !== this.root) {
       if (!this.idToIndex.has(parentId)) return false
-      const parentIndex = this.idToIndex.get(parentId)
-      const parent = this.fullTree[parentIndex]
+      const parent: MpttTree = this.idToIndex.get(parentId)
+      const parentIndex = parent.fullIndex
       // compactStore is intentionally stale inside a structure batch. Find the
       // preorder end from MPTT boundaries so a child added earlier in this
       // transaction can itself receive children.
@@ -448,18 +457,23 @@ export class GiantTree {
       // `[left, left + 1]` into a branch.
       left = parent.rightNode
       depth = parent.deep + 1
-      needsShift = true
-    }
-    // Only run an O(N) boundary shift when inserting as a sibling of an
-    // existing subtree. Top-level appends (`parentId === root`) extend the
-    // preorder list to the right and need no renumbering.
-    if (needsShift) {
-      for (let i: i32 = 0; i < this.fullTree.length; i++) {
+      // Only ancestors sit before the insertion point and still need their
+      // closing boundary widened. Walking the parent chain is O(depth) and
+      // avoids rescanning the whole array for every append.
+      let ancestor: MpttTree = parent
+      while (true) {
+        ancestor.rightNode += 2
+        if (ancestor.parentId === this.root) break
+        if (!this.idToIndex.has(ancestor.parentId)) break
+        ancestor = this.idToIndex.get(ancestor.parentId)
+      }
+      // Nodes at or after the insertion point move one slot right; only those
+      // whose boundaries touch the new range need a +2 renumber.
+      for (let i: i32 = insertIndex; i < this.fullTree.length; i++) {
         const node = this.fullTree[i]
         if (node.leftNode >= left) node.leftNode += 2
-        // The parent closes at `left`, so its right boundary must move as well.
-        // A preceding sibling has `rightNode < left` and is left unchanged.
         if (node.rightNode >= left) node.rightNode += 2
+        node.fullIndex = i + 1
       }
     }
     const node = new MpttTree()
@@ -470,15 +484,15 @@ export class GiantTree {
     node.leftNode = left
     node.rightNode = left + 1
     node.deep = depth
-    node.collapsed = true
+    node.collapsed = collapsed
+    node.fullIndex = insertIndex
     this.fullTree.push(node)
     for (let i: i32 = this.fullTree.length - 1; i > insertIndex; i--)
       this.fullTree[i] = this.fullTree[i - 1]
     this.fullTree[insertIndex] = node
-    // Keep O(1) lookup valid for the rest of this batch; the compact arrays
-    // and visible list are deferred until endStructureBatch().
-    for (let i = insertIndex; i < this.fullTree.length; i++)
-      this.idToIndex.set(this.fullTree[i].id, i)
+    // Positions live on `fullIndex`; the id map only gains one entry, so a
+    // batch of appends no longer rewrites the whole suffix map per operation.
+    this.idToIndex.set(id, node)
     this._finishStructureMutation()
     return true
   }
@@ -486,8 +500,8 @@ export class GiantTree {
   removeSubtree(id: string): bool {
     if (!this.idToIndex.has(id)) return false
     this._materializeLazyCheckboxRanges()
-    const index = this.idToIndex.get(id)
-    const target = this.fullTree[index]
+    const target: MpttTree = this.idToIndex.get(id)
+    const index = target.fullIndex
     const right = target.rightNode
     // Boundaries are inclusive: even a leaf occupies its opening and closing
     // positions, so removing it must reclaim two slots rather than one.
@@ -495,17 +509,24 @@ export class GiantTree {
     let end = index
     while (end < this.fullTree.length && this.fullTree[end].leftNode < right)
       end++
+    // Ancestors are the only surviving nodes before the removal whose closing
+    // boundary still covers the deleted range.
+    let ancestorId = target.parentId
+    while (ancestorId !== this.root && this.idToIndex.has(ancestorId)) {
+      const ancestor: MpttTree = this.idToIndex.get(ancestorId)
+      ancestor.rightNode -= width
+      ancestorId = ancestor.parentId
+    }
     for (let i = index; i < end; i++) this.idToIndex.delete(this.fullTree[i].id)
     this.fullTree.splice(index, end - index)
-    for (let i: i32 = 0; i < this.fullTree.length; i++) {
+    // Surviving nodes before the subtree keep their boundaries; the suffix is
+    // renumbered and gets its positional index refreshed in the same pass.
+    for (let i: i32 = index; i < this.fullTree.length; i++) {
       const node = this.fullTree[i]
-      // The removed subtree owns both endpoints through `right`. Every
-      // surviving boundary strictly after that closing endpoint shifts left.
       if (node.leftNode > right) node.leftNode -= width
       if (node.rightNode > right) node.rightNode -= width
+      node.fullIndex = i
     }
-    for (let i = index; i < this.fullTree.length; i++)
-      this.idToIndex.set(this.fullTree[i].id, i)
     this._finishStructureMutation()
     return true
   }
@@ -904,10 +925,40 @@ export class GiantTree {
     return this.compactStore.hasDisabledNodes()
   }
 
+  /**
+   * Rebuilds the visible search rows from `searchTree` and the search-local
+   * collapsed set. Shared by search collapse/expand, collapse-all and view
+   * switching so all three agree on which rows are visible.
+   */
+  private _rebuildSearchShownNodes(): void {
+    this._shownNodes.splice(0)
+    this.shownCount = 0
+    const boundaries: i32[] = []
+    for (let i: i32 = 0; i < this.searchTree.length; i++) {
+      const node = this.searchTree[i]
+      while (
+        boundaries.length > 0 &&
+        node.leftNode >= boundaries[boundaries.length - 1]
+      )
+        boundaries.pop()
+      if (boundaries.length === 0) {
+        this._shownNodes.push(node)
+        this.shownCount++
+        if (
+          this._searchCollapsedIds.has(node.id) &&
+          node.rightNode - node.leftNode > 1
+        )
+          boundaries.push(node.rightNode)
+      }
+    }
+    boundaries.splice(0)
+    this._syncLazyShownStates()
+  }
+
   collapseTree(id: string, collapsed: boolean): void {
     if (!this.idToIndex.has(id)) return
-    const i: i32 = this.idToIndex.get(id)
-    const node: MpttTree = this.fullTree[i]
+    const node: MpttTree = this.idToIndex.get(id)
+    const i: i32 = node.fullIndex
 
     if (this.tree === this.searchTree) {
       if (collapsed) this._searchCollapsedIds.add(id)
@@ -915,30 +966,7 @@ export class GiantTree {
       // 搜索模式：从 searchTree 重建 _shownNodes，尊重折叠状态
       // 不修改 fullTree 的 shown 标志（搜索模式下 _shownNodes 与 shown 标志无关）
       // Search mode: rebuild _shownNodes from searchTree, respecting collapse state
-      this._shownNodes.splice(0)
-      this.shownCount = 0
-      const boundaries: i32[] = []
-      for (let j: i32 = 0; j < this.searchTree.length; j++) {
-        const n: MpttTree = this.searchTree[j]
-        while (
-          boundaries.length > 0 &&
-          n.leftNode >= boundaries[boundaries.length - 1]
-        ) {
-          boundaries.pop()
-        }
-        if (boundaries.length === 0) {
-          this._shownNodes.push(n)
-          this.shownCount++
-          if (
-            this._searchCollapsedIds.has(n.id) &&
-            n.rightNode - n.leftNode > 1
-          ) {
-            boundaries.push(n.rightNode)
-          }
-        }
-      }
-      boundaries.splice(0)
-      this._syncLazyShownStates()
+      this._rebuildSearchShownNodes()
     } else {
       this._hasSearchCache = false
       node.collapsed = collapsed
@@ -972,6 +1000,31 @@ export class GiantTree {
   }
 
   /**
+   * Expands the given ids in one visibility pass. Used after a rebuild to
+   * restore a large expanded set without one subtree walk per branch.
+   */
+  expandByIds(ids: string[]): void {
+    for (let i: i32 = 0; i < ids.length; i++) {
+      if (!this.idToIndex.has(ids[i])) continue
+      const node: MpttTree = this.idToIndex.get(ids[i])
+      node.collapsed = false
+      if (
+        this.useCompactSelection &&
+        node.fullIndex < this.compactStore.collapsed.length
+      )
+        this.compactStore.collapsed[node.fullIndex] = 0
+    }
+    // Rebuild visibility unconditionally: callers use this right after a full
+    // tree rebuild, where every shown flag has been reset.
+    const shownNodes = resetShownFlagsAndCollect(this.fullTree, null)
+    this._shownNodes = shownNodes
+    this.shownCount = shownNodes.length
+    this._hasSearchCache = false
+    this._syncLazyShownStates()
+    this._invalidateCache()
+  }
+
+  /**
    * 全部展开/全部折叠
    * Expand all / Collapse all
    * Развернуть все / Свернуть все
@@ -986,24 +1039,7 @@ export class GiantTree {
             this._searchCollapsedIds.add(node.id)
         }
       }
-      this._shownNodes.splice(0)
-      this.shownCount = 0
-      const boundaries: i32[] = []
-      for (let i: i32 = 0; i < this.searchTree.length; i++) {
-        const node = this.searchTree[i]
-        while (
-          boundaries.length > 0 &&
-          node.leftNode >= boundaries[boundaries.length - 1]
-        )
-          boundaries.pop()
-        if (boundaries.length === 0) {
-          this._shownNodes.push(node)
-          this.shownCount++
-          if (this._searchCollapsedIds.has(node.id))
-            boundaries.push(node.rightNode)
-        }
-      }
-      this._syncLazyShownStates()
+      this._rebuildSearchShownNodes()
       this._invalidateCache()
       return
     }
@@ -1046,6 +1082,12 @@ export class GiantTree {
    */
   getShownHeight(): f32 {
     return (this.shownCount as f32) * this.lineHeight
+  }
+
+  /** Updates the virtual row height without rebuilding the tree. */
+  setLineHeight(value: f32): void {
+    if (value > 0) this.lineHeight = value
+    this._invalidateCache()
   }
 
   /**
@@ -1127,7 +1169,9 @@ export class GiantTree {
   canUseLazyCheckboxRange(id: string): bool {
     if (this.selectType !== SelectType.CHECKBOX || !this.idToIndex.has(id))
       return false
-    return !this.compactStore.hasDisabledInSubtree(this.idToIndex.get(id))
+    return !this.compactStore.hasDisabledInSubtree(
+      this.idToIndex.get(id).fullIndex
+    )
   }
 
   getShownIndices(): i32[] {
@@ -1204,7 +1248,9 @@ export class GiantTree {
   getNodeLayouts(ids: string[]): i32[] {
     const layouts: i32[] = []
     for (let i: i32 = 0; i < ids.length; i++) {
-      const index = this.idToIndex.has(ids[i]) ? this.idToIndex.get(ids[i]) : -1
+      const index = this.idToIndex.has(ids[i])
+        ? this.idToIndex.get(ids[i]).fullIndex
+        : -1
       layouts.push(index)
       if (index < 0 || index >= this.compactStore.left.length) {
         layouts.push(0)
@@ -1271,6 +1317,42 @@ export class GiantTree {
 
   // ─── 选中逻辑 / Check Logic / Логика выбора ───
 
+  private _isNodeDisabled(index: i32): bool {
+    return this.useCompactSelection
+      ? this.compactStore.disabled[index] !== 0
+      : this.fullTree[index].disabled
+  }
+
+  private _setRadioIndex(targetIdx: i32, checked: CheckType): void {
+    if (this._radioCheckedIdx >= 0 && this._radioCheckedIdx !== targetIdx) {
+      this.fullTree[this._radioCheckedIdx].checked = CheckType.UNCHECKED
+      if (this.useCompactSelection)
+        this.compactStore.setChecked(
+          this._radioCheckedIdx,
+          CheckType.UNCHECKED as u8
+        )
+    }
+    this.fullTree[targetIdx].checked = checked
+    if (this.useCompactSelection)
+      this.compactStore.setChecked(targetIdx, checked as u8)
+    this._radioCheckedIdx = targetIdx
+  }
+
+  private _setSelectIndex(targetIdx: i32, checked: CheckType): void {
+    if (this._selectSelectedIdx >= 0 && this._selectSelectedIdx !== targetIdx) {
+      this.fullTree[this._selectSelectedIdx].selected = CheckType.UNCHECKED
+      if (this.useCompactSelection)
+        this.compactStore.setSelected(
+          this._selectSelectedIdx,
+          CheckType.UNCHECKED as u8
+        )
+    }
+    this.fullTree[targetIdx].selected = checked
+    if (this.useCompactSelection)
+      this.compactStore.setSelected(targetIdx, checked as u8)
+    this._selectSelectedIdx = targetIdx
+  }
+
   /**
    * 选中/取消选中节点，返回当前可视区域的 JSON
    * Check/uncheck a node, returns JSON of current viewport
@@ -1295,12 +1377,8 @@ export class GiantTree {
           this.lineHeight
         )
       }
-      const targetIdx: i32 = this.idToIndex.get(id)
-      if (
-        this.useCompactSelection
-          ? this.compactStore.disabled[targetIdx] !== 0
-          : this.fullTree[targetIdx].disabled
-      ) {
+      const targetIdx: i32 = this.idToIndex.get(id).fullIndex
+      if (this._isNodeDisabled(targetIdx)) {
         return serializeShownSlice(
           this._shownNodes,
           this.scrollTop,
@@ -1308,18 +1386,7 @@ export class GiantTree {
           this.lineHeight
         )
       }
-      if (this._radioCheckedIdx >= 0 && this._radioCheckedIdx !== targetIdx) {
-        this.fullTree[this._radioCheckedIdx].checked = CheckType.UNCHECKED
-        if (this.useCompactSelection)
-          this.compactStore.setChecked(
-            this._radioCheckedIdx,
-            CheckType.UNCHECKED as u8
-          )
-      }
-      this.fullTree[targetIdx].checked = checked
-      if (this.useCompactSelection)
-        this.compactStore.setChecked(targetIdx, checked as u8)
-      this._radioCheckedIdx = targetIdx
+      this._setRadioIndex(targetIdx, checked)
     } else if (this.selectType === SelectType.SELECT) {
       if (!this.idToIndex.has(id)) {
         return serializeShownSlice(
@@ -1329,8 +1396,8 @@ export class GiantTree {
           this.lineHeight
         )
       }
-      const targetIdx: i32 = this.idToIndex.get(id)
-      if (this.fullTree[targetIdx].disabled) {
+      const targetIdx: i32 = this.idToIndex.get(id).fullIndex
+      if (this._isNodeDisabled(targetIdx)) {
         return serializeShownSlice(
           this._shownNodes,
           this.scrollTop,
@@ -1338,24 +1405,10 @@ export class GiantTree {
           this.lineHeight
         )
       }
-      if (
-        this._selectSelectedIdx >= 0 &&
-        this._selectSelectedIdx !== targetIdx
-      ) {
-        this.fullTree[this._selectSelectedIdx].selected = CheckType.UNCHECKED
-        if (this.useCompactSelection)
-          this.compactStore.setSelected(
-            this._selectSelectedIdx,
-            CheckType.UNCHECKED as u8
-          )
-      }
-      this.fullTree[targetIdx].selected = checked
-      if (this.useCompactSelection)
-        this.compactStore.setSelected(targetIdx, checked as u8)
-      this._selectSelectedIdx = targetIdx
+      this._setSelectIndex(targetIdx, checked)
     } else {
       const targetIdx: i32 = this.idToIndex.has(id)
-        ? this.idToIndex.get(id)
+        ? this.idToIndex.get(id).fullIndex
         : -1
       if (this._canApplyLazyCheckboxRange(targetIdx, checked)) {
         this._applyLazyCheckboxRange(targetIdx, checked)
@@ -1405,7 +1458,7 @@ export class GiantTree {
         if (!this.idToIndex.has(id)) continue
         this.compactStore.checkCheckbox(
           this.fullTree,
-          this.idToIndex.get(id),
+          this.idToIndex.get(id).fullIndex,
           CheckType.CHECKED as u8
         )
       }
@@ -1438,50 +1491,117 @@ export class GiantTree {
     // RADIO/SELECT: путь с кэшированным индексом O(1)
     if (this.selectType === SelectType.RADIO) {
       if (!this.idToIndex.has(id)) return
-      const targetIdx: i32 = this.idToIndex.get(id)
-      if (
-        this.useCompactSelection
-          ? this.compactStore.disabled[targetIdx] !== 0
-          : this.fullTree[targetIdx].disabled
-      )
-        return
-      if (this._radioCheckedIdx >= 0 && this._radioCheckedIdx !== targetIdx) {
-        this.fullTree[this._radioCheckedIdx].checked = CheckType.UNCHECKED
-        if (this.useCompactSelection)
-          this.compactStore.setChecked(
-            this._radioCheckedIdx,
-            CheckType.UNCHECKED as u8
-          )
-      }
-      this.fullTree[targetIdx].checked = CheckType.CHECKED
-      if (this.useCompactSelection)
-        this.compactStore.setChecked(targetIdx, CheckType.CHECKED as u8)
-      this._radioCheckedIdx = targetIdx
+      const targetIdx: i32 = this.idToIndex.get(id).fullIndex
+      if (this._isNodeDisabled(targetIdx)) return
+      this._setRadioIndex(targetIdx, CheckType.CHECKED)
     } else if (this.selectType === SelectType.SELECT) {
       if (!this.idToIndex.has(id)) return
-      const targetIdx: i32 = this.idToIndex.get(id)
-      if (
-        this.useCompactSelection
-          ? this.compactStore.disabled[targetIdx] !== 0
-          : this.fullTree[targetIdx].disabled
-      )
-        return
-      if (
-        this._selectSelectedIdx >= 0 &&
-        this._selectSelectedIdx !== targetIdx
-      ) {
-        this.fullTree[this._selectSelectedIdx].selected = CheckType.UNCHECKED
-        if (this.useCompactSelection)
-          this.compactStore.setSelected(
-            this._selectSelectedIdx,
-            CheckType.UNCHECKED as u8
-          )
-      }
-      this.fullTree[targetIdx].selected = CheckType.CHECKED
-      if (this.useCompactSelection)
-        this.compactStore.setSelected(targetIdx, CheckType.CHECKED as u8)
-      this._selectSelectedIdx = targetIdx
+      const targetIdx: i32 = this.idToIndex.get(id).fullIndex
+      if (this._isNodeDisabled(targetIdx)) return
+      this._setSelectIndex(targetIdx, CheckType.CHECKED)
     }
+  }
+
+  /**
+   * Collects checked/selected indices once for every output shape (IDs, JSON,
+   * and the index-array bridge used by the Vue component). Order is fullTree
+   * order, matching the previous per-output traversals.
+   */
+  private _isCheckedIndex(index: i32, useCompact: bool): bool {
+    return (
+      (useCompact
+        ? this.compactStore.checked[index]
+        : <u8>this.fullTree[index].checked) === CheckType.CHECKED
+    )
+  }
+
+  private _isSelectedIndex(index: i32, useCompact: bool): bool {
+    return (
+      (useCompact
+        ? this.compactStore.selected[index]
+        : <u8>this.fullTree[index].selected) === CheckType.CHECKED
+    )
+  }
+
+  private _collectCheckedIndices(): i32[] {
+    const indices: i32[] = []
+    const useCompact =
+      this.useCompactSelection && !this._hasCompactDisabledNodes()
+    if (this.selectType === SelectType.RADIO) {
+      const index = this._radioCheckedIdx
+      if (
+        index >= 0 &&
+        index < this.fullTree.length &&
+        this._isCheckedIndex(index, useCompact)
+      ) {
+        indices.push(index)
+        return indices
+      }
+      for (let i: i32 = 0; i < this.fullTree.length; i++) {
+        if (this._isCheckedIndex(i, useCompact)) {
+          indices.push(i)
+          break
+        }
+      }
+      return indices
+    }
+    if (this.selectType === SelectType.SELECT) {
+      const index = this._selectSelectedIdx
+      if (
+        index >= 0 &&
+        index < this.fullTree.length &&
+        this._isSelectedIndex(index, useCompact)
+      ) {
+        indices.push(index)
+        return indices
+      }
+      for (let i: i32 = 0; i < this.fullTree.length; i++) {
+        if (this._isSelectedIndex(i, useCompact)) {
+          indices.push(i)
+          break
+        }
+      }
+      return indices
+    }
+    if (this.checkedOutputMode === CheckedOutputMode.RootOnly) {
+      const covered: i32[] = []
+      for (let i: i32 = 0; i < this.fullTree.length; i++) {
+        const left = useCompact
+          ? this.compactStore.left[i]
+          : this.fullTree[i].leftNode
+        while (covered.length > 0 && left >= covered[covered.length - 1])
+          covered.pop()
+        if (!this._isCheckedIndex(i, useCompact)) continue
+        if (covered.length > 0) continue
+        indices.push(i)
+        covered.push(
+          useCompact ? this.compactStore.right[i] : this.fullTree[i].rightNode
+        )
+      }
+    } else {
+      for (let i: i32 = 0; i < this.fullTree.length; i++) {
+        if (!this._isCheckedIndex(i, useCompact)) continue
+        if (this.checkedOutputMode === CheckedOutputMode.LeafOnly) {
+          const width = useCompact
+            ? this.compactStore.right[i] - this.compactStore.left[i]
+            : this.fullTree[i].rightNode - this.fullTree[i].leftNode
+          if (width !== 1) continue
+        }
+        indices.push(i)
+      }
+    }
+    return indices
+  }
+
+  /**
+   * Returns checked/selected fullTree indices for the current output mode.
+   * Callers that already hold the id array can resolve indices locally instead
+   * of paying an O(N) string copy inside WASM.
+   */
+  getCheckedIndices(): i32[] {
+    if (this.checkedOutputMode !== CheckedOutputMode.RootOnly)
+      this._materializeLazyCheckboxRanges()
+    return this._collectCheckedIndices()
   }
 
   /**
@@ -1491,46 +1611,28 @@ export class GiantTree {
    */
   getCheckedNodes(): string {
     this._materializeLazyCheckboxRanges()
-    if (
-      this.useCompactSelection &&
-      this.selectType === SelectType.CHECKBOX &&
-      !this._hasCompactDisabledNodes()
-    ) {
-      const indices: i32[] = []
-      const covered: i32[] = []
-      for (let i: i32 = 0; i < this.fullTree.length; i++) {
-        while (
-          covered.length > 0 &&
-          this.compactStore.left[i] >= covered[covered.length - 1]
-        )
-          covered.pop()
-        if (this.compactStore.checked[i] !== CheckType.CHECKED) continue
-        if (
-          this.checkedOutputMode === CheckedOutputMode.RootOnly &&
-          covered.length > 0
-        )
-          continue
-        if (
-          this.checkedOutputMode !== CheckedOutputMode.LeafOnly ||
-          this.compactStore.right[i] - this.compactStore.left[i] === 1
-        )
-          indices.push(i)
-        if (this.checkedOutputMode === CheckedOutputMode.RootOnly)
-          covered.push(this.compactStore.right[i])
-      }
+    const indices = this._collectCheckedIndices()
+    if (this.selectType === SelectType.RADIO) {
+      return indices.length > 0
+        ? serializeCheckedNode(this.fullTree[indices[0]])
+        : 'null'
+    }
+    if (this.selectType === SelectType.SELECT) {
+      return indices.length > 0
+        ? serializeCheckedNode(this.fullTree[indices[0]])
+        : 'null'
+    }
+    if (this.useCompactSelection && !this._hasCompactDisabledNodes()) {
       return serializeCheckedArrayCompact(
         this.fullTree,
         indices,
         this.compactStore
       )
     }
-    return getCheckedNodesFromTree(
-      this.fullTree,
-      this.selectType,
-      this.checkedOutputMode,
-      this._radioCheckedIdx,
-      this._selectSelectedIdx
-    )
+    const nodes: MpttTree[] = []
+    for (let i: i32 = 0; i < indices.length; i++)
+      nodes.push(this.fullTree[indices[i]])
+    return serializeCheckedArray(nodes)
   }
 
   /**
@@ -1556,58 +1658,11 @@ export class GiantTree {
   getCheckedIdList(): string[] {
     if (this.checkedOutputMode !== CheckedOutputMode.RootOnly)
       this._materializeLazyCheckboxRanges()
-    if (this.useCompactSelection && !this._hasCompactDisabledNodes()) {
-      if (this.selectType === SelectType.RADIO) {
-        const index = this._radioCheckedIdx
-        if (
-          index >= 0 &&
-          index < this.compactStore.checked.length &&
-          this.compactStore.checked[index] === CheckType.CHECKED
-        )
-          return [this.fullTree[index].id]
-        return []
-      }
-      if (this.selectType === SelectType.SELECT) {
-        const index = this._selectSelectedIdx
-        if (
-          index >= 0 &&
-          index < this.compactStore.selected.length &&
-          this.compactStore.selected[index] === CheckType.CHECKED
-        )
-          return [this.fullTree[index].id]
-        return []
-      }
-      const ids: string[] = []
-      const covered: i32[] = []
-      for (let i: i32 = 0; i < this.fullTree.length; i++) {
-        while (
-          covered.length > 0 &&
-          this.compactStore.left[i] >= covered[covered.length - 1]
-        )
-          covered.pop()
-        if (this.compactStore.checked[i] !== CheckType.CHECKED) continue
-        if (
-          this.checkedOutputMode === CheckedOutputMode.RootOnly &&
-          covered.length > 0
-        )
-          continue
-        if (
-          this.checkedOutputMode !== CheckedOutputMode.LeafOnly ||
-          this.compactStore.right[i] - this.compactStore.left[i] === 1
-        )
-          ids.push(this.fullTree[i].id)
-        if (this.checkedOutputMode === CheckedOutputMode.RootOnly)
-          covered.push(this.compactStore.right[i])
-      }
-      return ids
-    }
-    return getCheckedIdListFromTree(
-      this.fullTree,
-      this.selectType,
-      this.checkedOutputMode,
-      this._radioCheckedIdx,
-      this._selectSelectedIdx
-    )
+    const indices = this._collectCheckedIndices()
+    const ids = new Array<string>(indices.length)
+    for (let i: i32 = 0; i < indices.length; i++)
+      ids[i] = this.fullTree[indices[i]].id
+    return ids
   }
 
   /**
@@ -1644,6 +1699,7 @@ export class GiantTree {
   fuzzySearch(keyword: string): string {
     if (keyword === null || keyword === '') {
       this._searchCollapsedIds.clear()
+      this._searchTruncated = false
       this.tree = this.fullTree
       // 重建 shown 标志：从 collapse 状态恢复，修复搜索时 shown 污染
       // Rebuild shown flags from collapse state, fixing search pollution
@@ -1669,17 +1725,14 @@ export class GiantTree {
           this.useSearchCandidateIndex ? this._searchCandidates : null,
           this.compactStore.parent
         )
+        this._searchTruncated = lastSearchTruncated
         this._lastSearchKeyword = keyword
         this._hasSearchCache = true
       } else {
         this.shownCount = this.searchTree.length as i32
       }
       this.tree = this.searchTree
-      this._shownNodes.splice(0)
-      for (let i: i32 = 0; i < this.searchTree.length; i++) {
-        this._shownNodes.push(this.searchTree[i])
-      }
-      this._syncLazyShownStates()
+      this._rebuildSearchShownNodes()
       this._invalidateCache()
       return serializeShownSlice(
         this._shownNodes,
@@ -1700,10 +1753,14 @@ export class GiantTree {
   switchDisplayTree(type: DisplayType): void {
     if (type === DisplayType.TREE) {
       this.tree = this.fullTree
+      this._rebuildShownNodes()
     } else if (type === DisplayType.SEARCH) {
       this.tree = this.searchTree
+      // Search rows are a filtered view of fullTree, so their `shown` flags do
+      // not describe search visibility. Rebuild from searchTree itself.
+      this._rebuildSearchShownNodes()
+      this._invalidateCache()
     }
-    this._rebuildShownNodes()
   }
 
   // ─── 其他 / Misc / Прочее ───
@@ -1715,6 +1772,11 @@ export class GiantTree {
    */
   getSize(): i32 {
     return this.fullTree.length
+  }
+
+  /** Whether the most recent non-empty fuzzy search hit its result cap. */
+  wasSearchTruncated(): bool {
+    return this._searchTruncated
   }
 
   /**

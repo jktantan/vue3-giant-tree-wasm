@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createApp, h, nextTick, ref } from 'vue'
 import VueGiantTree from '../../lib/VueGiantTree.vue'
+import { SelectType } from '../../build/release'
 
 const nextPaint = () =>
   new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
@@ -150,6 +151,20 @@ describe('worker tree mode', () => {
     expect(checkA.getAttribute('aria-checked')).toBe('true')
 
     expect(treeRef.value?.updateNode('A', { name: 'Edited A' })).toBe(true)
+    expect(treeRef.value?.updateNode('A', { disabled: true })).toBe(true)
+    const disabledDeadline = performance.now() + 10_000
+    while (
+      performance.now() < disabledDeadline &&
+      source.value.find(node => node.id === 'A')?.disabled !== true
+    ) {
+      await nextPaint()
+    }
+    expect(source.value.find(node => node.id === 'A')?.disabled).toBe(true)
+    expect(
+      (
+        host.querySelector('[aria-label="选择 Edited A"]') as HTMLElement
+      )?.getAttribute('aria-disabled')
+    ).toBe('true')
     expect(
       treeRef.value?.addNode({ id: 'A2', name: 'Worker A2', parentId: 'A' })
     ).toBe(true)
@@ -265,6 +280,148 @@ describe('worker tree mode', () => {
     expect(treeRef.value?.getBuildMetrics().contentDiffHits).toBeGreaterThan(
       hitsAfterFirst
     )
+
+    app.unmount()
+    host.remove()
+  })
+
+  it('外部替换 tree 不会被未绑定的 update:tree 回声吞掉', async () => {
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const treeRef = ref<InstanceType<typeof VueGiantTree>>()
+    const source = ref([
+      { id: 'A', name: 'Echo A', parentId: 'root' },
+      { id: 'A1', name: 'Echo A1', parentId: 'A' },
+      { id: 'B', name: 'Echo B', parentId: 'root' },
+    ])
+    const app = createApp({
+      setup: () => () =>
+        h(VueGiantTree, {
+          ref: treeRef,
+          tree: source.value,
+          root: 'root',
+          modelValue: [],
+          workerMode: true,
+          preorderedInput: true,
+          height: '300px',
+          // Deliberately no onUpdate:tree listener: the component emits a
+          // mutation echo that nobody feeds back.
+        }),
+    })
+    app.mount(host)
+
+    const readyDeadline = performance.now() + 10_000
+    while (
+      performance.now() < readyDeadline &&
+      treeRef.value?.getTreeSize() !== 3
+    ) {
+      await nextPaint()
+    }
+    expect(treeRef.value?.getTreeSize()).toBe(3)
+
+    expect(
+      treeRef.value?.addNode({ id: 'A0', name: 'Echo A0', parentId: 'A' })
+    ).toBe(true)
+    const addDeadline = performance.now() + 10_000
+    while (
+      performance.now() < addDeadline &&
+      treeRef.value?.getTreeSize() !== 4
+    ) {
+      await nextPaint()
+    }
+    expect(treeRef.value?.getTreeSize()).toBe(4)
+
+    // A later external replacement must still reach the worker even though the
+    // previous update:tree echo was never acknowledged by the parent.
+    source.value = [
+      { id: 'X', name: 'Echo X', parentId: 'root' },
+      { id: 'Y', name: 'Echo Y', parentId: 'root' },
+    ]
+    await nextTick()
+    const replaceDeadline = performance.now() + 10_000
+    while (
+      performance.now() < replaceDeadline &&
+      (treeRef.value?.getTreeSize() !== 2 ||
+        !host.textContent?.includes('Echo X'))
+    ) {
+      await nextPaint()
+    }
+    expect(treeRef.value?.getTreeSize()).toBe(2)
+    expect(host.textContent).toContain('Echo X')
+    expect(host.textContent).not.toContain('Echo A0')
+
+    app.unmount()
+    host.remove()
+  })
+
+  it('worker 模式下运行时修改 lineHeight / selectType 会更新几何与控件', async () => {
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const treeRef = ref<InstanceType<typeof VueGiantTree>>()
+    const lineHeight = ref(26)
+    const selectType = ref(SelectType.CHECKBOX)
+    const source = ref([
+      { id: 'A', name: 'Config A', parentId: 'root' },
+      { id: 'A1', name: 'Config A1', parentId: 'A' },
+      { id: 'B', name: 'Config B', parentId: 'root' },
+    ])
+    const app = createApp({
+      setup: () => () =>
+        h(VueGiantTree, {
+          ref: treeRef,
+          tree: source.value,
+          root: 'root',
+          modelValue: [],
+          workerMode: true,
+          preorderedInput: true,
+          height: '300px',
+          lineHeight: lineHeight.value,
+          selectType: selectType.value,
+        }),
+    })
+    app.mount(host)
+
+    const readyDeadline = performance.now() + 10_000
+    while (
+      performance.now() < readyDeadline &&
+      treeRef.value?.getTreeSize() !== 3
+    ) {
+      await nextPaint()
+    }
+    treeRef.value?.expandAll()
+    const expandDeadline = performance.now() + 10_000
+    const phantom = () =>
+      host.querySelector<HTMLElement>('.infinite-list-phantom')
+    while (
+      performance.now() < expandDeadline &&
+      phantom()?.style.height !== '78px'
+    ) {
+      await nextPaint()
+    }
+    expect(phantom()?.style.height).toBe('78px')
+
+    lineHeight.value = 40
+    await nextTick()
+    const heightDeadline = performance.now() + 10_000
+    while (
+      performance.now() < heightDeadline &&
+      phantom()?.style.height !== '120px'
+    ) {
+      await nextPaint()
+    }
+    expect(phantom()?.style.height).toBe('120px')
+
+    selectType.value = SelectType.RADIO
+    await nextTick()
+    const radioDeadline = performance.now() + 10_000
+    while (
+      performance.now() < radioDeadline &&
+      !host.querySelector('[role="radio"]')
+    ) {
+      await nextPaint()
+    }
+    expect(host.querySelector('[role="radio"]')).toBeTruthy()
+    expect(host.querySelector('[role="checkbox"]')).toBeNull()
 
     app.unmount()
     host.remove()

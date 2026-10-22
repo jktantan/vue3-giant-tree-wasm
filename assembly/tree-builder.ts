@@ -86,6 +86,11 @@ function decodeEscaped(raw: string): string {
   return result
 }
 
+/** End offset of the most recent string/token read, so callers do not rescan. */
+let _valueEnd: i32 = 0
+/** String result of the most recent `readFieldValue` call. */
+let _valueString: string = ''
+
 /**
  * 读取 JSON 字符串内容（解码转义），pos 必须在开引号 " 处
  * Read a JSON string value (decoding escapes), pos must be at opening quote "
@@ -101,6 +106,7 @@ function readStringContent(src: string, pos: i32, len: i32): string {
     const c = src.charCodeAt(pos)
     if (c === 0x22) {
       // quote
+      _valueEnd = pos + 1
       return escaped
         ? decodeEscaped(src.substring(start, pos))
         : src.substring(start, pos)
@@ -113,7 +119,34 @@ function readStringContent(src: string, pos: i32, len: i32): string {
     }
     pos++
   }
+  _valueEnd = len
   return ''
+}
+
+/** Offset just past the quoted key at `pos`, or -1 when it contains escapes. */
+// @ts-ignore: decorator
+@inline
+function keyEnd(src: string, pos: i32, len: i32): i32 {
+  let p = pos + 1
+  while (p < len) {
+    const c = src.charCodeAt(p)
+    if (c === 0x22) return p + 1
+    if (c === 0x5c) return -1
+    p++
+  }
+  return -1
+}
+
+/** Compare the quoted key at `[pos, end)` with `target` without allocating. */
+// @ts-ignore: decorator
+@inline
+function keyEquals(src: string, pos: i32, end: i32, target: string): bool {
+  const n = end - pos - 2
+  if (n !== target.length) return false
+  for (let i: i32 = 0; i < n; i++) {
+    if (src.charCodeAt(pos + 1 + i) !== target.charCodeAt(i)) return false
+  }
+  return true
 }
 
 /**
@@ -142,9 +175,29 @@ function readValueAsString(src: string, pos: i32, len: i32): string {
       break
     pos++
   }
+  _valueEnd = pos
   const raw = src.substring(start, pos)
   if (raw === 'null') return ''
   return raw
+}
+
+/**
+ * Read one matched field value and advance past it in a single scan. Nested
+ * object/array values fall back to `skipValue` instead of storing a partial
+ * token; scalar values reuse the already-scanned end offset.
+ */
+// @ts-ignore: decorator
+@inline
+function readFieldValue(src: string, pos: i32, len: i32): i32 {
+  if (pos < len) {
+    const c = src.charCodeAt(pos)
+    if (c === 0x7b || c === 0x5b) {
+      _valueString = ''
+      return skipValue(src, pos, len)
+    }
+  }
+  _valueString = readValueAsString(src, pos, len)
+  return _valueEnd
 }
 
 /**
@@ -340,21 +393,45 @@ function parseOneObject(
       continue
     } // ',' skip trailing commas
 
-    // Read key
-    const key: string = readStringContent(src, pos, len)
-    pos = skipString(src, pos, len) // advance past key
+    // Read the key without allocating when it contains no escapes.
+    const keyStart: i32 = pos
+    const keyStop: i32 = keyEnd(src, pos, len)
+    let key: string = ''
+    if (keyStop < 0) key = readStringContent(src, pos, len)
+    pos = keyStop >= 0 ? keyStop : skipString(src, pos, len) // advance past key
     pos = skipWs(src, pos, len)
     if (src.charCodeAt(pos) === 0x3a) pos++ // ':'
     pos = skipWs(src, pos, len)
 
-    // Match key and read value
-    if (key === fk.idField) {
-      nt.id = readValueAsString(src, pos, len)
-    } else if (key === fk.nameField) {
-      nt.name = readValueAsString(src, pos, len)
-    } else if (key === fk.parentIdField) {
-      nt.parentId = readValueAsString(src, pos, len)
-    } else if (key === 'disabled') {
+    // Match key and read value. Matched scalar values advance straight to the
+    // end recorded by the read, avoiding a second `skipValue` scan of the same
+    // bytes; unmatched fields still take the generic skip path.
+    const isId: bool =
+      keyStop >= 0
+        ? keyEquals(src, keyStart, keyStop, fk.idField)
+        : key === fk.idField
+    const isName: bool =
+      keyStop >= 0
+        ? keyEquals(src, keyStart, keyStop, fk.nameField)
+        : key === fk.nameField
+    const isParent: bool =
+      keyStop >= 0
+        ? keyEquals(src, keyStart, keyStop, fk.parentIdField)
+        : key === fk.parentIdField
+    const isDisabled: bool =
+      keyStop >= 0
+        ? keyEquals(src, keyStart, keyStop, 'disabled')
+        : key === 'disabled'
+    if (isId) {
+      pos = readFieldValue(src, pos, len)
+      nt.id = _valueString
+    } else if (isName) {
+      pos = readFieldValue(src, pos, len)
+      nt.name = _valueString
+    } else if (isParent) {
+      pos = readFieldValue(src, pos, len)
+      nt.parentId = _valueString
+    } else if (isDisabled) {
       pos = skipWs(src, pos, len)
       if (pos + 3 < len) {
         nt.disabled =
@@ -363,8 +440,10 @@ function parseOneObject(
           src.charCodeAt(pos + 2) === 0x75 &&
           src.charCodeAt(pos + 3) === 0x65
       }
+      pos = skipValue(src, pos, len)
+    } else {
+      pos = skipValue(src, pos, len)
     }
-    pos = skipValue(src, pos, len)
     // Detect that one of the `skipValue` calls overflowed the nesting budget.
     // Do not push a half-parsed node into the adjacency list; skip past the
     // remaining bytes to `len` so the outer loop exits cleanly.
@@ -376,6 +455,10 @@ function parseOneObject(
 
   // extendData: raw JSON substring of the original object
   if (preserveExtendData) nt.extendData = src.substring(objStart, pos)
+  // Record the input position so the optional input-order layout bridge can
+  // map every parsed row back to its MPTT index (JSON path, not just chunked
+  // push-based input).
+  nt.inputIndex = result.length
   result.push(nt)
   return pos
 }
@@ -651,7 +734,10 @@ function _iterativeAssembly(
       inputOrderToFullIndex[nt.inputIndex] = fullTree.length - 1
     }
 
-    if (treeMap.has(mptt.id)) {
+    // A node whose id equals the virtual root id (commonly an empty/missing
+    // id) must not be treated as a parent bucket: `treeMap[root]` holds the
+    // root children, so recursing into it would loop forever.
+    if (mptt.id !== root && treeMap.has(mptt.id)) {
       lNode = mptt.leftNode + 1
       stack.push(
         new _StackFrame(
@@ -711,13 +797,18 @@ export function parseMpttTreeFromJson(
  * @param fullTree - MPTT 树数组 / MPTT tree array / Массив дерева MPTT
  * @returns id 到索引的映射 / id to index map / Отображение id в индекс
  */
-export function buildIdIndex(fullTree: MpttTree[]): Map<string, i32> {
-  const idToIndex: Map<string, i32> = new Map()
+export function buildIdIndex(fullTree: MpttTree[]): Map<string, MpttTree> {
+  // Map to the node itself, not its array position: structural edits then only
+  // add/remove map entries instead of rewriting the whole suffix on every
+  // insert/delete. Positions are read from `node.fullIndex`, which the edit
+  // paths keep current.
+  const idToIndex: Map<string, MpttTree> = new Map()
   for (let i: i32 = 0; i < fullTree.length; i++) {
     // Mirror the array position onto the node while we are already walking the
     // tree, so downstream code can read it without an id string lookup.
-    fullTree[i].fullIndex = i
-    idToIndex.set(fullTree[i].id, i)
+    const node = fullTree[i]
+    node.fullIndex = i
+    idToIndex.set(node.id, node)
   }
   return idToIndex
 }

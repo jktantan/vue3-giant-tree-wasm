@@ -179,6 +179,17 @@ const guideStyle = computed(() =>
 )
 
 /**
+ * Row-level sizing variables. Indent cells, icons and checkboxes consume
+ * `--giant-tree-row-size` from CSS instead of binding a style object per cell,
+ * which matters for deep rows where one render used to create dozens of
+ * temporary `{ width }` objects.
+ */
+const rowStyle = computed(() => ({
+  fontSize: props.fontSize,
+  '--giant-tree-row-size': props.fontSize,
+}))
+
+/**
  * 选中反馈动画开关：虚拟滚动滚动时会不断卸载/重建行元素，若动画挂在
  * 元素的进入上，新滚入视口的行会被误播动画。因此初始挂载不播，只有
  * 组件存活期间 checked 状态真正变化时（nextTick 后）才加上
@@ -230,7 +241,7 @@ const contextMenu = (event: MouseEvent) => {
 <template>
   <div
     class="tree-item"
-    :style="[{ fontSize: fontSize }, guideStyle]"
+    :style="[rowStyle, guideStyle]"
     :class="{ selected: item.selected, disabled: item.disabled }"
     @click="itemClick"
     @contextmenu="contextMenu"
@@ -240,7 +251,6 @@ const contextMenu = (event: MouseEvent) => {
         v-for="cell in guideCells"
         :key="cell.key"
         class="item-guide-cell"
-        :style="{ width: fontSize }"
         aria-hidden="true"
       >
         <span
@@ -250,12 +260,11 @@ const contextMenu = (event: MouseEvent) => {
       </div>
     </template>
     <template v-else>
-      <div v-for="i in item.deep" :key="i" :style="{ width: fontSize }"></div>
+      <div v-for="i in item.deep" :key="i" class="item-indent-cell"></div>
     </template>
     <div
       v-if="isBranch"
       class="item-icon item-control"
-      :style="{ width: fontSize }"
       role="button"
       tabindex="0"
       :aria-label="`${item.collapsed ? '展开' : '折叠'} ${item.name}`"
@@ -265,7 +274,6 @@ const contextMenu = (event: MouseEvent) => {
     >
       <!-- 分支行用箭头，不画连接线。 -->
       <div
-        :style="{ width: fontSize, height: fontSize }"
         class="giant-tree__mask-button"
         :class="
           item.collapsed
@@ -274,7 +282,7 @@ const contextMenu = (event: MouseEvent) => {
         "
       />
     </div>
-    <div v-else class="item-icon" :style="{ width: fontSize }">
+    <div v-else class="item-icon">
       <!-- 叶子行：标记列按位置画竖线段（上半/下半/全高）加横向折线，构成 ├/└。 -->
       <span
         v-if="showMarkerLine"
@@ -301,19 +309,16 @@ const contextMenu = (event: MouseEvent) => {
     >
       <div
         v-if="item.checked === CheckType.UNCHECKED"
-        :style="{ width: fontSize, height: fontSize }"
         class="giant-tree__mask-button giant-tree__icon-check-unchecked"
         :class="{ 'giant-tree__animated': checkAnimated }"
       ></div>
       <div
         v-else-if="item.checked === CheckType.HALF_CHECKED"
-        :style="{ width: fontSize, height: fontSize }"
         class="giant-tree__mask-button giant-tree__icon-check-half checked"
         :class="{ 'giant-tree__animated': checkAnimated }"
       ></div>
       <div
         v-else-if="item.checked === CheckType.CHECKED"
-        :style="{ width: fontSize, height: fontSize }"
         class="giant-tree__mask-button giant-tree__icon-check-checked checked"
         :class="{ 'giant-tree__animated': checkAnimated }"
       ></div>
@@ -332,13 +337,11 @@ const contextMenu = (event: MouseEvent) => {
     >
       <div
         v-if="item.checked === CheckType.CHECKED"
-        :style="{ width: fontSize, height: fontSize }"
         class="giant-tree__mask-button giant-tree__icon-radio-checked checked"
         :class="{ 'giant-tree__animated': checkAnimated }"
       ></div>
       <div
         v-else-if="item.checked === CheckType.UNCHECKED"
-        :style="{ width: fontSize, height: fontSize }"
         class="giant-tree__mask-button giant-tree__icon-radio-unchecked"
         :class="{ 'giant-tree__animated': checkAnimated }"
       ></div>
@@ -347,7 +350,6 @@ const contextMenu = (event: MouseEvent) => {
       v-if="nodeIconClass"
       class="item-node-icon giant-tree__node-icon"
       :class="nodeIconClass"
-      :style="{ width: fontSize, height: fontSize }"
       aria-hidden="true"
     ></div>
     <div class="item-text">
@@ -369,4 +371,28 @@ const contextMenu = (event: MouseEvent) => {
   </div>
 </template>
 
-<style scoped></style>
+<style scoped>
+/*
+ * Row sizing is self-contained: consumers may mount the component without the
+ * package-wide stylesheet, and tests import the SFC directly. The CSS variable
+ * is set on the row root by `rowStyle`.
+ */
+.tree-item {
+  --giant-tree-row-size: 14px;
+}
+.tree-item .item-guide-cell,
+.tree-item .item-indent-cell,
+.tree-item .item-icon,
+.tree-item .item-selection,
+.tree-item .item-node-icon {
+  width: var(--giant-tree-row-size);
+}
+.tree-item .item-indent-cell {
+  align-self: stretch;
+  flex: 0 0 auto;
+}
+.tree-item .giant-tree__mask-button {
+  width: var(--giant-tree-row-size);
+  height: var(--giant-tree-row-size);
+}
+</style>

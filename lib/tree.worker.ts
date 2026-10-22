@@ -44,6 +44,7 @@ type WorkerCommand = {
   id: string
   ids: string[]
   collapsed: boolean
+  lineHeight?: number
   checked: CheckType
   mode: CheckedOutputMode
   keyword: string
@@ -110,24 +111,28 @@ const scheduleCheckedResult = (revision: number) => {
     })
   }, 48)
 }
+const postSnapshot = (revision: number, mutation?: unknown) => {
+  if (!tree) return
+  const serializeStartedAt = performance.now()
+  wasm.setBoundary(tree, scrollTop, scrollHeight)
+  const size = wasm.getSize(tree),
+    listHeight = wasm.getShownHeight(tree),
+    rows = JSON.parse(wasm.getShownNodes(tree))
+  lastSerializeMs = performance.now() - serializeStartedAt
+  snapshotsSent++
+  self.postMessage({
+    type: 'snapshot',
+    revision,
+    size,
+    listHeight,
+    rows,
+    mutation,
+    metrics: workerMetrics(),
+  })
+}
 const snapshot = (revision: number, mutation?: unknown) => {
   if (mutation && tree) {
-    const serializeStartedAt = performance.now()
-    wasm.setBoundary(tree, scrollTop, scrollHeight)
-    const size = wasm.getSize(tree),
-      listHeight = wasm.getShownHeight(tree),
-      rows = JSON.parse(wasm.getShownNodes(tree))
-    lastSerializeMs = performance.now() - serializeStartedAt
-    snapshotsSent++
-    self.postMessage({
-      type: 'snapshot',
-      revision,
-      size,
-      listHeight,
-      rows,
-      mutation,
-      metrics: workerMetrics(),
-    })
+    postSnapshot(revision, mutation)
     return
   }
   pendingSnapshotRevision = revision
@@ -135,23 +140,7 @@ const snapshot = (revision: number, mutation?: unknown) => {
   snapshotScheduled = true
   setTimeout(() => {
     snapshotScheduled = false
-    const nextRevision = pendingSnapshotRevision
-    if (!tree) return
-    const serializeStartedAt = performance.now()
-    wasm.setBoundary(tree, scrollTop, scrollHeight)
-    const size = wasm.getSize(tree),
-      listHeight = wasm.getShownHeight(tree),
-      rows = JSON.parse(wasm.getShownNodes(tree))
-    lastSerializeMs = performance.now() - serializeStartedAt
-    snapshotsSent++
-    self.postMessage({
-      type: 'snapshot',
-      revision: nextRevision,
-      size,
-      listHeight,
-      rows,
-      metrics: workerMetrics(),
-    })
+    postSnapshot(pendingSnapshotRevision)
   }, 0)
 }
 const rebuild = (next: Input[]) => {
@@ -176,6 +165,7 @@ function treeConfigMatches(): boolean {
     config.root,
     config.lineHeight,
     config.selectType,
+    config.preorderedInput ? 1 : 0,
     Object.keys(k).length
       ? [
           k.idField ?? 'id',
@@ -208,6 +198,7 @@ function ensureTree() {
     config.root,
     config.lineHeight,
     config.selectType,
+    config.preorderedInput ? 1 : 0,
     Object.keys(k).length
       ? [
           k.idField ?? 'id',
@@ -344,6 +335,13 @@ const handle = (m: WorkerCommand) => {
     return
   }
   if (!tree) return
+  if (m.type === 'set-line-height') {
+    const value = m.lineHeight ?? config.lineHeight
+    if (value > 0) config.lineHeight = value
+    wasm.setLineHeight(tree, value)
+    snapshot(revision)
+    return
+  }
   if (m.type === 'add' || m.type === 'remove') {
     enqueueStructure(m)
     return
@@ -389,8 +387,10 @@ const handle = (m: WorkerCommand) => {
   else if (m.type === 'search') wasm.fuzzyTree(tree, m.keyword)
   else if (m.type === 'update') {
     const nameField = config.fieldKeys.nameField ?? 'name'
-    const structural = parentField() in m.patch || 'disabled' in m.patch
-    if (structural) {
+    const parentPatch = parentField() in m.patch
+    if (parentPatch) {
+      // Re-parenting needs the adjacency list because the subtree has to be
+      // reattached in input order.
       ensureInput()
       const index = input.findIndex(node => idOf(node) === m.id)
       if (index < 0) {
@@ -399,13 +399,21 @@ const handle = (m: WorkerCommand) => {
       }
       input[index] = { ...input[index], ...m.patch }
       rebuild(input)
-    } else if (
-      nameField in m.patch &&
-      wasm.updateNodeName(tree, m.id, String(m.patch[nameField]))
-    ) {
-      snapshot(revision, { type: 'update', id: m.id, patch: m.patch })
-      return
+    } else {
+      // Name/disabled/custom fields do not invalidate the MPTT index. Update
+      // the live tree in place instead of rebuilding the whole worker tree.
+      if (nameField in m.patch)
+        wasm.updateNodeName(tree, m.id, String(m.patch[nameField]))
+      if ('disabled' in m.patch)
+        wasm.updateNodeDisabled(tree, m.id, m.patch.disabled === true)
+      if (inputReady) {
+        const index = input.findIndex(node => idOf(node) === m.id)
+        if (index >= 0) input[index] = { ...input[index], ...m.patch }
+      }
     }
+    snapshot(revision, { type: 'update', id: m.id, patch: m.patch })
+    scheduleCheckedResult(revision)
+    return
   }
   snapshot(revision)
   if (

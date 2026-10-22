@@ -1,6 +1,9 @@
 import { MpttTree } from './models'
 import { sortByLeftNode } from './tree-builder'
 
+/** True when the most recent search hit MAX_RESULTS and was cut short. */
+export let lastSearchTruncated: bool = false
+
 /**
  * 模糊搜索：按关键词匹配节点名称，并自动补全所有匹配节点的祖先链
  * Fuzzy search: matches node names by keyword, automatically completes ancestor chains of all matched nodes
@@ -39,6 +42,7 @@ export function fuzzySearchTree(
   const matchedIndices: i32[] = []
 
   const MAX_RESULTS: i32 = 5000
+  lastSearchTruncated = false
   let matchCount: i32 = 0
   let candidates: i32[] | null = null
   if (candidateIndex !== null && keyword.length > 0) {
@@ -63,10 +67,16 @@ export function fuzzySearchTree(
       idSet.add(node.id)
       matchedIndices.push(i)
       matchCount++
-      if (matchCount >= MAX_RESULTS) break
+      if (matchCount >= MAX_RESULTS) {
+        lastSearchTruncated = true
+        break
+      }
     }
   }
 
+  // Ancestor completion uses the compact parent-index array. The previous
+  // fallback scanned searchTree for every node (O(N * matches)) and was never
+  // reachable from GiantTree, so it is intentionally not kept.
   if (parentIndices !== null) {
     for (let i: i32 = 0; i < matchedIndices.length; i++) {
       let parentIndex = parentIndices[matchedIndices[i]]
@@ -77,33 +87,6 @@ export function fuzzySearchTree(
           parentNodes.push(parent)
         }
         parentIndex = parentIndices[parentIndex]
-      }
-    }
-  } else {
-    let searchIdx: i32 = 0
-    for (let i: i32 = 0; i < fullTree.length; i++) {
-      const node: MpttTree = fullTree[i]
-      if (idSet.has(node.id)) continue
-
-      while (
-        searchIdx < searchTree.length &&
-        searchTree[searchIdx].leftNode < node.leftNode
-      ) {
-        searchIdx++
-      }
-
-      let isAncestor: boolean = false
-      for (let j: i32 = searchIdx; j < searchTree.length; j++) {
-        const searchNode: MpttTree = searchTree[j]
-        if (searchNode.leftNode >= node.rightNode) break
-        if (searchNode.rightNode <= node.rightNode) {
-          isAncestor = true
-          break
-        }
-      }
-      if (isAncestor) {
-        idSet.add(node.id)
-        parentNodes.push(node)
       }
     }
   }

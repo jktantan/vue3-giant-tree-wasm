@@ -63,22 +63,33 @@ export class LazyCheckRangeStore {
     this.mergeAdjacent()
   }
 
+  /** Index of the right-most interval whose left bound is <= `index`. */
+  private findInterval(index: i32): i32 {
+    let lo: i32 = 0
+    let hi: i32 = this.left.length - 1
+    let found: i32 = -1
+    while (lo <= hi) {
+      const mid = (lo + hi) >>> 1
+      if (this.left[mid] <= index) {
+        found = mid
+        lo = mid + 1
+      } else {
+        hi = mid - 1
+      }
+    }
+    return found
+  }
+
   get(indexLeft: i32, indexRight: i32): i32 {
     if (indexRight <= indexLeft) return -1
-    for (let i: i32 = 0; i < this.left.length; i++) {
-      if (indexLeft < this.left[i]) break
-      if (indexLeft >= this.left[i] && indexRight <= this.right[i])
-        return this.value[i]
-    }
+    const i = this.findInterval(indexLeft)
+    if (i >= 0 && indexRight <= this.right[i]) return this.value[i]
     return -1
   }
 
   getPoint(index: i32): i32 {
-    for (let i: i32 = 0; i < this.left.length; i++) {
-      if (index < this.left[i]) break
-      if (index < this.right[i]) return this.value[i]
-    }
-    return -1
+    const i = this.findInterval(index)
+    return i >= 0 && index < this.right[i] ? this.value[i] : -1
   }
 
   get size(): i32 {
@@ -86,16 +97,28 @@ export class LazyCheckRangeStore {
   }
 
   private mergeAdjacent(): void {
-    for (let i: i32 = this.left.length - 2; i >= 0; i--) {
+    const length = this.left.length
+    if (length < 2) return
+    // Compact in place instead of splicing once per merged pair (which made a
+    // long range list quadratic on every pointer move).
+    let write: i32 = 1
+    for (let read: i32 = 1; read < length; read++) {
       if (
-        this.right[i] === this.left[i + 1] &&
-        this.value[i] === this.value[i + 1]
+        this.right[write - 1] === this.left[read] &&
+        this.value[write - 1] === this.value[read]
       ) {
-        this.right[i] = this.right[i + 1]
-        this.left.splice(i + 1, 1)
-        this.right.splice(i + 1, 1)
-        this.value.splice(i + 1, 1)
+        this.right[write - 1] = this.right[read]
+      } else {
+        this.left[write] = this.left[read]
+        this.right[write] = this.right[read]
+        this.value[write] = this.value[read]
+        write++
       }
+    }
+    if (write < length) {
+      this.left.splice(write, length - write)
+      this.right.splice(write, length - write)
+      this.value.splice(write, length - write)
     }
   }
 }
