@@ -18,6 +18,23 @@ MPTT makes both cheap:
 | Viewport slice (rows to render) | O(k), k = rows in viewport |
 | Expanding / collapsing one node | O(subtree + log N) |
 
+## Scroll stability and cost
+
+The browser owns the scroll; the component only swaps the batch of rows inside the viewport.
+Three things decide how that feels:
+
+- **The row block moves only with the rows it carries.** The viewport is requested from one
+  `scrollTop`, but the rows it describes arrive one Worker round trip later. Positioning the block
+  from the *newest* `scrollTop` would push the whole block down on every late reply and snap it back
+  once the rows arrive — one visible jump per row boundary, which is what shaking looks like on a
+  fast fling. The offset therefore comes from the **row index carried by the reply**: a delayed
+  reply only lets the window lag behind, it never moves rows that are already rendered.
+- **Four extra rows are rendered beyond each edge.** While the window lags, that margin keeps the
+  shortfall outside the viewport instead of exposing a blank strip.
+- **Only rows that actually changed are re-rendered.** Unchanged rows keep the same row object, and
+  host slots are passed as function props rather than forwarded, so row vnodes can be skipped by
+  prop comparison: a scroll creates only the rows that scrolled in, not the whole screen.
+
 ## Parameters
 
 | prop | Type | Default | Description |

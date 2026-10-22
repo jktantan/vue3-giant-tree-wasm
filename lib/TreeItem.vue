@@ -12,7 +12,8 @@ import {
   DEFAULT_SHOW_LINE_STYLE,
   DEFAULT_SHOW_LINE_WIDTH,
 } from './guide'
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch, type VNodeChild } from 'vue'
+import { SlotRenderer } from './SlotRenderer'
 
 const props = defineProps<{
   item: TreeNodeData
@@ -40,6 +41,27 @@ const props = defineProps<{
    * (for example ancestors completing the path) stays unstyled.
    */
   highlightKeyword?: string
+  /**
+   * 宿主的 `#node` 插槽函数，作为 **prop** 传入（而不是 `<template #node>` 转发）。
+   *
+   * 插槽转发会让每个行 vnode 带上 `DYNAMIC_SLOTS` 标记，Vue 因此无法跳过未变化
+   * 的行 —— 每次视口快照都会把整屏行重渲染一遍。用函数 prop 传进来后，行只按
+   * props 比较；`item` 与这些函数都不变时整行被跳过。函数引用本身也是「宿主插槽
+   * 内容变了」的信号：宿主每渲染一次，插槽函数就是新引用，行随之更新。
+   *
+   * The host's `#node` slot function, passed as a **prop** rather than forwarded
+   * through `<template #node>`. Forwarding marks every row vnode with
+   * `DYNAMIC_SLOTS`, which prevents Vue from skipping unchanged rows and makes
+   * every viewport snapshot re-render the whole screen. As a prop, rows are
+   * compared by props only, and the function identity doubles as the "host slot
+   * content changed" signal.
+   */
+  renderNode?: (slotProps: {
+    node: TreeNodeData
+    highlights: SearchHighlightPart[] | null
+  }) => VNodeChild
+  /** 同 `renderNode`，对应宿主 `#actions` 插槽。 / Same as `renderNode`, for `#actions`. */
+  renderActions?: (slotProps: { node: TreeNodeData }) => VNodeChild
 }>()
 
 const emit = defineEmits([
@@ -188,6 +210,16 @@ const rowStyle = computed(() => ({
   fontSize: props.fontSize,
   '--giant-tree-row-size': props.fontSize,
 }))
+
+/**
+ * 插槽函数 prop 的实参。用 computed 保持引用稳定：行被跳过时不会重建，
+ * 宿主插槽一旦变化又会连同渲染函数一起换新。
+ */
+const nodeSlotProps = computed(() => ({
+  node: props.item,
+  highlights: highlightParts.value,
+}))
+const actionsSlotProps = computed(() => ({ node: props.item }))
 
 /**
  * 选中反馈动画开关：虚拟滚动滚动时会不断卸载/重建行元素，若动画挂在
@@ -353,7 +385,13 @@ const contextMenu = (event: MouseEvent) => {
       aria-hidden="true"
     ></div>
     <div class="item-text">
-      <slot name="node" :node="item" :highlights="highlightParts">
+      <!-- 宿主的渲染函数 prop 优先；没有时退回 #node 插槽，再退回默认文本。 -->
+      <slot-renderer
+        v-if="renderNode"
+        :render="renderNode"
+        :slot-props="nodeSlotProps"
+      />
+      <slot v-else name="node" :node="item" :highlights="highlightParts">
         <span v-if="highlightParts === null">{{ item.name }}</span>
         <span v-else>
           <template v-for="(part, index) in highlightParts" :key="index">
@@ -365,8 +403,17 @@ const contextMenu = (event: MouseEvent) => {
         </span>
       </slot>
     </div>
-    <div v-if="$slots.actions" class="item-actions" @click.stop>
-      <slot name="actions" :node="item" />
+    <div
+      v-if="renderActions || $slots.actions"
+      class="item-actions"
+      @click.stop
+    >
+      <slot-renderer
+        v-if="renderActions"
+        :render="renderActions"
+        :slot-props="actionsSlotProps"
+      />
+      <slot v-else name="actions" :node="item" />
     </div>
   </div>
 </template>

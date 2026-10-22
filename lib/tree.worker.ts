@@ -118,6 +118,16 @@ const postSnapshot = (revision: number, mutation?: unknown) => {
   const size = wasm.getSize(tree),
     listHeight = wasm.getShownHeight(tree),
     rows = JSON.parse(wasm.getShownNodes(tree))
+  // Index of `rows[0]` inside the visible list. The main thread places the row
+  // block at this index, so the block and its rows always describe the same
+  // window even when this reply reaches the page a frame later than the scroll
+  // position that produced it. Mirrors `clampedStart` in getShownNodes().
+  const lineHeight = config.lineHeight > 0 ? config.lineHeight : 1
+  const shownCount = Math.max(0, Math.round(listHeight / lineHeight))
+  const startIndex = Math.min(
+    Math.max(Math.floor(scrollTop / lineHeight), 0),
+    shownCount
+  )
   lastSerializeMs = performance.now() - serializeStartedAt
   snapshotsSent++
   self.postMessage({
@@ -125,6 +135,7 @@ const postSnapshot = (revision: number, mutation?: unknown) => {
     revision,
     size,
     listHeight,
+    startIndex,
     rows,
     mutation,
     metrics: workerMetrics(),

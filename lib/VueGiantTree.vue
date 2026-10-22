@@ -207,6 +207,7 @@ const releaseTreeAnimation = () => {
   }
   animationOpen.value = false
   treeAnimation.value = undefined
+  endScrollBlock()
 }
 let allNodesCache: TreeNodeData[] = []
 /** Previous input array, used to recognize content-only tree replacements. */
@@ -256,6 +257,19 @@ let workerMetrics: WorkerMetrics = {
   visibleRows: 0,
 }
 const workerCommandStartedAt = new Map<number, number>()
+/** 过渡期间挂上的滚动拦截器状态，避免重复挂载/卸载。 */
+let scrollBlocked = false
+/** 过渡一旦开始就按住原生滚动，过渡容器独占这段高度。 */
+const beginScrollBlock = () => {
+  if (scrollBlocked) return
+  scrollBlocked = true
+  setScrollBlocked(true)
+}
+const endScrollBlock = () => {
+  if (!scrollBlocked) return
+  scrollBlocked = false
+  setScrollBlocked(false)
+}
 /**
  * 宿主可能把树数据放在 Vue 的深度响应式数组里（`ref([...])`）：全量遍历时每次属性
  * 读取都会走 Proxy 的 get trap，并为嵌套对象惰性创建代理 —— 10 万节点实测比裸数组
@@ -334,6 +348,76 @@ let scrollTop = 0,
   scrollHeight = 0
 let resizeRefreshTimer: ReturnType<typeof setTimeout> | undefined
 const startOffset = ref<number>(0)
+/**
+ * 视口上下各多渲染的行数。
+ *
+ * 虚拟窗口由「发送出去的滚动位置」推出、由「回传的行」落地，两者之间隔着一次
+ * Worker 往返。快速甩动或主线程繁忙时，回传会晚一帧，窗口因而落后于真实滚动
+ * 位置；多渲染几行能让这点落差落在视口之外，而不是在边缘露出空白。
+ *
+ * Rows rendered beyond each edge of the viewport. The window is requested from a
+ * scroll position but materialised one Worker round trip later, so a fast fling
+ * (or a busy main thread) can outrun it. The extra rows keep that gap outside
+ * the viewport instead of exposing a blank strip.
+ */
+const OVERSCAN_ROWS = 4
+/** 行高兜底：0 或负数会让索引与偏移的取整全部失效。 */
+const rowHeight = () => (props.lineHeight > 0 ? props.lineHeight : 1)
+/** 送给虚拟滚动算法的滚动位置：向上多让出 OVERSCAN_ROWS 行。 */
+const boundaryScrollTop = () =>
+  Math.max(0, scrollTop - OVERSCAN_ROWS * rowHeight())
+/** 同上，视口高度上下各放宽 OVERSCAN_ROWS 行。 */
+const boundaryScrollHeight = () =>
+  scrollHeight + 2 * OVERSCAN_ROWS * rowHeight()
+/**
+ * 首行在内容坐标系里的位置。必须从「已经落地的那一帧窗口」推出，而不是从最新
+ * 的 scrollTop 推出：位置一旦先于行更新，整块行会先被推下去、等行到达再弹回来，
+ * 滚动中看起来就是每个行边界都在抖。视口高度变化时同理。
+ *
+ * Document offset of the first rendered row, derived from the window that is
+ * actually rendered rather than from the newest scrollTop. Advancing the offset
+ * before the rows arrive pushes the whole block down and snaps it back once they
+ * do — on every row boundary, which reads as shaking.
+ */
+const windowOffset = () =>
+  Math.floor(boundaryScrollTop() / rowHeight()) * rowHeight()
+/** 主线程模式最近一次生效的窗口，用于跳过窗口未变的重复刷新。 */
+let lastMainWindowKey = ''
+/** Worker 模式最近一次请求的窗口，用途同上。 */
+let lastWorkerWindowKey = ''
+/**
+ * 主线程模式的视口同步：偏移与行由同一次同步调用产生，天然一致。返回窗口是否
+ * 真的变化，调用方据此决定要不要重算行。
+ */
+const syncMainViewport = (force = false): boolean => {
+  const key = `${Math.floor(boundaryScrollTop() / rowHeight())}:${boundaryScrollHeight()}`
+  if (!force && key === lastMainWindowKey) return false
+  lastMainWindowKey = key
+  startOffset.value = windowOffset()
+  setBoundary(tree, boundaryScrollTop(), boundaryScrollHeight())
+  return true
+}
+/**
+ * 请求 Worker 重算虚拟窗口。行窗口只按整行移动，同一窗口内的重复请求只会让
+ * Worker 反复序列化同一段行、主线程反复重建同一批行对象，所以只在窗口（或视口
+ * 高度）确实变化时才发。
+ *
+ * Ask the Worker for a new virtual window. The window only moves in whole rows,
+ * so a request inside the same window would make the Worker re-serialise the same
+ * slice and the main thread rebuild the same rows.
+ */
+const syncWorkerBoundary = (force = false) => {
+  const key = `${Math.floor(boundaryScrollTop() / rowHeight())}:${boundaryScrollHeight()}`
+  if (!force && key === lastWorkerWindowKey) return
+  const revision = postWorker('boundary', {
+    scrollTop: boundaryScrollTop(),
+    scrollHeight: boundaryScrollHeight(),
+  })
+  // Only remember the request once it was actually posted: a failed post falls
+  // back to the main-thread tree, and the next scroll must be able to retry.
+  if (revision === undefined) return
+  lastWorkerWindowKey = key
+}
 /** ResizeObserver: 监听容器高度变化，同步 WASM 边界 + 刷新视图 / ResizeObserver: watches container height changes, syncs WASM boundary + refreshes view / ResizeObserver: отслеживает изменение высоты контейнера, синхронизирует границы WASM + обновляет вид */
 const ro = new ResizeObserver((entries: ResizeObserverEntry[]) => {
   const { blockSize: height } = entries[0].contentBoxSize[0]
@@ -354,10 +438,10 @@ const ro = new ResizeObserver((entries: ResizeObserverEntry[]) => {
     }
     if (isUsingWorker()) {
       scrollHeight = height
-      postWorker('boundary', { scrollTop, scrollHeight })
+      syncWorkerBoundary(true)
       return
     }
-    setBoundary(tree, scrollTop, scrollHeight)
+    syncMainViewport(true)
     listHeight.value = getShownHeight(tree)
     refreshTree()
   }, 0)
@@ -406,6 +490,69 @@ const applyGuide = (node: TreeNodeData): TreeNodeData => {
     guideMask: guide.guideMask,
     markerLine: guide.markerLine,
   }
+}
+/**
+ * 同一个对象吗？行对象本身放在响应式数组里，读出来的 `extendData` 可能是同一个
+ * 原始对象的响应式代理；`toRaw` 用来剥掉这层包装再比较，否则每一行都会被判成
+ * 「变了」，复用永远不会命中。
+ *
+ * Same object? Rows live in a reactive array, so `extendData` reads back as the
+ * reactive proxy of the original record; `toRaw` strips that wrapper before
+ * comparing, otherwise every row would look changed and reuse would never hit.
+ */
+const isSameRecord = (a: unknown, b: unknown): boolean =>
+  a === b ||
+  (typeof a === 'object' &&
+    a !== null &&
+    typeof b === 'object' &&
+    b !== null &&
+    toRaw(a) === toRaw(b))
+
+/**
+ * 新快照里的行与已渲染的行是否完全等价。
+ *
+ * 滚动时相邻两帧的重叠部分是逐字段相同的；只有复用同一个对象，`TreeItem` 的
+ * props 引用才不变，Vue 才会跳过这些行的重渲染。否则每次快照都会重建整个视口
+ * 的行对象，滚动时每帧都要把几十行重新渲染一遍 —— 手机上这是每帧数毫秒的
+ * 开销，也是慢速滚动仍然掉帧的主因。
+ *
+ * Whether a row from a fresh snapshot is equivalent to the row already rendered.
+ * Overlapping rows are field-identical from one frame to the next while
+ * scrolling; reusing the same object keeps `TreeItem`'s props referentially
+ * stable so Vue can skip re-rendering those rows. Without it every snapshot
+ * rebuilds the whole viewport and every visible row is re-rendered on each
+ * scroll frame — several milliseconds per frame on a phone.
+ *
+ * Guide fields are not compared: they are derived from the same id + structure,
+ * and a `showLine` change re-applies them to the list explicitly.
+ */
+const isSameRenderedRow = (
+  previous: TreeNodeData,
+  next: TreeNodeData,
+  extendData: Record<string, unknown> | undefined
+): boolean =>
+  previous.name === next.name &&
+  previous.parentId === next.parentId &&
+  previous.leftNode === next.leftNode &&
+  previous.rightNode === next.rightNode &&
+  previous.deep === next.deep &&
+  previous.checked === next.checked &&
+  previous.selected === next.selected &&
+  previous.collapsed === next.collapsed &&
+  previous.disabled === next.disabled &&
+  isSameRecord(previous.extendData, extendData)
+
+/** 把快照行落到列表里，未变化的行沿用原对象（见 `isSameRenderedRow`）。 */
+const reuseRenderedRows = (rows: TreeNodeData[]): TreeNodeData[] => {
+  const previousById = new Map<string, TreeNodeData>()
+  for (const row of currentTreeList.value) previousById.set(row.id, row)
+  return rows.map(row => {
+    const extendData = inputNodeById.get(row.id)
+    const previous = previousById.get(row.id)
+    if (previous !== undefined && isSameRenderedRow(previous, row, extendData))
+      return previous
+    return applyGuide({ ...row, extendData })
+  })
 }
 /**
  * 重算连接线字段；运行时切换 showLine 或替换 tree/root/fieldKeys 时调用。
@@ -943,13 +1090,13 @@ const handleScroll = (event: Event) => {
     return
   }
   scrollTop = target.scrollTop
-  startOffset.value = scrollTop - (scrollTop % props.lineHeight)
+  // Only the window moves the rendered rows; the offset is part of the same
+  // update, never a separate early one. See `windowOffset`.
   if (isUsingWorker()) {
-    postWorker('boundary', { scrollTop, scrollHeight })
+    syncWorkerBoundary()
     return
   }
-  setBoundary(tree, scrollTop, scrollHeight)
-  refreshTree()
+  if (syncMainViewport()) refreshTree()
 }
 /**
  * 根据 outputIdOnly 配置发射选中结果
@@ -1036,10 +1183,28 @@ const transformOffset = computed(
   () => `translate3d(0,${startOffset.value}px,0)`
 )
 
-/** Prevent native scrolling only for the brief period where virtual geometry is
- * represented by the transition layer. */
-const preventScrollWhileAnimating = (event: Event) => {
-  if (isTreeAnimating()) event.preventDefault()
+/** 过渡容器接管布局时，原生滚动必须真正被拦住。 */
+const blockScroll = (event: Event) => {
+  event.preventDefault()
+}
+/**
+ * 只在展开/折叠过渡期间挂非 passive 的 touchmove / wheel 监听。
+ *
+ * 常驻的非 passive touchmove 会迫使浏览器在每次触摸滚动开始前先问一次主线程，
+ * 手机上表现为滚动发涩、起步迟滞；PC 上滚轮不受影响，所以这个差异只在移动端
+ * 明显。过渡最长几百毫秒，其余时间应该让合成器完全接管滚动。
+ *
+ * Attach the non-passive touchmove / wheel listeners only while a branch
+ * transition owns the layout. A permanent non-passive touchmove listener forces
+ * the browser to consult the main thread before every touch scroll starts, which
+ * feels sticky on touch devices while being invisible with a desktop wheel.
+ */
+const setScrollBlocked = (blocked: boolean) => {
+  const element = container.value
+  if (!element) return
+  const method = blocked ? 'addEventListener' : 'removeEventListener'
+  element[method]('touchmove', blockScroll, { passive: false })
+  element[method]('wheel', blockScroll, { passive: false })
 }
 
 const rowsInside = (items: TreeNodeData[], parent: TreeNodeData) =>
@@ -1094,11 +1259,10 @@ const finishTreeAnimation = () => {
   if (isUsingWorker()) {
     // The worker has already supplied the final viewport rows. Returning to
     // normal rendering must not consult the dormant main-thread WASM tree.
-    if (resizeHeight !== undefined)
-      postWorker('boundary', { scrollTop, scrollHeight })
+    if (resizeHeight !== undefined) syncWorkerBoundary(true)
     return
   }
-  setBoundary(tree, scrollTop, scrollHeight)
+  syncMainViewport(true)
   listHeight.value = getShownHeight(tree)
   refreshTree()
 }
@@ -1182,6 +1346,9 @@ const startTreeAnimation = async (
     duration,
   }
   frozenScrollTop = scrollTop
+  // The transition layer owns the gap between rows for the next few hundred
+  // milliseconds, so native scrolling is blocked for exactly that window.
+  beginScrollBlock()
   // Collapse begins open and closes; expansion follows the inverse sequence.
   animationOpen.value = direction === 'collapse'
   await nextTick()
@@ -1416,8 +1583,10 @@ const streamWorkerTree = async () => {
   try {
     postWorker('stream-start', {
       config: workerConfig(),
-      scrollTop,
-      scrollHeight,
+      // Same padded window the incremental boundary requests use, so the first
+      // snapshot already carries the overscan rows and the matching index.
+      scrollTop: boundaryScrollTop(),
+      scrollHeight: boundaryScrollHeight(),
     })
     const size = Math.max(1, Math.floor(props.buildBatchSize))
     const idField = props.fieldKeys.idField ?? 'id'
@@ -1568,6 +1737,8 @@ const startWorker = () => {
       size: number
       listHeight: number
       rows: TreeNodeData[]
+      /** Index of `rows[0]` inside the visible list; drives the block offset. */
+      startIndex?: number
       checkedIds?: string[]
       mutation?: WorkerMutation
       error?: unknown
@@ -1630,12 +1801,12 @@ const startWorker = () => {
     workerTreeSize = snapshot.size
     isTreeReady = true
     listHeight.value = snapshot.listHeight
-    currentTreeList.value = snapshot.rows.map(row =>
-      applyGuide({
-        ...row,
-        extendData: inputNodeById.get(row.id),
-      })
-    )
+    // The block moves only with the rows it carries. A snapshot that arrives a
+    // frame late then renders at the position it was computed for, instead of
+    // being pushed down by a newer scroll position and snapping back.
+    if (typeof snapshot.startIndex === 'number')
+      startOffset.value = snapshot.startIndex * rowHeight()
+    currentTreeList.value = reuseRenderedRows(snapshot.rows)
     // A structural mutation invalidates the transition rows: a row that was added
     // or removed can never enter or leave that fixed set. Content edits still
     // rebind safely below.
@@ -1686,7 +1857,7 @@ const initializeMainTree = async () => {
   await refreshNodesCache()
   buildMetrics.totalMs = now() - buildStartedAt
   isTreeReady = true
-  setBoundary(tree, scrollTop, scrollHeight)
+  syncMainViewport(true)
   listHeight.value = getShownHeight(tree)
   refreshTree()
   if (pendingConfigRebuild !== null && !isConfigRebuilding) {
@@ -1731,8 +1902,7 @@ const rebuildMainTreeForConfig = async (restoreSelection: boolean) => {
     rebuildGuideLines()
 
     scrollTop = container.value?.scrollTop ?? scrollTop
-    startOffset.value = scrollTop - (scrollTop % Math.max(1, props.lineHeight))
-    setBoundary(tree, scrollTop, scrollHeight)
+    syncMainViewport(true)
     listHeight.value = getShownHeight(tree)
     refreshTree()
     emitCheckedResult()
@@ -1995,8 +2165,7 @@ const reconcileTreeData = async () => {
 
   await nextTick()
   scrollTop = container.value?.scrollTop ?? scrollTop
-  startOffset.value = scrollTop - (scrollTop % props.lineHeight)
-  setBoundary(tree, scrollTop, scrollHeight)
+  syncMainViewport(true)
   listHeight.value = getShownHeight(tree)
   refreshTree()
   emitCheckedResult()
@@ -2215,8 +2384,7 @@ watch(
     }
     if (!isTreeReady) return
     setLineHeight(tree, value)
-    startOffset.value = scrollTop - (scrollTop % Math.max(1, value))
-    setBoundary(tree, scrollTop, scrollHeight)
+    syncMainViewport(true)
     listHeight.value = getShownHeight(tree)
     refreshTree()
   }
@@ -2356,9 +2524,6 @@ defineExpose({
     :style="{ width: width, height: height }"
     tabindex="0"
     @scroll="scrollEvent"
-    @wheel="preventScrollWhileAnimating"
-    @touchmove="preventScrollWhileAnimating"
-    @keydown="preventScrollWhileAnimating"
   >
     <div
       class="infinite-list-phantom"
@@ -2371,6 +2536,12 @@ defineExpose({
         状态——不会因为展开/折叠动画被重新挂载。
       -->
       <template v-for="item in renderRows" :key="item.id">
+        <!--
+          宿主插槽以**函数 prop** 传给行，而不是用 `<template #node>` 转发：
+          转发会让每个行 vnode 带上 DYNAMIC_SLOTS 标记，Vue 就无法跳过未变化的行，
+          每次视口快照都会把整屏行重渲染一遍。函数 prop 的引用同时是「宿主插槽内容
+          变了」的信号。改这里时也要同步下面 transition 容器里的那一份。
+        -->
         <tree-item
           v-if="!animationRowIds.has(item.id)"
           :style="{ height: lineHeight + 'px' }"
@@ -2380,6 +2551,8 @@ defineExpose({
           :select-type="selectType"
           :filter-fn="filterFn"
           :node-icon="nodeIcon"
+          :render-node="$slots.node"
+          :render-actions="$slots.actions"
           :show-line-enabled="showLineConfig.enabled"
           :show-line-style="showLineConfig.options.style"
           :show-line-color="showLineConfig.options.color"
@@ -2388,14 +2561,7 @@ defineExpose({
           @check-click="checkClick"
           @item-click="itemClick"
           @item-contextmenu="contextMenuClick"
-        >
-          <template v-if="$slots.node" #node="slotProps">
-            <slot name="node" v-bind="slotProps" />
-          </template>
-          <template v-if="$slots.actions" #actions="slotProps">
-            <slot name="actions" v-bind="slotProps" />
-          </template>
-        </tree-item>
+        />
         <div
           v-if="animationParentId === item.id"
           class="giant-tree__branch-transition"
@@ -2416,6 +2582,8 @@ defineExpose({
             :select-type="selectType"
             :filter-fn="filterFn"
             :node-icon="nodeIcon"
+            :render-node="$slots.node"
+            :render-actions="$slots.actions"
             :show-line-enabled="showLineConfig.enabled"
             :show-line-style="showLineConfig.options.style"
             :show-line-color="showLineConfig.options.color"
@@ -2424,14 +2592,7 @@ defineExpose({
             @check-click="checkClick"
             @item-click="itemClick"
             @item-contextmenu="contextMenuClick"
-          >
-            <template v-if="$slots.node" #node="slotProps">
-              <slot name="node" v-bind="slotProps" />
-            </template>
-            <template v-if="$slots.actions" #actions="slotProps">
-              <slot name="actions" v-bind="slotProps" />
-            </template>
-          </tree-item>
+          />
         </div>
       </template>
     </div>
