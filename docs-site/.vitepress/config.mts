@@ -261,6 +261,15 @@ export default defineConfig({
   },
   vite: {
     plugins: [assemblyscriptSite()],
+    // VitePress 1.x 内置的 Vite 5 仍默认走 Sass 的 legacy JS API，编译 SCSS 时
+    // 会不断刷 "legacy-js-api" 弃用警告（Dart Sass 2.0 将移除该 API）。
+    // 显式切到 modern-compiler：Vite 会改用 sass-embedded 的持久编译器，
+    // 既消掉警告，也避免每个文件重新启动一次编译器。
+    css: {
+      preprocessorOptions: {
+        scss: { api: 'modern-compiler' },
+      },
+    },
     // AssemblyScript 的 ESM loader 用 top-level await；Vite 默认的 'modules'
     // target（es2020 一档）会拒绝它，故站点构建提到 esnext。
     build: { target: 'esnext' },
