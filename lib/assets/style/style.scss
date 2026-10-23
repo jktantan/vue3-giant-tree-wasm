@@ -265,6 +265,14 @@
       &:hover {
         background: transparent;
       }
+      // 复选框/单选框的图标是 .giant-tree__mask-button，它自带
+      // `cursor: pointer`，会盖掉行上的禁用光标；禁用时必须覆盖回
+      // not-allowed。展开箭头同样使用 mask-button，但禁用行仍可展开/
+      // 收起，所以只限定在选择控件内。
+      .item-selection,
+      .item-selection .giant-tree__mask-button {
+        cursor: not-allowed;
+      }
     }
     .item-icon {
       position: relative;
