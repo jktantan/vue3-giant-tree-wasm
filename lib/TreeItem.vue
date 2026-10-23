@@ -430,9 +430,17 @@ const contextMenu = (event: MouseEvent) => {
 .tree-item .item-guide-cell,
 .tree-item .item-indent-cell,
 .tree-item .item-icon,
-.tree-item .item-selection,
+.tree-item .item-selection {
+  width: var(--giant-tree-row-size);
+}
+/*
+ * The node icon is an empty, background-only box: width alone would leave it 0px
+ * tall and the image would never paint. Match the old inline
+ * `{ width: fontSize, height: fontSize }` it replaced.
+ */
 .tree-item .item-node-icon {
   width: var(--giant-tree-row-size);
+  height: var(--giant-tree-row-size);
 }
 .tree-item .item-indent-cell {
   align-self: stretch;
