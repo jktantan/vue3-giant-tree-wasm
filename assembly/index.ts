@@ -280,7 +280,7 @@ export function pushNeighborNode(
   id: string,
   name: string,
   parentId: string,
-  disabled: boolean = false
+  disabled: bool = false
 ): void {
   target.pushNeighborNode(id, name, parentId, disabled)
 }
@@ -375,14 +375,14 @@ export function expandByIds(target: GiantTree, ids: string[]): void {
   target.expandByIds(ids)
 }
 
-export function collapseAll(target: GiantTree, isCollapse: boolean): void {
+export function collapseAll(target: GiantTree, isCollapse: bool): void {
   target.collapseAll(isCollapse)
 }
 
 export function collapseTree(
   target: GiantTree,
   id: string,
-  isCollapse: boolean
+  isCollapse: bool
 ): void {
   target.collapseTree(id, isCollapse)
 }

@@ -154,7 +154,7 @@ export function setCollapsedShown(
   fullTree: MpttTree[],
   startIndex: i32,
   parentRightNode: i32,
-  shown: boolean
+  shown: bool
 ): i32 {
   let shownDelta: i32 = 0
 
@@ -195,7 +195,7 @@ export function setCollapsedShown(
       // 当前节点不在任何折叠祖先内部：直接设置目标状态
       // Node not inside any collapsed ancestor: set target state directly
       // Узел не внутри свёрнутого предка: установить целевое состояние напрямую
-      const prevShown: boolean = node.shown
+      const prevShown: bool = node.shown
       node.shown = shown
       if (shown && !prevShown) shownDelta++
       if (!shown && prevShown) shownDelta--
@@ -233,7 +233,7 @@ export function incrementalUpdateShownNodes(
   parentFullTreeIndex: i32,
   parentLeftNode: i32,
   parentRightNode: i32,
-  expanded: boolean
+  expanded: bool
 ): void {
   const parentNode: MpttTree = fullTree[parentFullTreeIndex]
 

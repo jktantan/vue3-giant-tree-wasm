@@ -210,7 +210,7 @@ export class GiantTree {
   /** JSON 缓存：序列化结果 / JSON cache: serialized result / Кэш JSON: сериализованный результат */
   _cachedJson: string = ''
   /** JSON 缓存：是否有效 / JSON cache: whether valid / Кэш JSON: действителен ли */
-  _cacheValid: boolean = false
+  _cacheValid: bool = false
 
   /**
    * 使 JSON 缓存失效，任何修改节点状态的操作后必须调用
@@ -583,7 +583,7 @@ export class GiantTree {
     } else this.inputOrderToFullIndex.splice(0)
     this._shownNodes.splice(0)
     const layouts = this.trackInputLayouts ? this.inputOrderToFullIndex : null
-    let converted: i32 = this.usePreorderedNeighborInput
+    const converted: i32 = this.usePreorderedNeighborInput
       ? convertPreorderedNeighborToMptt(
           neighborTrees,
           this.root,
@@ -595,7 +595,10 @@ export class GiantTree {
     if (converted < 0) {
       this.fullTree.splice(0)
       this._shownNodes.splice(0)
-      converted = convertNeighborToMptt(
+      // The generic converter rebuilds fullTree/_shownNodes in place; its
+      // return value (the shown count) is not needed here because shownCount
+      // is derived from _shownNodes below.
+      convertNeighborToMptt(
         neighborTrees,
         this.root,
         this.fullTree,
@@ -955,7 +958,7 @@ export class GiantTree {
     this._syncLazyShownStates()
   }
 
-  collapseTree(id: string, collapsed: boolean): void {
+  collapseTree(id: string, collapsed: bool): void {
     if (!this.idToIndex.has(id)) return
     const node: MpttTree = this.idToIndex.get(id)
     const i: i32 = node.fullIndex
@@ -1029,7 +1032,7 @@ export class GiantTree {
    * Expand all / Collapse all
    * Развернуть все / Свернуть все
    */
-  collapseAll(collapsed: boolean): void {
+  collapseAll(collapsed: bool): void {
     if (this.tree === this.searchTree) {
       this._searchCollapsedIds.clear()
       if (collapsed) {

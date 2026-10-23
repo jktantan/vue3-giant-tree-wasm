@@ -126,9 +126,9 @@ export class MpttTree extends NeighborTree {
   /** 点击选中状态（SELECT 模式专用） / Click selection state (for SELECT mode) / Состояние выбора по клику (для режима SELECT) */
   selected: CheckType = CheckType.UNCHECKED
   /** 是否折叠（true=子节点隐藏） / Whether collapsed (true=children hidden) / Свёрнут ли (true=дочерние узлы скрыты) */
-  collapsed: boolean = true
+  collapsed: bool = true
   /** 是否在虚拟滚动列表中可见 / Whether visible in virtual scroll list / Видим ли в списке виртуальной прокрутки */
-  shown: boolean = false
+  shown: bool = false
   /**
    * 本节点在所属 fullTree 数组中的索引（-1=未知）。
    * 由 buildIdIndex 在每次重建 fullTree 后统一回填，供需要 fullTree 下标、
