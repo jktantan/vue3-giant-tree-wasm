@@ -12,8 +12,10 @@
 | `root`              | `string`                                               | `''`                    | Идентификатор корня; `parentId` узлов верхнего уровня должен быть равен ему               |
 | `width`             | `string`                                               | `'100%'`                | Ширина контейнера                                                                         |
 | `height`            | `string`                                               | `'100%'`                | Высота контейнера                                                                         |
-| `lineHeight`        | `number`                                               | `26`                    | Высота строки в пикселях                                                                  |
-| `fontSize`          | `string`                                               | `'14px'`                | Размер шрифта                                                                             |
+| `lineHeight`        | `number`                                               | — (пресет `size`)       | Высота строки в пикселях; приоритетнее `size`                                             |
+| `fontSize`          | `string`                                               | — (пресет `size`)       | Размер шрифта; приоритетнее `size`                                                        |
+| `theme`             | `'light' \| 'dark' \| 'inherit'`                      | `'inherit'`             | Режим темы; `inherit` следует за `html.dark`                                              |
+| `size`              | `'small' \| 'default' \| 'large'`                      | `'default'`             | Пресет размера: 12px/24px, 14px/26px, 16px/32px (шрифт / высота строки)                   |
 | `selectType`        | `SelectType`                                           | `SelectType.CHECKBOX`   | `CHECKBOX` / `RADIO` / `SELECT`                                                           |
 | `fieldKeys`         | `TreeFieldKeys`                                        | `{}`                    | Сопоставление имён полей входного JSON                                                    |
 | `outputIdOnly`      | `boolean`                                              | `true`                  | `true` — в v-model только ID; `false` — полные узлы                                       |

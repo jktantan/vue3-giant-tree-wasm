@@ -12,8 +12,10 @@
 | `root`              | `string`                                               | `''`                    | 根标识；顶层节点的 `parentId` 应等于它                     |
 | `width`             | `string`                                               | `'100%'`                | 容器宽度                                                   |
 | `height`            | `string`                                               | `'100%'`                | 容器高度                                                   |
-| `lineHeight`        | `number`                                               | `26`                    | 每行高度（像素）                                           |
-| `fontSize`          | `string`                                               | `'14px'`                | 字体大小                                                   |
+| `lineHeight`        | `number`                                               | —（取 `size` 预设）     | 每行高度（像素）；显式传入时优先于 `size`                  |
+| `fontSize`          | `string`                                               | —（取 `size` 预设）     | 字体大小；显式传入时优先于 `size`                          |
+| `theme`             | `'light' \| 'dark' \| 'inherit'`                      | `'inherit'`             | 主题模式；`inherit` 跟随 `html.dark`                       |
+| `size`              | `'small' \| 'default' \| 'large'`                      | `'default'`             | 尺寸预设：12px/24px、14px/26px、16px/32px（字号/行高）     |
 | `selectType`        | `SelectType`                                           | `SelectType.CHECKBOX`   | `CHECKBOX` / `RADIO` / `SELECT`                            |
 | `fieldKeys`         | `TreeFieldKeys`                                        | `{}`                    | 输入 JSON 的字段名映射                                     |
 | `outputIdOnly`      | `boolean`                                              | `true`                  | `true` 时 v-model 只给 ID；`false` 给完整节点              |

@@ -15,17 +15,7 @@
 }
 
 /*
- * 暗色主题下树行的 hover / 选中态。
- *
- * 组件默认给 `.tree-item:hover/.selected` 上的底色是 `$giant-tree__color-primary-hover`
- * （浅蓝 #c6e2ff），那是按浅色页面配的；配到暗色主题的近白文字（--vp-c-text-1）上，
- * 底色和文字亮度几乎一样，整行读不出来。
- * 这里沿用 src/App.vue 里 `.dev-container--dark-icons` 的暗色方案换成深蓝底。
- *
- * 放在站点全局样式里，是为了同时覆盖完整演示场和各使用说明页里的 DEMO——
- * 它们用的是同一个组件，踩的是同一个坑。
+ * 暗色主题下树行的 hover / 选中态由组件自己的主题变量负责
+ * （`--giant-tree-bg-color-hover`，暗色默认 #1e3248）。这里不要再写死颜色，
+ * 否则主色派生出来的 hover 会被站点样式覆盖。
  */
-.dark .giant-tree .tree-item:hover,
-.dark .giant-tree .tree-item.selected {
-  background: #2a4058;
-}

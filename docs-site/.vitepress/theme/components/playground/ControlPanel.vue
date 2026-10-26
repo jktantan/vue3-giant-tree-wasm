@@ -1,5 +1,10 @@
 <script setup lang="ts">
-import type { ApiAction, PlaygroundSettings } from './settings'
+import type {
+  ApiAction,
+  ComponentSize,
+  PlaygroundSettings,
+  ThemeMode,
+} from './settings'
 import type { TreePreset } from '../treeData'
 import { useMessages } from '../i18n'
 
@@ -40,6 +45,40 @@ const heights = [
 ]
 const fonts = ['12px', '14px', '16px', '18px']
 const lineColors = ['#d0d4dc', '#9ca3af', '#3b82f6', '#ef4444', '#10b981']
+const themes: ThemeMode[] = ['inherit', 'light', 'dark']
+const componentSizes: ComponentSize[] = ['small', 'default', 'large']
+const primaryColors = [
+  '#409eff',
+  '#7c3aed',
+  '#16a34a',
+  '#f97316',
+  '#ef4444',
+  '#06b6d4',
+]
+const onPrimaryColorInput = (event: Event) => {
+  settings.primaryColor = (event.target as HTMLInputElement).value
+}
+
+/**
+ * 组件尺寸与字体/行高是两套 prop：`size` 只改 CSS 字号和（在未显式传
+ * `lineHeight` 时）行高。演示场始终把滑块值传给组件，所以这里同步滑块，
+ * 让切换尺寸能直接看到完整效果。
+ */
+const sizePresets: Record<
+  ComponentSize,
+  { fontSize: string; lineHeight: number }
+> = {
+  small: { fontSize: '12px', lineHeight: 24 },
+  default: { fontSize: '14px', lineHeight: 26 },
+  large: { fontSize: '16px', lineHeight: 32 },
+}
+const applyComponentSize = (size: ComponentSize) => {
+  settings.componentSize = size
+  settings.fontSize = sizePresets[size].fontSize
+  settings.lineHeight = sizePresets[size].lineHeight
+}
+const onComponentSizeChange = (event: Event) =>
+  applyComponentSize((event.target as HTMLSelectElement).value as ComponentSize)
 
 const send = (action: ApiAction) => emit('action', action)
 </script>
@@ -92,6 +131,54 @@ const send = (action: ApiAction) => emit('action', action)
           <select v-model="settings.fontSize">
             <option v-for="f in fonts" :key="f" :value="f">{{ f }}</option>
           </select>
+        </label>
+        <label class="field">
+          <span>{{ t.theme }}</span>
+          <select v-model="settings.theme">
+            <option v-for="mode in themes" :key="mode" :value="mode">
+              {{ t.themeLabels[mode] }}
+            </option>
+          </select>
+        </label>
+        <label class="field">
+          <span>{{ t.componentSize }}</span>
+          <select
+            :value="settings.componentSize"
+            @change="onComponentSizeChange"
+          >
+            <option v-for="size in componentSizes" :key="size" :value="size">
+              {{ t.componentSizeLabels[size] }}
+            </option>
+          </select>
+        </label>
+      </div>
+      <div class="swatches">
+        <button
+          type="button"
+          class="swatch swatch--default"
+          :class="{ active: settings.primaryColor === '' }"
+          @click="settings.primaryColor = ''"
+        >
+          {{ t.primaryColorDefault }}
+        </button>
+        <button
+          v-for="color in primaryColors"
+          :key="color"
+          type="button"
+          class="swatch"
+          :class="{ active: settings.primaryColor === color }"
+          :style="{ backgroundColor: color }"
+          :title="color"
+          :aria-label="color"
+          @click="settings.primaryColor = color"
+        ></button>
+        <label class="color-input" :title="t.primaryColorCustom">
+          <input
+            type="color"
+            :value="settings.primaryColor || '#409eff'"
+            @input="onPrimaryColorInput"
+          />
+          <span>{{ t.primaryColorCustom }}</span>
         </label>
       </div>
     </section>
@@ -528,5 +615,66 @@ const send = (action: ApiAction) => emit('action', action)
   font-size: 12px;
   line-height: 1.6;
   color: var(--vp-c-text-3);
+}
+
+.swatches {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.swatch {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+  transition: transform 0.15s;
+}
+
+.swatch:hover {
+  transform: scale(1.1);
+}
+
+.swatch.active {
+  border-color: var(--vp-c-text-1);
+  box-shadow: inset 0 0 0 2px var(--vp-c-bg);
+}
+
+.swatch--default {
+  width: auto;
+  padding: 0 9px;
+  border-radius: 6px;
+  background: var(--vp-c-default-soft);
+  color: var(--vp-c-text-2);
+  font-size: 12px;
+}
+
+.swatch--default.active {
+  border-color: var(--vp-c-brand-1);
+  color: var(--vp-c-brand-1);
+}
+
+.color-input {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--vp-c-text-2);
+  cursor: pointer;
+}
+
+.color-input input[type='color'] {
+  width: 26px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 6px;
+  background: none;
+  cursor: pointer;
 }
 </style>

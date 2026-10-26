@@ -5,6 +5,8 @@ export type ShowLineStyleName = 'solid' | 'dashed' | 'dotted'
 export type NodeIconMode = 'off' | 'default' | 'business' | 'single' | 'partial'
 export type OutputModeName = 'All' | 'RootOnly' | 'LeafOnly' | 'Custom'
 export type FieldKeysMode = 'default' | 'custom'
+export type ThemeMode = 'inherit' | 'light' | 'dark'
+export type ComponentSize = 'small' | 'default' | 'large'
 
 /** 完整演示场的全部可调项。默认值与 `lib/VueGiantTree.vue` 的 `withDefaults` 对齐。 */
 export interface PlaygroundSettings {
@@ -16,6 +18,12 @@ export interface PlaygroundSettings {
   height: string
   lineHeight: number
   fontSize: string
+  /** 组件的 `theme` prop。 / The component's `theme` prop. */
+  theme: ThemeMode
+  /** 组件的 `size` prop（与上面的数据规模 `size` 无关）。 */
+  componentSize: ComponentSize
+  /** 主色；空字符串表示使用主题默认值。 / Primary colour; empty means the theme default. */
+  primaryColor: string
   selectType: SelectTypeName
   outputIdOnly: boolean
   checkedOutputMode: OutputModeName
@@ -53,6 +61,9 @@ export const DEFAULT_SETTINGS: PlaygroundSettings = {
   height: 'fill',
   lineHeight: 26,
   fontSize: '14px',
+  theme: 'inherit',
+  componentSize: 'default',
+  primaryColor: '',
   selectType: 'CHECKBOX',
   outputIdOnly: true,
   checkedOutputMode: 'All',

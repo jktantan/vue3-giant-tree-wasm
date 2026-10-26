@@ -69,6 +69,11 @@ import {
   decodeGuideLine,
   resolveShowLineOptions,
 } from './guide'
+import {
+  resolveGiantTreeSizePreset,
+  type GiantTreeSize,
+  type GiantTreeTheme,
+} from './theme'
 import type {
   TreeNodeData,
   TreeInputItem,
@@ -84,10 +89,31 @@ const props = withDefaults(
     modelValue: TreeNodeData | TreeNodeData[] | string | string[]
     width?: string
     height?: string
+    /** 行高（像素）。未传时由 `size` 预设决定。 / Row height in px; falls back to the `size` preset. */
     lineHeight?: number
     selectType?: SelectType
     root?: string
+    /** 行内字号。未传时由 `size` 预设决定，也允许宿主用 `--giant-tree-font-size` 覆盖。 */
     fontSize?: string
+    /**
+     * 主题模式，参考 Element Plus 的暗色模式：
+     * - `inherit`（默认）跟随全局约定——`html.dark` 下自动使用暗色；
+     * - `light` 强制浅色（在暗色页面里放浅色面板）；
+     * - `dark` 只让当前实例使用暗色。
+     *
+     * Theme mode: `inherit` follows the global `html.dark` switch (default),
+     * `light` forces light colours, and `dark` darkens only this instance.
+     */
+    theme?: GiantTreeTheme
+    /**
+     * 尺寸预设：`small` / `default` / `large`，对应
+     * 12px·24px / 14px·26px / 16px·32px（字号·行高）。
+     * 显式传入的 `fontSize` / `lineHeight` 优先于预设。
+     *
+     * Size preset (small / default / large). Explicit `fontSize` / `lineHeight`
+     * win over the preset.
+     */
+    size?: GiantTreeSize
     tree: TreeInputItem[]
     fieldKeys?: TreeFieldKeys
     /** 输出模式：true=只传 ID，false=传完整 JSON */
@@ -130,10 +156,10 @@ const props = withDefaults(
   {
     width: '100%',
     height: '100%',
-    lineHeight: 26,
     selectType: SelectType.CHECKBOX,
     root: '',
-    fontSize: '14px',
+    theme: 'inherit',
+    size: 'default',
     tree: () => [],
     fieldKeys: () => ({}),
     outputIdOnly: true,
@@ -152,6 +178,59 @@ const emit = defineEmits([
   'update:tree',
   'item-contextmenu',
 ])
+
+/**
+ * 尺寸解析：`size` 提供字号/行高预设，显式 prop 优先。
+ * 行高必须落到 JS 里（虚拟滚动要按像素切窗口），字号则同时作为 CSS 变量下发。
+ *
+ * Size resolution: the preset supplies font-size and row height, and explicit
+ * props win. Row height has to live in JS for virtual scrolling, while font
+ * size is also exposed as a CSS variable for host overrides.
+ */
+const sizePreset = computed(() => resolveGiantTreeSizePreset(props.size))
+const resolvedLineHeight = computed(() => {
+  const explicit = props.lineHeight
+  return explicit !== undefined && explicit > 0
+    ? explicit
+    : sizePreset.value.lineHeight
+})
+const resolvedFontSize = computed(
+  () => props.fontSize ?? `${sizePreset.value.fontSize}px`
+)
+
+/**
+ * Theme/size classes live on the component root so a whole instance can be
+ * themed locally without touching global styles.
+ */
+const themeClass = computed(() =>
+  props.theme === 'inherit' ? undefined : `giant-tree--${props.theme}`
+)
+const sizeClass = computed(() =>
+  props.size === 'default' || !props.size
+    ? undefined
+    : `giant-tree--${props.size}`
+)
+
+/**
+ * 只有显式传入 `fontSize` 时才在根节点写内联变量，保证默认情况下宿主
+ * 可以在自己的样式表里覆盖 `--giant-tree-font-size` 等变量。
+ *
+ * Only an explicit `fontSize` writes inline variables, so by default hosts can
+ * still override `--giant-tree-*` size variables from their own stylesheet.
+ */
+const rootStyle = computed(() => {
+  const style: Record<string, string> = {
+    width: props.width,
+    height: props.height,
+  }
+  if (props.fontSize) {
+    style['--giant-tree-font-size'] = resolvedFontSize.value
+    style['--giant-tree-row-size'] = resolvedFontSize.value
+    style['--giant-tree-indent-size'] = resolvedFontSize.value
+    style['--giant-tree-icon-size'] = resolvedFontSize.value
+  }
+  return style
+})
 /** 组件引用: 滚动容器 DOM / Component ref: scroll container DOM / Ссылка на компонент: DOM контейнера прокрутки */
 const container = ref<HTMLDivElement>()
 /** 可见节点总数，由 WASM 侧 shownCount 驱动 / Total visible node count, driven by WASM shownCount / Общее количество видимых узлов */
@@ -362,7 +441,8 @@ const startOffset = ref<number>(0)
  */
 const OVERSCAN_ROWS = 4
 /** 行高兜底：0 或负数会让索引与偏移的取整全部失效。 */
-const rowHeight = () => (props.lineHeight > 0 ? props.lineHeight : 1)
+const rowHeight = () =>
+  resolvedLineHeight.value > 0 ? resolvedLineHeight.value : 1
 /** 送给虚拟滚动算法的滚动位置：向上多让出 OVERSCAN_ROWS 行。 */
 const boundaryScrollTop = () =>
   Math.max(0, scrollTop - OVERSCAN_ROWS * rowHeight())
@@ -1335,7 +1415,7 @@ const startTreeAnimation = async (
           .filter(item => !afterIds.has(item.id))
       : []
 
-  const height = rows.length * props.lineHeight
+  const height = rows.length * resolvedLineHeight.value
   const duration = branchAnimationDuration(height)
   treeAnimation.value = {
     direction,
@@ -1393,7 +1473,7 @@ const createMainTree = (): TreeInstance => {
   const instance = hasCustomKeys
     ? newTreeWithKeys(
         props.root,
-        props.lineHeight,
+        resolvedLineHeight.value,
         props.selectType,
         fk.idField ?? 'id',
         fk.nameField ?? 'name',
@@ -1402,7 +1482,7 @@ const createMainTree = (): TreeInstance => {
         fk.rightNodeField ?? 'rightNode',
         false
       )
-    : newTree(props.root, props.lineHeight, props.selectType, false)
+    : newTree(props.root, resolvedLineHeight.value, props.selectType, false)
   currentMainConfigSignature = mainConfigSignature()
   return instance
 }
@@ -1564,7 +1644,7 @@ const tryWorkerContentUpdates = (next: TreeInputItem[]): boolean => {
 
 const workerConfig = () => ({
   root: props.root,
-  lineHeight: props.lineHeight,
+  lineHeight: resolvedLineHeight.value,
   selectType: props.selectType,
   checkedOutputMode: props.checkedOutputMode,
   fieldKeys: props.fieldKeys,
@@ -2375,20 +2455,17 @@ const removeNode = (id: string): boolean => {
   return true
 }
 
-watch(
-  () => props.lineHeight,
-  value => {
-    if (isUsingWorker()) {
-      postWorker('set-line-height', { lineHeight: value })
-      return
-    }
-    if (!isTreeReady) return
-    setLineHeight(tree, value)
-    syncMainViewport(true)
-    listHeight.value = getShownHeight(tree)
-    refreshTree()
+watch(resolvedLineHeight, value => {
+  if (isUsingWorker()) {
+    postWorker('set-line-height', { lineHeight: value })
+    return
   }
-)
+  if (!isTreeReady) return
+  setLineHeight(tree, value)
+  syncMainViewport(true)
+  listHeight.value = getShownHeight(tree)
+  refreshTree()
+})
 
 // root / selectType / fieldKeys / preorderedInput are baked into the WASM
 // instance constructor, so changing them requires a fresh instance (main) or a
@@ -2520,8 +2597,12 @@ defineExpose({
   <div
     ref="container"
     class="giant-tree tree-container"
-    :class="{ 'tree-container--animating': isTreeAnimating() }"
-    :style="{ width: width, height: height }"
+    :class="[
+      themeClass,
+      sizeClass,
+      { 'tree-container--animating': isTreeAnimating() },
+    ]"
+    :style="rootStyle"
     tabindex="0"
     @scroll="scrollEvent"
   >
@@ -2544,9 +2625,8 @@ defineExpose({
         -->
         <tree-item
           v-if="!animationRowIds.has(item.id)"
-          :style="{ height: lineHeight + 'px' }"
+          :style="{ height: resolvedLineHeight + 'px' }"
           :item="item"
-          :fontSize="fontSize"
           @collapse-click="collapseClick"
           :select-type="selectType"
           :filter-fn="filterFn"
@@ -2575,9 +2655,8 @@ defineExpose({
           <tree-item
             v-for="row in transitionRows"
             :key="row.id"
-            :style="{ height: lineHeight + 'px' }"
+            :style="{ height: resolvedLineHeight + 'px' }"
             :item="row"
-            :fontSize="fontSize"
             @collapse-click="collapseClick"
             :select-type="selectType"
             :filter-fn="filterFn"

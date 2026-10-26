@@ -1,4 +1,19 @@
-@use "sass:color";
+@use 'sass:color';
+
+/*
+ * 主题系统（参考 Element Plus）
+ * ============================
+ * 分两层：
+ * 1. 下面的 SCSS 变量是**编译期默认值**，可以通过 `@use ... with (...)` 定制；
+ * 2. `giant-tree-theme-*` mixin 把它们输出成 `--giant-tree-*` CSS 变量。
+ *    运行时的换肤应该覆盖 CSS 变量，而不是重新编译 SCSS。
+ *
+ * Two layers: SCSS variables are compile-time defaults, and the mixins below
+ * emit them as `--giant-tree-*` CSS variables. Consumers should customise the
+ * CSS variables at runtime instead of recompiling the stylesheet.
+ */
+
+/* ---------- 颜色 ---------- */
 $giant-tree__color-primary: #409eff !default;
 $giant-tree__color-primary-invert: #ffac30 !default;
 $giant-tree__color-danger: #ef4f4f !default;
@@ -6,36 +21,145 @@ $giant-tree__color-white: #fff !default;
 $giant-tree__color-black: #000 !default;
 $giant-tree__color-grey: #4d4d4d !default;
 $giant-tree__color-disabled: #aaa !default;
-$giant-tree__color-primary-activate: color.mix($giant-tree__color-primary, #000, 80%) !default;
-$giant-tree__color-primary-hover: color.mix($giant-tree__color-primary, #fff, 30%) !default;
-/*
-tab文本颜色
- */
-$giant-tree__text-color: $giant-tree__color-grey;
-/*
-tab文本大小
- */
-$giant-tree__font-size: 16px;
+$giant-tree__color-primary-activate: color.mix(
+  $giant-tree__color-primary,
+  #000,
+  80%
+) !default;
+$giant-tree__color-primary-hover: color.mix(
+  $giant-tree__color-primary,
+  #fff,
+  30%
+) !default;
 
+/* 行文字颜色 / 容器背景。默认背景透明，避免在页面里切出一块白底。 */
+$giant-tree__text-color: $giant-tree__color-grey !default;
+$giant-tree__bg-color: transparent !default;
+$giant-tree__bg-color-hover: $giant-tree__color-primary-hover !default;
+$giant-tree__disabled-opacity: 0.45 !default;
+
+/* ---------- 尺寸 ---------- */
+/* 与组件 `size="default"` 预设（14px / 26px）保持一致。 */
+$giant-tree__font-size: 14px !default;
+$giant-tree__row-size: $giant-tree__font-size !default;
+$giant-tree__indent-size: $giant-tree__row-size !default;
+$giant-tree__icon-size: $giant-tree__row-size !default;
 $giant-tree__icon-margin: 10px;
-$giant-tree__icon-size: $giant-tree__font-size;
+$giant-tree__trans: all 0.3s ease-in-out !default;
 
-$giant-tree__trans: all 0.3s ease-in-out;
-
-/*
-连接线（showLine 模式）：缩进格中的分支线颜色与线宽
- */
+/* ---------- 连接线 ---------- */
 $giant-tree__line-color: #d0d4dc !default;
 $giant-tree__line-width: 1px !default;
 
-/*
-模糊搜索命中片段（searchHighlight）：关键词底色与文字颜色。
-默认文字颜色继承所在行，不改变原有排版观感；宿主可用 CSS 变量
---giant-tree-search-hit-bg / --giant-tree-search-hit-color 在运行时覆盖。
- */
+/* ---------- 搜索命中高亮 ---------- */
+/* 文字颜色默认继承所在行；宿主可用 --giant-tree-search-hit-* 覆盖。 */
 $giant-tree__search-hit-bg: #ffe58f !default;
 $giant-tree__search-hit-color: inherit !default;
+
+/* ---------- 暗色主题默认值 ---------- */
+$giant-tree__dark-text-color: #e5eaf3 !default;
+$giant-tree__dark-bg-color: #141414 !default;
+$giant-tree__dark-color-disabled: #6c6e72 !default;
+$giant-tree__dark-line-color: #4c4d4f !default;
+$giant-tree__dark-search-hit-bg: #6b5410 !default;
+$giant-tree__dark-search-hit-color: #e5eaf3 !default;
+/* 暗色下的 hover/选中底色：primary 与暗背景混合，避免亮蓝刺眼。 */
+$giant-tree__dark-color-primary-hover: color.mix(
+  $giant-tree__color-primary,
+  $giant-tree__dark-bg-color,
+  22%
+) !default;
 
 $shadow-top-inset: inset 0 12px 10px -12px rgb(0 0 0 / 60%); /* 上内阴影 */
 $shadow-bottom-inset: inset 0 -12px 10px -12px rgb(0 0 0 / 60%); /* 上内阴影 */
 $shadow-horizontal-inset: $shadow-top-inset, $shadow-bottom-inset;
+
+/*
+ * 运行时 CSS 变量。
+ * 宿主可以在 `:root`、组件祖先或组件自身上覆盖其中任意一项：
+ *
+ *   :root {
+ *     --giant-tree-color-primary: #7c3aed;
+ *     --giant-tree-font-size: 15px;
+ *   }
+ */
+@mixin giant-tree-light-theme {
+  --giant-tree-color-primary: #{$giant-tree__color-primary};
+  --giant-tree-color-primary-hover: #{$giant-tree__color-primary-hover};
+  --giant-tree-color-primary-active: #{$giant-tree__color-primary-activate};
+  --giant-tree-color-danger: #{$giant-tree__color-danger};
+  --giant-tree-color-disabled: #{$giant-tree__color-disabled};
+  --giant-tree-text-color: #{$giant-tree__text-color};
+  --giant-tree-bg-color: #{$giant-tree__bg-color};
+  --giant-tree-bg-color-hover: #{$giant-tree__bg-color-hover};
+  --giant-tree-line-color: #{$giant-tree__line-color};
+  --giant-tree-line-width: #{$giant-tree__line-width};
+  --giant-tree-disabled-opacity: #{$giant-tree__disabled-opacity};
+  --giant-tree-transition: #{$giant-tree__trans};
+  --giant-tree-search-hit-bg: #{$giant-tree__search-hit-bg};
+  --giant-tree-search-hit-color: #{$giant-tree__search-hit-color};
+}
+
+@mixin giant-tree-dark-theme {
+  @include giant-tree-light-theme;
+
+  --giant-tree-color-primary-hover: #{$giant-tree__dark-color-primary-hover};
+  --giant-tree-color-primary-active: #{color.mix(
+      $giant-tree__color-primary,
+      #000,
+      90%
+    )};
+  --giant-tree-color-disabled: #{$giant-tree__dark-color-disabled};
+  --giant-tree-text-color: #{$giant-tree__dark-text-color};
+  --giant-tree-bg-color: #{$giant-tree__dark-bg-color};
+  --giant-tree-bg-color-hover: #{$giant-tree__dark-color-primary-hover};
+  --giant-tree-line-color: #{$giant-tree__dark-line-color};
+  --giant-tree-search-hit-bg: #{$giant-tree__dark-search-hit-bg};
+  --giant-tree-search-hit-color: #{$giant-tree__dark-search-hit-color};
+}
+
+/*
+ * 默认浅色变量放在 `:root`，这样宿主在 `:root` 上的覆盖与组件默认值处于
+ * 同一层，按源码顺序后加载的自定义样式即可生效。
+ *
+ * 尺寸变量不放进主题 mixin：它们需要被 `.giant-tree--small/--large` 在组件
+ * 根节点上覆盖，而暗色规则 `html.dark .giant-tree` 作用在同一个元素上，
+ * 若在那里重复声明尺寸会把 size 预设压掉。
+ */
+:root {
+  @include giant-tree-light-theme;
+
+  --giant-tree-font-size: #{$giant-tree__font-size};
+}
+
+/*
+ * 暗色可以两种方式触发：
+ * 1. 全局约定：`html.dark`（与 Element Plus 的暗色模式一致），自动生效；
+ * 2. 组件显式指定：`theme="dark"`，只影响这一个实例。
+ *
+ * 显式 `theme="light"` 会压过全局 `html.dark`，用于「暗色页面里放一块浅色面板」。
+ */
+html.dark .giant-tree,
+.giant-tree--dark {
+  @include giant-tree-dark-theme;
+}
+
+html.dark .giant-tree--light,
+.giant-tree--light {
+  @include giant-tree-light-theme;
+}
+
+/*
+ * 尺寸预设只改 CSS 能控制的部分（字号，其余尺寸在使用处回落到字号）。
+ * 行高参与虚拟滚动计算，由组件的 `size` / `lineHeight` prop 决定。
+ *
+ * 只写 font-size 而不是把 row/indent/icon 一起写死：宿主在更具体的
+ * 选择器上覆盖 `--giant-tree-row-size` / `--giant-tree-icon-size` 时仍然有效。
+ */
+.giant-tree--small {
+  --giant-tree-font-size: 12px;
+}
+
+.giant-tree--large {
+  --giant-tree-font-size: 16px;
+}

@@ -8,6 +8,17 @@ import './assets/style/index.scss'
 export { default as VueGiantTree } from './VueGiantTree.vue'
 export { computeGuideLines } from './guide'
 export type { GuideLineInfo } from './guide'
+export {
+  GIANT_TREE_SIZE_PRESETS,
+  createGiantTreeThemeVars,
+  mixHexColors,
+  resolveGiantTreeSizePreset,
+} from './theme'
+export type {
+  GiantTreeSize,
+  GiantTreeSizePreset,
+  GiantTreeTheme,
+} from './theme'
 
 // 枚举：组件的 selectType / checkedOutputMode 等 prop 直接以这些值为参数，
 // 从入口 re-export，避免使用者必须去 internal 路径导入。

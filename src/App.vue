@@ -6,6 +6,8 @@ import { SelectType, DisplayType, CheckedOutputMode } from '../build/release'
 import { nanoid } from 'nanoid'
 import { ref, shallowRef, computed, watch } from 'vue'
 import type { TreeNodeData, FilterFn, NodeIconResolver } from '@lib/types'
+import { createGiantTreeThemeVars } from '@lib/theme'
+import type { GiantTreeTheme } from '@lib/theme'
 
 const TREE_SIZES = {
   guide: { guide: true },
@@ -33,6 +35,31 @@ const currentSelectType = ref<SelectType>(SelectType.CHECKBOX)
 const treeHeight = ref('500px')
 const treeFontSize = ref('14px')
 const lineHeight = ref(26)
+/** 主题模式：跟随全局（html.dark）/ 浅色 / 深色。 */
+const theme = ref<GiantTreeTheme>('inherit')
+const themeOptions: Array<{ value: GiantTreeTheme; label: string }> = [
+  { value: 'inherit', label: '跟随全局' },
+  { value: 'light', label: '浅色' },
+  { value: 'dark', label: '深色' },
+]
+/** 空字符串表示使用主题默认主色；选色后由 helper 派生 hover/active。 */
+const primaryColor = ref('')
+const primaryColorPresets = [
+  '#409eff',
+  '#7c3aed',
+  '#16a34a',
+  '#f97316',
+  '#ef4444',
+  '#06b6d4',
+]
+const treeThemeVars = computed(() =>
+  primaryColor.value
+    ? createGiantTreeThemeVars(primaryColor.value, theme.value === 'dark')
+    : {}
+)
+const onPrimaryColorInput = (event: Event) => {
+  primaryColor.value = (event.target as HTMLInputElement).value
+}
 const checkedResult = ref<TreeNodeData | TreeNodeData[] | string | string[]>([])
 const searchKeyword = ref('')
 const setCheckedIdsInput = ref('')
@@ -479,6 +506,59 @@ const switchDisplay = (type: DisplayType) => {
         </section>
 
         <section class="ctrl-section">
+          <h3>主题</h3>
+          <div class="btn-group">
+            <button
+              v-for="item in themeOptions"
+              :key="item.value"
+              :class="{ active: theme === item.value }"
+              @click="theme = item.value"
+            >
+              {{ item.label }}
+            </button>
+          </div>
+          <p class="control-hint">
+            跟随全局：页面根节点有 <code>dark</code> 类时自动使用暗色。
+          </p>
+        </section>
+
+        <section class="ctrl-section">
+          <h3>主色</h3>
+          <div class="color-swatches">
+            <button
+              type="button"
+              class="color-swatch color-swatch--default"
+              :class="{ active: primaryColor === '' }"
+              @click="primaryColor = ''"
+            >
+              默认
+            </button>
+            <button
+              v-for="color in primaryColorPresets"
+              :key="color"
+              type="button"
+              class="color-swatch"
+              :class="{ active: primaryColor === color }"
+              :style="{ backgroundColor: color }"
+              :title="color"
+              :aria-label="color"
+              @click="primaryColor = color"
+            ></button>
+            <label class="color-picker" title="自定义主色">
+              <input
+                type="color"
+                :value="primaryColor || '#409eff'"
+                @input="onPrimaryColorInput"
+              />
+              <span>自定义</span>
+            </label>
+          </div>
+          <p class="control-hint">
+            当前：{{ primaryColor || '主题默认（#409eff）' }}
+          </p>
+        </section>
+
+        <section class="ctrl-section">
           <h3>模糊查询</h3>
           <div class="search-box">
             <input
@@ -854,6 +934,8 @@ const switchDisplay = (type: DisplayType) => {
             :select-type="currentSelectType"
             :line-height="lineHeight"
             :font-size="treeFontSize"
+            :theme="theme"
+            :style="treeThemeVars"
             :height="'100%'"
             :width="'100%'"
             :output-id-only="outputIdOnly"
@@ -926,6 +1008,67 @@ const switchDisplay = (type: DisplayType) => {
 </template>
 
 <style>
+.color-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.color-swatch {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+  transition: transform 0.15s;
+}
+
+.color-swatch:hover {
+  transform: scale(1.1);
+}
+
+.color-swatch.active {
+  border-color: #1f2d3d;
+  box-shadow: inset 0 0 0 2px #fff;
+}
+
+.color-swatch--default {
+  width: auto;
+  padding: 0 10px;
+  border-radius: 6px;
+  background: #f0f2f5;
+  color: #444;
+  font-size: 12px;
+}
+
+.color-swatch--default.active {
+  background: #e6f4ff;
+  border-color: #4096ff;
+  color: #1677ff;
+}
+
+.color-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #555;
+  cursor: pointer;
+}
+
+.color-picker input[type='color'] {
+  width: 28px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid #d9d9d9;
+  border-radius: 6px;
+  background: none;
+  cursor: pointer;
+}
+
 * {
   margin: 0;
   padding: 0;
@@ -1293,10 +1436,11 @@ input[type='range'] {
 
 .dev-container--dark-icons .giant-tree .tree-item:hover,
 .dev-container--dark-icons .giant-tree .tree-item.selected {
-  background: #2a4058;
+  background: var(--giant-tree-bg-color-hover, #2a4058);
 }
 
-.dev-container--dark-icons .giant-tree__mask-button {
+.dev-container--dark-icons
+  .giant-tree__mask-button:not(.checked) {
   background-color: #b9c6d8;
 }
 

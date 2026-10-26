@@ -3,6 +3,7 @@
  * 完整演示场：覆盖组件的全部 prop、实例方法、插槽与事件。
  * 只在客户端加载（`playground.md` 用 `defineClientComponent`），避免 SSR 期执行浏览器 API。
  */
+import { useData } from 'vitepress'
 import {
   computed,
   nextTick,
@@ -36,11 +37,13 @@ import {
 } from './playground/settings'
 import { formatCheckedResult } from './playground/format'
 import { useMessages } from './i18n'
+import { createGiantTreeThemeVars } from '@lib/theme'
 // Worker 脚本的产物 URL：用来在页面空闲时提前预取（见 warmUpWorker）。
 import workerUrl from '@lib/tree.worker.ts?worker&url'
 
 const settings = reactive<PlaygroundSettings>({ ...DEFAULT_SETTINGS })
 const t = useMessages()
+const { isDark } = useData()
 const treeRef = ref<InstanceType<typeof VueGiantTree>>()
 const logs = ref<LogEntry[]>([])
 // 同样用 shallowRef：选中结果在「仅输出 ID」关闭、且选了上万节点时是对象数组，
@@ -104,6 +107,20 @@ const tree = shallowRef<TreeInputItem[]>(createData())
  * 小档位不动这个开关，保留使用者自己的选择。
  */
 const AUTO_WORKER_PRESETS: ReadonlySet<TreePreset> = new Set(['100k', '1m'])
+
+/**
+ * 主色覆盖：`theme` 决定派生 hover/active 的混合方向；`inherit` 时跟随
+ * VitePress 的暗色开关。变量写在组件根节点内联样式上，优先级高于主题类。
+ */
+const treeThemeVars = computed(() =>
+  settings.primaryColor
+    ? createGiantTreeThemeVars(
+        settings.primaryColor,
+        settings.theme === 'dark' ||
+          (settings.theme === 'inherit' && isDark.value)
+      )
+    : {}
+)
 
 const fieldKeys = computed(() =>
   settings.fieldKeysMode === 'custom'
@@ -484,6 +501,9 @@ onMounted(async () => {
             :height="treeHeight"
             :line-height="settings.lineHeight"
             :font-size="settings.fontSize"
+            :theme="settings.theme"
+            :size="settings.componentSize"
+            :style="treeThemeVars"
             :select-type="selectType"
             :show-line="showLine"
             :node-icon="nodeIcon"
@@ -667,12 +687,17 @@ onMounted(async () => {
   color: #e7edf5;
 }
 
+/* hover / 选中背景跟随主题主色，不再写死深蓝。 */
 .playground__tree--dark :deep(.giant-tree .tree-item:hover),
 .playground__tree--dark :deep(.giant-tree .tree-item.selected) {
-  background: #2a4058;
+  background: var(--giant-tree-bg-color-hover, #2a4058);
 }
 
-.playground__tree--dark :deep(.giant-tree__mask-button) {
+/*
+ * 只把未选中图标提亮，保证它在深色预览背景上可见；选中态继续用主题主色，
+ * 这样主色选择器在预览模式下也生效。
+ */
+.playground__tree--dark :deep(.giant-tree__mask-button:not(.checked)) {
   background-color: #b9c6d8;
 }
 

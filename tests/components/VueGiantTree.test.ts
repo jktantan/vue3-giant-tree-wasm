@@ -642,7 +642,7 @@ describe('VueGiantTree: 主组件', () => {
     expect(leaf?.classes()).toContain('selected')
   })
 
-  it('自定义 fontSize', async () => {
+  it('自定义 fontSize 通过根节点 CSS 变量下发', async () => {
     const wrapper = mount(VueGiantTree, {
       props: {
         modelValue: [],
@@ -653,10 +653,109 @@ describe('VueGiantTree: 主组件', () => {
     })
     await flushPromises()
     await wrapper.vm.$nextTick()
-    const items = wrapper.findAll('.tree-item')
-    if (items.length > 0) {
-      expect(items[0].attributes('style')).toContain('font-size: 18px')
-    }
+    const style = wrapper.find('.giant-tree').attributes('style') ?? ''
+    expect(style).toContain('--giant-tree-font-size: 18px')
+    expect(style).toContain('--giant-tree-row-size: 18px')
+    expect(style).toContain('--giant-tree-indent-size: 18px')
+    expect(style).toContain('--giant-tree-icon-size: 18px')
+  })
+
+  it('默认不写内联尺寸变量，宿主可用 CSS 覆盖', async () => {
+    const wrapper = mount(VueGiantTree, {
+      props: {
+        modelValue: [],
+        tree: makeTreeData(),
+        root: 'root',
+      },
+    })
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+    const style = wrapper.find('.giant-tree').attributes('style') ?? ''
+    expect(style).not.toContain('--giant-tree-font-size')
+  })
+
+  it('theme=dark / light 在根节点挂主题类，inherit 不挂', async () => {
+    const mountWithTheme = (theme?: 'dark' | 'light' | 'inherit') =>
+      mount(VueGiantTree, {
+        props: {
+          modelValue: [],
+          tree: makeTreeData(),
+          root: 'root',
+          ...(theme ? { theme } : {}),
+        },
+      })
+
+    const dark = mountWithTheme('dark')
+    expect(dark.find('.giant-tree').classes()).toContain('giant-tree--dark')
+
+    const light = mountWithTheme('light')
+    expect(light.find('.giant-tree').classes()).toContain('giant-tree--light')
+
+    const inherit = mountWithTheme()
+    expect(inherit.find('.giant-tree').classes()).not.toContain(
+      'giant-tree--dark'
+    )
+    expect(inherit.find('.giant-tree').classes()).not.toContain(
+      'giant-tree--light'
+    )
+  })
+
+  it('size 预设同时切换根节点类与虚拟行高', async () => {
+    const mountWithSize = (size: 'small' | 'default' | 'large') =>
+      mount(VueGiantTree, {
+        props: {
+          modelValue: [],
+          tree: makeTreeData(),
+          root: 'root',
+          size,
+        },
+      })
+
+    const small = mountWithSize('small')
+    await flushPromises()
+    await small.vm.$nextTick()
+    expect(small.find('.giant-tree').classes()).toContain('giant-tree--small')
+    expect(small.find('.tree-item').attributes('style')).toContain(
+      'height: 24px'
+    )
+
+    const large = mountWithSize('large')
+    await flushPromises()
+    await large.vm.$nextTick()
+    expect(large.find('.giant-tree').classes()).toContain('giant-tree--large')
+    expect(large.find('.tree-item').attributes('style')).toContain(
+      'height: 32px'
+    )
+
+    const normal = mountWithSize('default')
+    await flushPromises()
+    await normal.vm.$nextTick()
+    expect(normal.find('.giant-tree').classes()).not.toContain(
+      'giant-tree--small'
+    )
+    expect(normal.find('.giant-tree').classes()).not.toContain(
+      'giant-tree--large'
+    )
+    expect(normal.find('.tree-item').attributes('style')).toContain(
+      'height: 26px'
+    )
+  })
+
+  it('显式 lineHeight 优先于 size 预设', async () => {
+    const wrapper = mount(VueGiantTree, {
+      props: {
+        modelValue: [],
+        tree: makeTreeData(),
+        root: 'root',
+        size: 'small',
+        lineHeight: 30,
+      },
+    })
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+    expect(wrapper.find('.tree-item').attributes('style')).toContain(
+      'height: 30px'
+    )
   })
 
   it('v-model 双向绑定：选中触发 update:modelValue', async () => {

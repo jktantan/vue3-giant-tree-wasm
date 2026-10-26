@@ -12,8 +12,10 @@ These four tables mirror `lib/VueGiantTree.vue`'s `defineProps` / `defineExpose`
 | `root`              | `string`                                               | `''`                    | Root identifier; top-level nodes' `parentId` must equal it                        |
 | `width`             | `string`                                               | `'100%'`                | Container width                                                                   |
 | `height`            | `string`                                               | `'100%'`                | Container height                                                                  |
-| `lineHeight`        | `number`                                               | `26`                    | Row height in pixels                                                              |
-| `fontSize`          | `string`                                               | `'14px'`                | Font size                                                                         |
+| `lineHeight`        | `number`                                               | — (`size` preset)       | Row height in pixels; wins over `size`                                            |
+| `fontSize`          | `string`                                               | — (`size` preset)       | Font size; wins over `size`                                                       |
+| `theme`             | `'light' \| 'dark' \| 'inherit'`                      | `'inherit'`             | Theme mode; `inherit` follows `html.dark`                                         |
+| `size`              | `'small' \| 'default' \| 'large'`                      | `'default'`             | Size preset: 12px/24px, 14px/26px, 16px/32px (font size / row height)             |
 | `selectType`        | `SelectType`                                           | `SelectType.CHECKBOX`   | `CHECKBOX` / `RADIO` / `SELECT`                                                   |
 | `fieldKeys`         | `TreeFieldKeys`                                        | `{}`                    | Field-name mapping for the input JSON                                             |
 | `outputIdOnly`      | `boolean`                                              | `true`                  | `true` gives IDs in v-model; `false` gives full nodes                             |

@@ -40,6 +40,7 @@ const DESCRIPTIONS = {
 const GUIDE_SLUGS = [
   'tree-building',
   'virtual-scroll',
+  'theme',
   'fuzzy-search',
   'check-and-output',
   'serialization',
@@ -181,6 +182,7 @@ export default defineConfig({
           [
             '树构建与数据格式',
             '虚拟滚动与可见性',
+            '主题与尺寸',
             '模糊搜索',
             '勾选与输出模式',
             '序列化与节点数据',
@@ -212,6 +214,7 @@ export default defineConfig({
           [
             'Tree building & data format',
             'Virtual scrolling & visibility',
+            'Themes & sizes',
             'Fuzzy search',
             'Checking & output modes',
             'Serialization & node data',
@@ -243,6 +246,7 @@ export default defineConfig({
           [
             'Построение дерева и формат данных',
             'Виртуальная прокрутка и видимость',
+            'Темы и размеры',
             'Нечёткий поиск',
             'Выбор и режимы вывода',
             'Сериализация и данные узла',

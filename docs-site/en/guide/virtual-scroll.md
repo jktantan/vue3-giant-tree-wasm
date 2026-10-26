@@ -41,8 +41,8 @@ Three things decide how that feels:
 | --- | --- | --- | --- |
 | `height` | `string` | `'100%'` | Container height. The parent must give it a definite height, otherwise there is no window to slice |
 | `width` | `string` | `'100%'` | Container width |
-| `lineHeight` | `number` | `26` | Row height in pixels; virtual scrolling converts it into the visible range |
-| `fontSize` | `string` | `'14px'` | Font size inside rows |
+| `lineHeight` | `number` | — (`size` preset, 26) | Row height in pixels; virtual scrolling converts it into the visible range. Wins over `size` |
+| `fontSize` | `string` | — (`size` preset, 14px) | Font size inside rows; also overridable via `--giant-tree-font-size` |
 
 ## Expand / collapse and animation
 

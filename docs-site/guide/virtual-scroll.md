@@ -36,8 +36,8 @@ MPTT 让这两步都很廉价：
 | --- | --- | --- | --- |
 | `height` | `string` | `'100%'` | 容器高度。父容器需要能给出确定高度，否则虚拟滚动没有可切分的窗口 |
 | `width` | `string` | `'100%'` | 容器宽度 |
-| `lineHeight` | `number` | `26` | 行高（像素）。虚拟滚动按它换算可见区间 |
-| `fontSize` | `string` | `'14px'` | 行内字号 |
+| `lineHeight` | `number` | —（`size` 预设，默认 26） | 行高（像素）。虚拟滚动按它换算可见区间；显式传入时优先于 `size` |
+| `fontSize` | `string` | —（`size` 预设，默认 14px） | 行内字号；也可由 `--giant-tree-font-size` 覆盖 |
 
 ## 展开 / 收起与动画
 

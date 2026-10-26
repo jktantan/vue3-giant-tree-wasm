@@ -17,7 +17,16 @@ import { SlotRenderer } from './SlotRenderer'
 
 const props = defineProps<{
   item: TreeNodeData
-  fontSize: string
+  /**
+   * 行内字号兜底，仅用于脱离 VueGiantTree 单独挂载 TreeItem 的场景。
+   * 正常使用时由 VueGiantTree 根节点的 `--giant-tree-font-size` 等变量驱动，
+   * 这样宿主可以用 CSS 覆盖字号/图标/缩进。
+   *
+   * Inline font-size fallback for mounting TreeItem standalone. Within
+   * VueGiantTree the row inherits `--giant-tree-font-size` and friends from the
+   * root element, so hosts can override them with CSS.
+   */
+  fontSize?: string
   selectType: SelectType
   filterFn?: FilterFn
   nodeIcon?: boolean | NodeIconResolver
@@ -202,14 +211,25 @@ const guideStyle = computed(() =>
 
 /**
  * Row-level sizing variables. Indent cells, icons and checkboxes consume
- * `--giant-tree-row-size` from CSS instead of binding a style object per cell,
- * which matters for deep rows where one render used to create dozens of
- * temporary `{ width }` objects.
+ * `--giant-tree-row-size` / `--giant-tree-indent-size` / `--giant-tree-icon-size`
+ * from CSS instead of binding a style object per cell, which matters for deep
+ * rows where one render used to create dozens of temporary `{ width }` objects.
+ *
+ * When no fallback `fontSize` is supplied (the normal path through
+ * VueGiantTree), the row inherits these variables from the root element, so a
+ * host stylesheet can override font/icon/indent sizes without touching props.
  */
-const rowStyle = computed(() => ({
-  fontSize: props.fontSize,
-  '--giant-tree-row-size': props.fontSize,
-}))
+const rowStyle = computed(() =>
+  props.fontSize
+    ? ({
+        fontSize: props.fontSize,
+        '--giant-tree-font-size': props.fontSize,
+        '--giant-tree-row-size': props.fontSize,
+        '--giant-tree-indent-size': props.fontSize,
+        '--giant-tree-icon-size': props.fontSize,
+      } as Record<string, string>)
+    : null
+)
 
 /**
  * 插槽函数 prop 的实参。用 computed 保持引用稳定：行被跳过时不会重建，
@@ -425,13 +445,18 @@ const contextMenu = (event: MouseEvent) => {
  * is set on the row root by `rowStyle`.
  */
 .tree-item {
-  --giant-tree-row-size: 14px;
+  font-size: var(--giant-tree-font-size, 14px);
 }
 .tree-item .item-guide-cell,
-.tree-item .item-indent-cell,
+.tree-item .item-indent-cell {
+  width: var(
+    --giant-tree-indent-size,
+    var(--giant-tree-row-size, var(--giant-tree-font-size, 14px))
+  );
+}
 .tree-item .item-icon,
 .tree-item .item-selection {
-  width: var(--giant-tree-row-size);
+  width: var(--giant-tree-row-size, var(--giant-tree-font-size, 14px));
 }
 /*
  * The node icon is an empty, background-only box: width alone would leave it 0px
@@ -439,15 +464,27 @@ const contextMenu = (event: MouseEvent) => {
  * `{ width: fontSize, height: fontSize }` it replaced.
  */
 .tree-item .item-node-icon {
-  width: var(--giant-tree-row-size);
-  height: var(--giant-tree-row-size);
+  width: var(
+    --giant-tree-icon-size,
+    var(--giant-tree-row-size, var(--giant-tree-font-size, 14px))
+  );
+  height: var(
+    --giant-tree-icon-size,
+    var(--giant-tree-row-size, var(--giant-tree-font-size, 14px))
+  );
 }
 .tree-item .item-indent-cell {
   align-self: stretch;
   flex: 0 0 auto;
 }
 .tree-item .giant-tree__mask-button {
-  width: var(--giant-tree-row-size);
-  height: var(--giant-tree-row-size);
+  width: var(
+    --giant-tree-icon-size,
+    var(--giant-tree-row-size, var(--giant-tree-font-size, 14px))
+  );
+  height: var(
+    --giant-tree-icon-size,
+    var(--giant-tree-row-size, var(--giant-tree-font-size, 14px))
+  );
 }
 </style>
