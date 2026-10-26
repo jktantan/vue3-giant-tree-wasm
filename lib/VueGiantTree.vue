@@ -474,7 +474,7 @@ const syncMainViewport = (force = false): boolean => {
   if (!force && key === lastMainWindowKey) return false
   lastMainWindowKey = key
   startOffset.value = windowOffset()
-  setBoundary(tree, boundaryScrollTop(), boundaryScrollHeight())
+  setBoundary(wasmTree, boundaryScrollTop(), boundaryScrollHeight())
   return true
 }
 /**
@@ -522,7 +522,7 @@ const ro = new ResizeObserver((entries: ResizeObserverEntry[]) => {
       return
     }
     syncMainViewport(true)
-    listHeight.value = getShownHeight(tree)
+    listHeight.value = getShownHeight(wasmTree)
     refreshTree()
   }, 0)
 })
@@ -648,11 +648,11 @@ const rebuildGuideLines = (
 const refreshTree = () => {
   if (isBuilding) return
   const shownStarted = now()
-  const indices = getShownIndices(tree) as number[]
+  const indices = getShownIndices(wasmTree) as number[]
   buildMetrics.shownIndicesMs += now() - shownStarted
   const selectionStarted = now()
-  const selectionStates = getNodeSelectionStates(tree, indices) as number[]
-  const collapsedStates = getNodeCollapsedStates(tree, indices) as number[]
+  const selectionStates = getNodeSelectionStates(wasmTree, indices) as number[]
+  const collapsedStates = getNodeCollapsedStates(wasmTree, indices) as number[]
   buildMetrics.selectionStatesMs += now() - selectionStarted
   currentTreeList.value = indices
     .map((index, position) => {
@@ -821,9 +821,9 @@ const tryContentOnlyReconcile = (next: TreeInputItem[]): boolean => {
   let selectionChanged = false
   for (let i = 0; i < changes.length; i++) {
     const change = changes[i]
-    if (change.nameChanged) updateNodeName(tree, change.id, change.name)
+    if (change.nameChanged) updateNodeName(wasmTree, change.id, change.name)
     if (change.disabledChanged) {
-      updateNodeDisabled(tree, change.id, change.disabled)
+      updateNodeDisabled(wasmTree, change.id, change.disabled)
       selectionChanged = true
     }
     const cacheIndex = allNodesIndexById.get(change.id)
@@ -852,8 +852,8 @@ const refreshAllNodesCache = (
   // compact MPTT layout and rebuild the presentation cache from the input.
   const input =
     source ?? (rawTree() as Array<TreeInputItem & Record<string, unknown>>)
-  const ids = getAllNodeIds(tree) as string[]
-  const layouts = getAllNodeLayouts(tree) as number[]
+  const ids = getAllNodeIds(wasmTree) as string[]
+  const layouts = getAllNodeLayouts(wasmTree) as number[]
   const idField = props.fieldKeys.idField ?? 'id'
   const nameField = props.fieldKeys.nameField ?? 'name'
   const parentIdField = props.fieldKeys.parentIdField ?? 'parentId'
@@ -911,10 +911,10 @@ const refreshAllNodesCache = (
 const refreshNodesCacheFromInputLayouts = () => {
   const input = rawTree() as Array<TreeInputItem & Record<string, unknown>>
   const layoutBridgeStarted = now()
-  const layouts = getInputNodeLayouts(tree) as number[]
+  const layouts = getInputNodeLayouts(wasmTree) as number[]
   buildMetrics.layoutBridgeMs += now() - layoutBridgeStarted
   if (input.length === 0 || layouts.length !== input.length * 5) {
-    clearInputNodeLayouts(tree)
+    clearInputNodeLayouts(wasmTree)
     refreshAllNodesCache()
     return
   }
@@ -922,7 +922,7 @@ const refreshNodesCacheFromInputLayouts = () => {
   const nameField = props.fieldKeys.nameField ?? 'name'
   const parentIdField = props.fieldKeys.parentIdField ?? 'parentId'
   const assemblyStarted = now()
-  const cache = new Array<TreeNodeData>(getSize(tree))
+  const cache = new Array<TreeNodeData>(getSize(wasmTree))
   const indexById = new Map<string, number>()
   let filled = 0
   for (let index = 0; index < input.length; index++) {
@@ -947,10 +947,10 @@ const refreshNodesCacheFromInputLayouts = () => {
     indexById.set(id, fullIndex)
     filled++
   }
-  clearInputNodeLayouts(tree)
+  clearInputNodeLayouts(wasmTree)
   // A build that didn't track layouts (or rejected every row) falls back to
   // the id-based cache instead of rendering an empty list.
-  if (filled === 0 && getSize(tree) > 0) {
+  if (filled === 0 && getSize(wasmTree) > 0) {
     refreshAllNodesCache()
     return
   }
@@ -1041,7 +1041,7 @@ const loadTree = async () => {
   // 而用 JS 逐字段编码成 UTF-8 二进制要 4175ms —— 原生 stringify 在这条路上更快。
   // 二进制通道只在 Worker 场景有价值（那边省掉的是 postMessage 结构化克隆）。
   if (!canUseChunkedBuild()) {
-    setNeighborTree(tree, JSON.stringify(rawTree()))
+    setNeighborTree(wasmTree, JSON.stringify(rawTree()))
     return
   }
 
@@ -1061,7 +1061,7 @@ const loadTree = async () => {
       nameField,
       parentIdField
     )
-    pushNeighborNodesUtf8(tree, payload)
+    pushNeighborNodesUtf8(wasmTree, payload)
     buildMetrics.inputBridgeMs += now() - bridgeStarted
     if (start + size < input.length) {
       const yieldStarted = now()
@@ -1070,7 +1070,7 @@ const loadTree = async () => {
     }
   }
   const finalizeStarted = now()
-  popNeighbor(tree)
+  popNeighbor(wasmTree)
   buildMetrics.finalizeMs += now() - finalizeStarted
 }
 const refreshChunkedNodesCache = async () => {
@@ -1080,9 +1080,9 @@ const refreshChunkedNodesCache = async () => {
   const parentIdField = props.fieldKeys.parentIdField ?? 'parentId'
   const input = rawTree() as Array<TreeInputItem & Record<string, unknown>>
   const layoutBridgeStarted = now()
-  const layouts = getInputNodeLayouts(tree) as number[]
+  const layouts = getInputNodeLayouts(wasmTree) as number[]
   buildMetrics.layoutBridgeMs += now() - layoutBridgeStarted
-  const cache = new Array<TreeNodeData>(getSize(tree))
+  const cache = new Array<TreeNodeData>(getSize(wasmTree))
   const indexById = new Map<string, number>()
   for (let start = 0; start < input.length; start += size) {
     const end = Math.min(start + size, input.length)
@@ -1116,7 +1116,7 @@ const refreshChunkedNodesCache = async () => {
     }
   }
   const layoutReleaseStarted = now()
-  clearInputNodeLayouts(tree)
+  clearInputNodeLayouts(wasmTree)
   buildMetrics.layoutReleaseMs += now() - layoutReleaseStarted
   allNodesCache = cache
   allNodesIndexById = indexById
@@ -1145,17 +1145,15 @@ const refreshAfterIncremental = (
   apply: () => boolean
 ): boolean => {
   if (!isTreeReady || isBuilding) return false
-  beginStructureBatch(tree)
-  let applied = false
+  beginStructureBatch(wasmTree)
   try {
-    applied = apply()
+    if (!apply()) return false
   } finally {
-    endStructureBatch(tree)
+    endStructureBatch(wasmTree)
   }
-  if (!applied) return false
   refreshAllNodesCache(next as Array<TreeInputItem & Record<string, unknown>>)
   if (showLineConfig.value.enabled) rebuildGuideLines(next as TreeInputItem[])
-  listHeight.value = getShownHeight(tree)
+  listHeight.value = getShownHeight(wasmTree)
   refreshTree()
   emitCheckedResult()
   pendingPresentationEcho = next
@@ -1210,8 +1208,8 @@ const emitCheckedResult = () => {
   const ids = isUsingWorker()
     ? workerCheckedIds
     : allNodesCache.length > 0
-      ? checkedIdsFromIndices(getCheckedIndices(tree) as number[])
-      : (getCheckedIdList(tree) as string[])
+      ? checkedIdsFromIndices(getCheckedIndices(wasmTree) as number[])
+      : (getCheckedIdList(wasmTree) as string[])
   const customMode =
     props.checkedOutputMode === CheckedOutputMode.Custom && !!props.filterFn
   // Records are only needed for Custom filtering or full-JSON output. In the
@@ -1343,7 +1341,7 @@ const finishTreeAnimation = () => {
     return
   }
   syncMainViewport(true)
-  listHeight.value = getShownHeight(tree)
+  listHeight.value = getShownHeight(wasmTree)
   refreshTree()
 }
 
@@ -1486,7 +1484,7 @@ const createMainTree = (): TreeInstance => {
   currentMainConfigSignature = mainConfigSignature()
   return instance
 }
-let tree: TreeInstance = createMainTree()
+let wasmTree: TreeInstance = createMainTree()
 
 // Worker-only reverse index: snapshots carry rows without their original input
 // objects, and JSON output needs those objects. Main-thread mode resolves the
@@ -1924,11 +1922,11 @@ const startWorker = () => {
 }
 
 const initializeMainTree = async () => {
-  clear(tree)
+  clear(wasmTree)
   // Input-order layouts feed every cache build path now: they replace the
   // getAllNodeIds string copy plus the duplicate inputById map.
-  setTrackInputLayouts(tree, true)
-  setUsePreorderedNeighborInput(tree, props.preorderedInput)
+  setTrackInputLayouts(wasmTree, true)
+  setUsePreorderedNeighborInput(wasmTree, props.preorderedInput)
   isBuilding = true
   resetBuildMetrics()
   buildStartedAt = now()
@@ -1938,7 +1936,7 @@ const initializeMainTree = async () => {
   buildMetrics.totalMs = now() - buildStartedAt
   isTreeReady = true
   syncMainViewport(true)
-  listHeight.value = getShownHeight(tree)
+  listHeight.value = getShownHeight(wasmTree)
   refreshTree()
   if (pendingConfigRebuild !== null && !isConfigRebuilding) {
     const pending = pendingConfigRebuild
@@ -1964,26 +1962,27 @@ const rebuildMainTreeForConfig = async (restoreSelection: boolean) => {
     .filter(node => !node.collapsed && node.rightNode - node.leftNode > 1)
     .map(node => node.id)
   const checkedIds = restoreSelection
-    ? (getCheckedIdList(tree) as string[]).slice()
+    ? (getCheckedIdList(wasmTree) as string[]).slice()
     : []
 
   try {
     releaseTreeAnimation()
-    tree = createMainTree()
-    setCheckedOutputMode(tree, props.checkedOutputMode)
+    wasmTree = createMainTree()
+    setCheckedOutputMode(wasmTree, props.checkedOutputMode)
     await initializeMainTree()
-    if (expandedIds.length > 0) expandByIds(tree, expandedIds)
+    if (expandedIds.length > 0) expandByIds(wasmTree, expandedIds)
     if (checkedIds.length > 0) {
       if (props.selectType === SelectType.CHECKBOX)
-        setCheckedNodes(tree, checkedIds)
-      else setCheckedNode(tree, checkedIds[0])
+        setCheckedNodes(wasmTree, checkedIds)
+      else setCheckedNode(wasmTree, checkedIds[0])
     }
-    if (activeSearchKeyword.value) fuzzyTree(tree, activeSearchKeyword.value)
+    if (activeSearchKeyword.value)
+      fuzzyTree(wasmTree, activeSearchKeyword.value)
     rebuildGuideLines()
 
     scrollTop = container.value?.scrollTop ?? scrollTop
     syncMainViewport(true)
-    listHeight.value = getShownHeight(tree)
+    listHeight.value = getShownHeight(wasmTree)
     refreshTree()
     emitCheckedResult()
   } finally {
@@ -1995,7 +1994,7 @@ const rebuildMainTreeForConfig = async (restoreSelection: boolean) => {
   }
 }
 
-setCheckedOutputMode(tree, props.checkedOutputMode)
+setCheckedOutputMode(wasmTree, props.checkedOutputMode)
 
 // 输出格式变化（ID ↔ JSON）→ 用新格式重发选中结果
 watch(
@@ -2015,7 +2014,7 @@ watch(
       postWorker('set-output', { mode: newMode })
       return
     }
-    setCheckedOutputMode(tree, newMode)
+    setCheckedOutputMode(wasmTree, newMode)
     emitCheckedResult()
   }
 )
@@ -2059,7 +2058,7 @@ const itemClick = (id: string) => {
       postWorker('check', { id, checked: CheckType.CHECKED })
       return
     }
-    checkNode(tree, id, CheckType.CHECKED)
+    checkNode(wasmTree, id, CheckType.CHECKED)
     emitCheckedResult()
     refreshTree()
     syncAnimationRows()
@@ -2074,8 +2073,8 @@ const setAllCollapsed = (collapsed: boolean) => {
     postWorker('collapse-all', { collapsed })
     return
   }
-  collapseAll(tree, collapsed)
-  listHeight.value = getShownHeight(tree)
+  collapseAll(wasmTree, collapsed)
+  listHeight.value = getShownHeight(wasmTree)
   refreshTree()
 }
 
@@ -2096,8 +2095,8 @@ const collapseClick = (id: string, isCollapse: boolean) => {
   if (isTreeAnimating()) return
   const beforeChange = currentTreeList.value.slice()
   const parent = beforeChange.find(item => item.id === id)
-  collapseTree(tree, id, isCollapse)
-  listHeight.value = getShownHeight(tree)
+  collapseTree(wasmTree, id, isCollapse)
+  listHeight.value = getShownHeight(wasmTree)
   // Do not mutate the cached node here. refreshTree deliberately replaces a
   // changed cache entry so virtual rows receive a new prop reference; mutating
   // first would make it miss the collapsed-state transition.
@@ -2117,7 +2116,7 @@ const checkClick = (id: string, checkType: CheckType) => {
     postWorker('check', { id, checked: checkType })
     return
   }
-  checkNode(tree, id, checkType)
+  checkNode(wasmTree, id, checkType)
   emitCheckedResult()
   refreshTree()
   syncAnimationRows()
@@ -2130,8 +2129,8 @@ const rawFuzzySearch = (keyword: string) => {
     postWorker('search', { keyword })
     return
   }
-  fuzzyTree(tree, keyword)
-  listHeight.value = getShownHeight(tree)
+  fuzzyTree(wasmTree, keyword)
+  listHeight.value = getShownHeight(wasmTree)
   // Viewport state is read from CompactNodeStore on every refresh, including
   // nodes that reappear after search. Avoid serializing the full tree solely
   // to rebuild the JS cache when clearing a search.
@@ -2142,7 +2141,7 @@ const fuzzySearch = debounce(300, rawFuzzySearch)
 
 /** 获取树节点总数 / Get total tree node count / Получить общее количество узлов дерева */
 const getTreeSize = (): number => {
-  return isUsingWorker() ? workerTreeSize : getSize(tree)
+  return isUsingWorker() ? workerTreeSize : getSize(wasmTree)
 }
 
 const getBuildReady = (): boolean => isTreeReady
@@ -2159,9 +2158,9 @@ const setChecked = (id: string) => {
     postWorker('set-check', { id })
     return
   }
-  setCheckedNode(tree, id)
+  setCheckedNode(wasmTree, id)
   emitCheckedResult()
-  listHeight.value = getShownHeight(tree)
+  listHeight.value = getShownHeight(wasmTree)
   refreshTree()
   syncAnimationRows()
 }
@@ -2172,9 +2171,9 @@ const setCheckedByIds = (ids: string[]) => {
     postWorker('set-checks', { ids })
     return
   }
-  setCheckedNodes(tree, ids)
+  setCheckedNodes(wasmTree, ids)
   emitCheckedResult()
-  listHeight.value = getShownHeight(tree)
+  listHeight.value = getShownHeight(wasmTree)
   refreshTree()
   syncAnimationRows()
 }
@@ -2185,7 +2184,7 @@ const clearAllChecked = () => {
     postWorker('clear-check')
     return
   }
-  clearCheckedNodes(tree)
+  clearCheckedNodes(wasmTree)
   emitCheckedResult()
   refreshTree()
   syncAnimationRows()
@@ -2202,8 +2201,8 @@ const switchDisplay = (displayType: DisplayType) => {
     }
     return
   }
-  switchDisplayTree(tree, displayType)
-  listHeight.value = getShownHeight(tree)
+  switchDisplayTree(wasmTree, displayType)
+  listHeight.value = getShownHeight(wasmTree)
   refreshTree()
 }
 
@@ -2225,20 +2224,21 @@ const reconcileTreeData = async () => {
   const expandedIds = allNodesCache
     .filter(node => !node.collapsed && node.rightNode - node.leftNode > 1)
     .map(node => node.id)
-  const checkedIds = (getCheckedIdList(tree) as string[]).slice()
+  const checkedIds = (getCheckedIdList(wasmTree) as string[]).slice()
 
   releaseTreeAnimation()
-  clear(tree)
-  setTrackInputLayouts(tree, true)
-  setUsePreorderedNeighborInput(tree, props.preorderedInput)
+  clear(wasmTree)
+  setTrackInputLayouts(wasmTree, true)
+  setUsePreorderedNeighborInput(wasmTree, props.preorderedInput)
   isBuilding = true
   try {
     if (props.tree.length > 0) await loadTree()
     await refreshNodesCache()
 
-    if (expandedIds.length > 0) expandByIds(tree, expandedIds)
-    if (checkedIds.length > 0) setCheckedNodes(tree, checkedIds)
-    if (activeSearchKeyword.value) fuzzyTree(tree, activeSearchKeyword.value)
+    if (expandedIds.length > 0) expandByIds(wasmTree, expandedIds)
+    if (checkedIds.length > 0) setCheckedNodes(wasmTree, checkedIds)
+    if (activeSearchKeyword.value)
+      fuzzyTree(wasmTree, activeSearchKeyword.value)
   } finally {
     isBuilding = false
   }
@@ -2246,7 +2246,7 @@ const reconcileTreeData = async () => {
   await nextTick()
   scrollTop = container.value?.scrollTop ?? scrollTop
   syncMainViewport(true)
-  listHeight.value = getShownHeight(tree)
+  listHeight.value = getShownHeight(wasmTree)
   refreshTree()
   emitCheckedResult()
 }
@@ -2284,7 +2284,7 @@ const updateNode = (id: string, patch: TreeNodePatch): boolean => {
       !input.some(item => String(item[idField] ?? '') === newParent)
     )
       return false
-    const moved = isTreeReady ? (getSubtreeIds(tree, id) as string[]) : []
+    const moved = isTreeReady ? (getSubtreeIds(wasmTree, id) as string[]) : []
     if (moved.length === 0) {
       // Waiting for the initial build, or the WASM tree does not know this id
       // yet: let the controlled prop echo take the full reconcile path.
@@ -2312,7 +2312,7 @@ const updateNode = (id: string, patch: TreeNodePatch): boolean => {
       return true
     }
     refreshAfterIncremental(next, () => {
-      if (!removeSubtree(tree, id)) return false
+      if (!removeSubtree(wasmTree, id)) return false
       // Re-append in preorder so children find their parent and sibling order
       // is preserved. The moved root is attached to the new parent last.
       for (const movedId of moved) {
@@ -2325,7 +2325,7 @@ const updateNode = (id: string, patch: TreeNodePatch): boolean => {
             : String(row[nameField] ?? movedId)
         if (
           !appendChild(
-            tree,
+            wasmTree,
             movedId,
             name,
             parent,
@@ -2344,9 +2344,9 @@ const updateNode = (id: string, patch: TreeNodePatch): boolean => {
   // Content-only patch: update WASM state plus the presentation cache without
   // rebuilding MPTT boundaries or the tree.
   if (nameChanged)
-    updateNodeName(tree, id, String(next[index][nameField] ?? ''))
+    updateNodeName(wasmTree, id, String(next[index][nameField] ?? ''))
   if (disabledChanged)
-    updateNodeDisabled(tree, id, next[index].disabled === true)
+    updateNodeDisabled(wasmTree, id, next[index].disabled === true)
 
   const updatePresentation = (node: TreeNodeData) =>
     node.id === id
@@ -2409,7 +2409,7 @@ const addNode = (node: TreeMutationItem): boolean => {
   const next: TreeMutationItem[] = [...input, { ...node }]
   refreshAfterIncremental(next, () =>
     appendChild(
-      tree,
+      wasmTree,
       id,
       String(next[next.length - 1][nameField] ?? id),
       parentId,
@@ -2450,7 +2450,7 @@ const removeNode = (id: string): boolean => {
   const next = input.filter(
     item => !idsToRemove.has(String(item[idField] ?? ''))
   )
-  refreshAfterIncremental(next, () => removeSubtree(tree, id))
+  refreshAfterIncremental(next, () => removeSubtree(wasmTree, id))
   emit('update:tree', next)
   return true
 }
@@ -2461,9 +2461,9 @@ watch(resolvedLineHeight, value => {
     return
   }
   if (!isTreeReady) return
-  setLineHeight(tree, value)
+  setLineHeight(wasmTree, value)
   syncMainViewport(true)
-  listHeight.value = getShownHeight(tree)
+  listHeight.value = getShownHeight(wasmTree)
   refreshTree()
 })
 
