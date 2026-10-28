@@ -6,7 +6,7 @@ import { SelectType } from '../../build/release'
 
 /**
  * 禁用行里的复选框/单选框图标是 `.giant-tree__mask-button`，它自带
- * `cursor: pointer`。这个规则特异性高于行上的 `.tree-item.disabled`
+ * `cursor: pointer`。这个规则特异性高于行上的 `.giant-tree__row--disabled`
  * （子元素自身声明的光标也不会被继承覆盖），所以必须在禁用行里显式
  * 覆盖回 `not-allowed`。happy-dom 不算样式，只能在真实浏览器里验证。
  *
@@ -39,12 +39,12 @@ async function mountTree(selectType: SelectType) {
   const deadline = performance.now() + 10_000
   while (
     performance.now() < deadline &&
-    host.querySelectorAll('.tree-item').length < tree.length
+    host.querySelectorAll('.giant-tree__row').length < tree.length
   ) {
     await nextTick()
     await new Promise(resolve => requestAnimationFrame(resolve))
   }
-  const rows = [...host.querySelectorAll<HTMLElement>('.tree-item')]
+  const rows = [...host.querySelectorAll<HTMLElement>('.giant-tree__row')]
   expect(rows).toHaveLength(tree.length)
 
   return {

@@ -24,7 +24,7 @@ function makeFlatTree(count: number) {
 async function waitForRows(host: HTMLElement, minimum: number) {
   const deadline = performance.now() + 15_000
   while (performance.now() < deadline) {
-    if (host.querySelectorAll('.tree-item').length >= minimum) return
+    if (host.querySelectorAll('.giant-tree__row').length >= minimum) return
     await nextPaint()
   }
   throw new Error('tree never rendered enough rows')
@@ -32,12 +32,12 @@ async function waitForRows(host: HTMLElement, minimum: number) {
 
 /** Document-space Y of every rendered row, keyed by node name. */
 function rowOffsets(host: HTMLElement): Map<string, number> {
-  const container = host.querySelector<HTMLElement>('.tree-container')
+  const container = host.querySelector<HTMLElement>('.giant-tree__container')
   if (!container) throw new Error('missing scroll container')
   const containerTop = container.getBoundingClientRect().top
   const offsets = new Map<string, number>()
-  for (const row of host.querySelectorAll<HTMLElement>('.tree-item')) {
-    const label = row.querySelector('.item-text > span')
+  for (const row of host.querySelectorAll<HTMLElement>('.giant-tree__row')) {
+    const label = row.querySelector('.giant-tree__text > span')
     if (!label?.textContent) continue
     offsets.set(
       label.textContent.trim(),
@@ -48,7 +48,7 @@ function rowOffsets(host: HTMLElement): Map<string, number> {
 }
 
 function firstRowName(host: HTMLElement) {
-  return host.querySelector('.tree-item .item-text > span')?.textContent ?? ''
+  return host.querySelector('.giant-tree__row .giant-tree__text > span')?.textContent ?? ''
 }
 
 /**
@@ -102,7 +102,7 @@ describe('scroll stability', () => {
     try {
       await waitForRows(host, 10)
       await nextPaint()
-      const container = host.querySelector<HTMLElement>('.tree-container')!
+      const container = host.querySelector<HTMLElement>('.giant-tree__container')!
 
       // Move far enough that the window must advance by several rows, while
       // still leaving plenty of overlap with the rows already on screen.
@@ -181,7 +181,7 @@ describe('scroll stability', () => {
       await waitForRows(host, 10)
       // Start deep enough that the overscan padding is already exhausted and a
       // single row of scrolling really does advance the window.
-      const container = host.querySelector<HTMLElement>('.tree-container')!
+      const container = host.querySelector<HTMLElement>('.giant-tree__container')!
       container.scrollTop = 20 * ROW_HEIGHT
       container.dispatchEvent(new Event('scroll', { bubbles: true }))
       await nextPaint()

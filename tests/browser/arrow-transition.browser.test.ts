@@ -36,7 +36,7 @@ describe('VueGiantTree: 箭头过渡（真实浏览器）', () => {
     await new Promise(resolve => setTimeout(resolve, 60))
 
     const arrow = () =>
-      host.querySelector<HTMLElement>('.tree-item .giant-tree__mask-button')
+      host.querySelector<HTMLElement>('.giant-tree__row .giant-tree__mask-button')
     expect(arrow()?.className).toContain('giant-tree__icon-arrow-right')
 
     const transitions: string[] = []
@@ -47,7 +47,7 @@ describe('VueGiantTree: 箭头过渡（真实浏览器）', () => {
       }
     })
 
-    host.querySelector<HTMLElement>('.item-icon')?.click()
+    host.querySelector<HTMLElement>('.giant-tree__arrow-cell')?.click()
     await new Promise(resolve => setTimeout(resolve, 300))
     await nextTick()
 

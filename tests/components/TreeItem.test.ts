@@ -243,7 +243,7 @@ describe('TreeItem: 节点组件', () => {
         selectType: SelectType.CHECKBOX,
       },
     })
-    await wrapper.find('.item-text').trigger('click')
+    await wrapper.find('.giant-tree__text').trigger('click')
     const emitted = wrapper.emitted('item-click')
     expect(emitted).toBeTruthy()
     expect(emitted![0]).toEqual(['click-me'])
@@ -261,7 +261,7 @@ describe('TreeItem: 节点组件', () => {
       },
     })
 
-    expect(wrapper.find('.item-actions').text()).toBe('编辑')
+    expect(wrapper.find('.giant-tree__actions').text()).toBe('编辑')
     await wrapper.find('.edit-action').trigger('click')
     expect(wrapper.emitted('item-click')).toBeFalsy()
   })
@@ -274,7 +274,7 @@ describe('TreeItem: 节点组件', () => {
         selectType: SelectType.CHECKBOX,
       },
     })
-    await wrapper.find('.tree-item').trigger('contextmenu')
+    await wrapper.find('.giant-tree__row').trigger('contextmenu')
     const emitted = wrapper.emitted('item-contextmenu')
     expect(emitted).toBeTruthy()
     expect(emitted![0][0]).toMatchObject({ id: 'ctx-node' })
@@ -289,7 +289,7 @@ describe('TreeItem: 节点组件', () => {
         selectType: SelectType.CHECKBOX,
       },
     })
-    await wrapper.find('.tree-item').trigger('contextmenu')
+    await wrapper.find('.giant-tree__row').trigger('contextmenu')
     expect(wrapper.emitted('item-click')).toBeFalsy()
   })
 })
@@ -303,7 +303,7 @@ describe('TreeItem: 连接线模式 (showLine)', () => {
         selectType: SelectType.CHECKBOX,
       },
     })
-    expect(wrapper.findAll('.item-guide-cell')).toHaveLength(0)
+    expect(wrapper.findAll('.giant-tree__guide-cell')).toHaveLength(0)
     expect(wrapper.findAll('.giant-tree__guide')).toHaveLength(0)
   })
 
@@ -321,7 +321,7 @@ describe('TreeItem: 连接线模式 (showLine)', () => {
         showLineEnabled: true,
       },
     })
-    const cells = wrapper.findAll('.item-guide-cell')
+    const cells = wrapper.findAll('.giant-tree__guide-cell')
     expect(cells).toHaveLength(2)
     // 缩进格只画竖向贯穿竖线，不含横向折线。
     expect(cells[0].find('.giant-tree__guide').classes()).toContain(
@@ -330,8 +330,8 @@ describe('TreeItem: 连接线模式 (showLine)', () => {
     expect(cells[0].find('.giant-tree__guide').classes()).not.toContain(
       'giant-tree__guide--h'
     )
-    // 叶子：折线在标记列（.item-icon）里，而不是缩进格。
-    const marker = wrapper.find('.item-icon .giant-tree__guide')
+    // 叶子：折线在标记列（.giant-tree__arrow-cell）里，而不是缩进格。
+    const marker = wrapper.find('.giant-tree__arrow-cell .giant-tree__guide')
     expect(marker.exists()).toBe(true)
     expect(marker.classes()).toContain('giant-tree__guide--h')
     expect(marker.classes()).toContain('giant-tree__guide--m-lower')
@@ -353,13 +353,13 @@ describe('TreeItem: 连接线模式 (showLine)', () => {
         },
       })
     expect(
-      make('lower').find('.item-icon .giant-tree__guide').classes()
+      make('lower').find('.giant-tree__arrow-cell .giant-tree__guide').classes()
     ).toContain('giant-tree__guide--m-lower')
     expect(
-      make('full').find('.item-icon .giant-tree__guide').classes()
+      make('full').find('.giant-tree__arrow-cell .giant-tree__guide').classes()
     ).toContain('giant-tree__guide--m-full')
     expect(
-      make('upper').find('.item-icon .giant-tree__guide').classes()
+      make('upper').find('.giant-tree__arrow-cell .giant-tree__guide').classes()
     ).toContain('giant-tree__guide--m-upper')
   })
 
@@ -378,8 +378,8 @@ describe('TreeItem: 连接线模式 (showLine)', () => {
       },
     })
     // 缩进格照常，标记列无 guide 元素。
-    expect(wrapper.findAll('.item-guide-cell')).toHaveLength(1)
-    expect(wrapper.find('.item-icon .giant-tree__guide').exists()).toBe(false)
+    expect(wrapper.findAll('.giant-tree__guide-cell')).toHaveLength(1)
+    expect(wrapper.find('.giant-tree__arrow-cell .giant-tree__guide').exists()).toBe(false)
   })
 
   it('分支行（有箭头）不画标记列连接线，只有箭头', () => {
@@ -400,7 +400,7 @@ describe('TreeItem: 连接线模式 (showLine)', () => {
     })
     // 分支行：标记列是箭头本身，不叠加任何 guide 竖线/折线。
     expect(wrapper.find('.giant-tree__icon-arrow-right').exists()).toBe(true)
-    expect(wrapper.find('.item-icon .giant-tree__guide').exists()).toBe(false)
+    expect(wrapper.find('.giant-tree__arrow-cell .giant-tree__guide').exists()).toBe(false)
   })
 
   it('缩进格按 guideMask 位决定是否画贯穿竖线', () => {
@@ -412,7 +412,7 @@ describe('TreeItem: 连接线模式 (showLine)', () => {
         showLineEnabled: true,
       },
     })
-    const cells = wrapper.findAll('.item-guide-cell')
+    const cells = wrapper.findAll('.giant-tree__guide-cell')
     // bit0=0 → 列 0 不画；bit1=1 → 列 1 贯穿。
     expect(cells[0].find('.giant-tree__guide').classes()).toContain(
       'giant-tree__guide--v-none'
@@ -431,7 +431,7 @@ describe('TreeItem: 连接线模式 (showLine)', () => {
         showLineEnabled: true,
       },
     })
-    const cells = wrapper.findAll('.item-guide-cell')
+    const cells = wrapper.findAll('.giant-tree__guide-cell')
     expect(cells[0].find('.giant-tree__guide').classes()).toContain(
       'giant-tree__guide--v-none'
     )
@@ -457,7 +457,7 @@ describe('TreeItem: 搜索关键词高亮', () => {
     expect(
       wrapper.findAll('.giant-tree__search-hit').map(hit => hit.text())
     ).toEqual(['Match', 'Match'])
-    expect(wrapper.find('.item-text').text()).toBe('Match A and Match B')
+    expect(wrapper.find('.giant-tree__text').text()).toBe('Match A and Match B')
   })
 
   it('关键词为空时不产生高亮节点', () => {
@@ -468,7 +468,7 @@ describe('TreeItem: 搜索关键词高亮', () => {
   it('名称未命中关键词时不产生高亮节点', () => {
     const wrapper = mountWithKeyword('Parent Group', 'Match')
     expect(wrapper.find('.giant-tree__search-hit').exists()).toBe(false)
-    expect(wrapper.find('.item-text').text()).toBe('Parent Group')
+    expect(wrapper.find('.giant-tree__text').text()).toBe('Parent Group')
   })
 
   it('与 WASM 搜索一致：区分大小写', () => {

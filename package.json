@@ -33,6 +33,7 @@
   "main": "./dist/vue-giant-tree.es.js",
   "module": "./dist/vue-giant-tree.es.js",
   "types": "./dist/lib/index.d.ts",
+  "style": "./dist/style.css",
   "exports": {
     ".": {
       "types": "./dist/lib/index.d.ts",
@@ -41,10 +42,13 @@
       "default": "./dist/vue-giant-tree.es.js"
     },
     "./style.css": "./dist/style.css",
+    "./scss": "./scss/style/index.scss",
+    "./scss/*": "./scss/*",
     "./package.json": "./package.json"
   },
   "files": [
-    "dist"
+    "dist",
+    "scss"
   ],
   "sideEffects": [
     "**/*.css",

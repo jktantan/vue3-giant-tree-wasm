@@ -131,9 +131,9 @@ describe('browser performance harness', () => {
       app.mount(host)
       await nextTick()
 
-      const list = host.querySelector('.infinite-list')
-      const scrollContainer = host.querySelector<HTMLElement>('.tree-container')
-      const phantom = host.querySelector<HTMLElement>('.infinite-list-phantom')
+      const list = host.querySelector('.giant-tree__list')
+      const scrollContainer = host.querySelector<HTMLElement>('.giant-tree__container')
+      const phantom = host.querySelector<HTMLElement>('.giant-tree__phantom')
       expect(list).not.toBeNull()
       expect(scrollContainer).not.toBeNull()
       expect(phantom).not.toBeNull()
@@ -147,7 +147,7 @@ describe('browser performance harness', () => {
         await nextPaint()
         await nextTick()
         const parent = [
-          ...host.querySelectorAll<HTMLElement>('.tree-item'),
+          ...host.querySelectorAll<HTMLElement>('.giant-tree__row'),
         ].find(item => item.textContent?.includes(`Parent ${branch}`))
         const expander = parent?.querySelector<HTMLElement>(
           '.giant-tree__icon-arrow-right'
@@ -261,7 +261,7 @@ describe('browser performance harness', () => {
         expect(Number.isFinite(metrics.p95Ms)).toBe(true)
       }
       expect(Number.isFinite(cls)).toBe(true)
-      expect(host.querySelectorAll('.tree-item').length).toBeGreaterThan(0)
+      expect(host.querySelectorAll('.giant-tree__row').length).toBeGreaterThan(0)
       app.unmount()
       host.remove()
     }
@@ -295,8 +295,8 @@ describe('browser performance harness', () => {
       await waitForTreeSize(treeRef, 100_000)
       await nextPaint()
 
-      const scrollContainer = host.querySelector<HTMLElement>('.tree-container')
-      const phantom = host.querySelector<HTMLElement>('.infinite-list-phantom')
+      const scrollContainer = host.querySelector<HTMLElement>('.giant-tree__container')
+      const phantom = host.querySelector<HTMLElement>('.giant-tree__phantom')
       expect(scrollContainer).not.toBeNull()
       expect(phantom).not.toBeNull()
       if (!scrollContainer || !phantom)
@@ -310,7 +310,7 @@ describe('browser performance harness', () => {
         await nextPaint()
         await nextTick()
         const parent = [
-          ...host.querySelectorAll<HTMLElement>('.tree-item'),
+          ...host.querySelectorAll<HTMLElement>('.giant-tree__row'),
         ].find(item => item.textContent?.includes(`Parent ${branch}`))
         const expander = parent?.querySelector<HTMLElement>(
           '.giant-tree__icon-arrow-right'
@@ -358,7 +358,7 @@ describe('browser performance harness', () => {
         expect(Number.isFinite(metrics.p95Ms)).toBe(true)
       }
       expect(Number.isFinite(report.mountToFirstPaintMs)).toBe(true)
-      expect(host.querySelectorAll('.tree-item').length).toBeGreaterThan(0)
+      expect(host.querySelectorAll('.giant-tree__row').length).toBeGreaterThan(0)
       app.unmount()
       host.remove()
     },

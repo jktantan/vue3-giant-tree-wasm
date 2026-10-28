@@ -78,7 +78,7 @@ describe('VueGiantTree: 主组件', () => {
     })
     await flushPromises()
     await wrapper.vm.$nextTick()
-    const container = wrapper.find('.infinite-list')
+    const container = wrapper.find('.giant-tree__list')
     expect(container.exists()).toBe(true)
   })
 
@@ -96,7 +96,7 @@ describe('VueGiantTree: 主组件', () => {
     await flushPromises()
     await wrapper.vm.$nextTick()
 
-    expect(wrapper.findAll('.item-actions')).toHaveLength(2)
+    expect(wrapper.findAll('.giant-tree__actions')).toHaveLength(2)
     expect(wrapper.findAll('.node-action')).toHaveLength(2)
   })
 
@@ -107,7 +107,7 @@ describe('VueGiantTree: 主组件', () => {
     await flushPromises()
     await wrapper.vm.$nextTick()
 
-    await wrapper.findAll('.tree-item')[0].trigger('contextmenu')
+    await wrapper.findAll('.giant-tree__row')[0].trigger('contextmenu')
     const emitted = wrapper.emitted('item-contextmenu')
     expect(emitted).toBeTruthy()
     expect(emitted![0][0]).toMatchObject({ id: 'A' })
@@ -185,7 +185,7 @@ describe('VueGiantTree: 主组件', () => {
     treeApi(wrapper).expandAll()
     await wrapper.vm.$nextTick()
 
-    const phantom = wrapper.find('.infinite-list-phantom')
+    const phantom = wrapper.find('.giant-tree__phantom')
     expect(phantom.attributes('style')).toContain('height: 78px')
 
     await wrapper.setProps({ lineHeight: 40 })
@@ -238,7 +238,7 @@ describe('VueGiantTree: 主组件', () => {
     await flushPromises()
     treeApi(wrapper).expandAll()
     await wrapper.vm.$nextTick()
-    expect(wrapper.findAll('.tree-item')).toHaveLength(3)
+    expect(wrapper.findAll('.giant-tree__row')).toHaveLength(3)
 
     expect(
       treeApi(wrapper).addNode({ id: 'A2', name: 'NodeA2', parentId: 'A' })
@@ -291,7 +291,7 @@ describe('VueGiantTree: 主组件', () => {
     expect(moved.find(node => node.id === 'A')?.parentId).toBe('B')
     await flushPromises()
     await wrapper.vm.$nextTick()
-    expect(wrapper.findAll('.tree-item').map(row => row.text())).toEqual([
+    expect(wrapper.findAll('.giant-tree__row').map(row => row.text())).toEqual([
       'NodeB',
       'NodeA',
       'NodeA1',
@@ -303,8 +303,8 @@ describe('VueGiantTree: 主组件', () => {
     expect(treeApi(wrapper).updateNode('B', { disabled: true })).toBe(true)
     await flushPromises()
     await wrapper.vm.$nextTick()
-    const rows = wrapper.findAll('.tree-item')
-    expect(rows[0].classes()).toContain('disabled')
+    const rows = wrapper.findAll('.giant-tree__row')
+    expect(rows[0].classes()).toContain('giant-tree__row--disabled')
     await wrapper.setProps({ tree: moved })
     await flushPromises()
   })
@@ -326,7 +326,7 @@ describe('VueGiantTree: 主组件', () => {
     await vi.waitFor(() => expect(treeApi(wrapper).getBuildReady()).toBe(true))
     expect(treeApi(wrapper).getTreeSize()).toBe(3)
     await wrapper.vm.$nextTick()
-    expect(wrapper.findAll('.tree-item')).toHaveLength(2)
+    expect(wrapper.findAll('.giant-tree__row')).toHaveLength(2)
     expect(wrapper.text()).toContain('NodeA')
   })
 
@@ -339,7 +339,7 @@ describe('VueGiantTree: 主组件', () => {
       },
     })
     await flushPromises()
-    const container = wrapper.find('.tree-container')
+    const container = wrapper.find('.giant-tree__container')
     expect(container.attributes('style')).toContain('width: 100%')
     expect(container.attributes('style')).toContain('height: 100%')
   })
@@ -355,7 +355,7 @@ describe('VueGiantTree: 主组件', () => {
       },
     })
     await flushPromises()
-    const container = wrapper.find('.tree-container')
+    const container = wrapper.find('.giant-tree__container')
     expect(container.attributes('style')).toContain('width: 300px')
     expect(container.attributes('style')).toContain('height: 500px')
   })
@@ -370,7 +370,7 @@ describe('VueGiantTree: 主组件', () => {
     })
     await flushPromises()
     expect(wrapper.find('.giant-tree').exists()).toBe(true)
-    expect(wrapper.find('.tree-container').exists()).toBe(true)
+    expect(wrapper.find('.giant-tree__container').exists()).toBe(true)
   })
 
   it('虚拟滚动 DOM 结构', async () => {
@@ -382,8 +382,8 @@ describe('VueGiantTree: 主组件', () => {
       },
     })
     await flushPromises()
-    expect(wrapper.find('.infinite-list-phantom').exists()).toBe(true)
-    expect(wrapper.find('.infinite-list').exists()).toBe(true)
+    expect(wrapper.find('.giant-tree__phantom').exists()).toBe(true)
+    expect(wrapper.find('.giant-tree__list').exists()).toBe(true)
   })
 
   it('展开节点时只刷新可见窗口且正确显示子节点', async () => {
@@ -397,11 +397,11 @@ describe('VueGiantTree: 主组件', () => {
     await flushPromises()
     await wrapper.vm.$nextTick()
 
-    expect(wrapper.findAll('.tree-item')).toHaveLength(2)
+    expect(wrapper.findAll('.giant-tree__row')).toHaveLength(2)
     await wrapper.find('.giant-tree__icon-arrow-right').trigger('click')
     await wrapper.vm.$nextTick()
 
-    expect(wrapper.findAll('.tree-item')).toHaveLength(3)
+    expect(wrapper.findAll('.giant-tree__row')).toHaveLength(3)
     expect(wrapper.text()).toContain('NodeA1')
   })
 
@@ -453,11 +453,11 @@ describe('VueGiantTree: 主组件', () => {
 
     ;(wrapper.vm as TreeApi).expandAll()
     await wrapper.vm.$nextTick()
-    expect(wrapper.findAll('.tree-item')).toHaveLength(3)
+    expect(wrapper.findAll('.giant-tree__row')).toHaveLength(3)
 
     ;(wrapper.vm as TreeApi).collapseAll()
     await wrapper.vm.$nextTick()
-    expect(wrapper.findAll('.tree-item')).toHaveLength(2)
+    expect(wrapper.findAll('.giant-tree__row')).toHaveLength(2)
   })
   it('开启 searchHighlight 时只高亮输入的关键词片段', async () => {
     const wrapper = mount(VueGiantTree, {
@@ -481,7 +481,7 @@ describe('VueGiantTree: 主组件', () => {
 
     // 祖先只是因为补全路径出现，名称不含关键词，不应被高亮。
     const parent = wrapper
-      .findAll('.tree-item')
+      .findAll('.giant-tree__row')
       .find(item => item.text() === 'Parent Group')
     expect(parent?.find('.giant-tree__search-hit').exists()).toBe(false)
   })
@@ -530,7 +530,7 @@ describe('VueGiantTree: 主组件', () => {
     await wrapper.vm.$nextTick()
 
     const parent = wrapper
-      .findAll('.tree-item')
+      .findAll('.giant-tree__row')
       .find(item => item.text().includes('Parent'))
     expect(parent?.find('.giant-tree__icon-arrow-down').exists()).toBe(true)
     await parent?.find('.giant-tree__icon-arrow-down').trigger('click')
@@ -567,7 +567,7 @@ describe('VueGiantTree: 主组件', () => {
     await waitForBranchAnimation(wrapper)
 
     const child = wrapper
-      .findAll('.tree-item')
+      .findAll('.giant-tree__row')
       .find(item => item.text().includes('Hidden child'))
     expect(child?.find('.giant-tree__icon-check-checked').exists()).toBe(true)
 
@@ -575,7 +575,7 @@ describe('VueGiantTree: 主组件', () => {
     await wrapper.vm.$nextTick()
     await waitForBranchAnimation(wrapper)
     const grandchild = wrapper
-      .findAll('.tree-item')
+      .findAll('.giant-tree__row')
       .find(item => item.text().includes('Hidden grandchild'))
     expect(grandchild?.find('.giant-tree__icon-check-checked').exists()).toBe(
       true
@@ -603,7 +603,7 @@ describe('VueGiantTree: 主组件', () => {
     await waitForBranchAnimation(wrapper)
 
     const child = wrapper
-      .findAll('.tree-item')
+      .findAll('.giant-tree__row')
       .find(item => item.text().includes('Child'))
     expect(child?.find('.giant-tree__icon-check-checked').exists()).toBe(true)
 
@@ -633,13 +633,13 @@ describe('VueGiantTree: 主组件', () => {
     await wrapper.vm.$nextTick()
 
     const leaf = wrapper
-      .findAll('.tree-item')
+      .findAll('.giant-tree__row')
       .find(item => item.text().includes('Leaf'))
     // Selection is bound to the full virtual row, not just its text line.
     await leaf?.trigger('click')
     await wrapper.vm.$nextTick()
 
-    expect(leaf?.classes()).toContain('selected')
+    expect(leaf?.classes()).toContain('giant-tree__row--selected')
   })
 
   it('自定义 fontSize 通过根节点 CSS 变量下发', async () => {
@@ -715,7 +715,7 @@ describe('VueGiantTree: 主组件', () => {
     await flushPromises()
     await small.vm.$nextTick()
     expect(small.find('.giant-tree').classes()).toContain('giant-tree--small')
-    expect(small.find('.tree-item').attributes('style')).toContain(
+    expect(small.find('.giant-tree__row').attributes('style')).toContain(
       'height: 24px'
     )
 
@@ -723,7 +723,7 @@ describe('VueGiantTree: 主组件', () => {
     await flushPromises()
     await large.vm.$nextTick()
     expect(large.find('.giant-tree').classes()).toContain('giant-tree--large')
-    expect(large.find('.tree-item').attributes('style')).toContain(
+    expect(large.find('.giant-tree__row').attributes('style')).toContain(
       'height: 32px'
     )
 
@@ -736,7 +736,7 @@ describe('VueGiantTree: 主组件', () => {
     expect(normal.find('.giant-tree').classes()).not.toContain(
       'giant-tree--large'
     )
-    expect(normal.find('.tree-item').attributes('style')).toContain(
+    expect(normal.find('.giant-tree__row').attributes('style')).toContain(
       'height: 26px'
     )
   })
@@ -753,7 +753,7 @@ describe('VueGiantTree: 主组件', () => {
     })
     await flushPromises()
     await wrapper.vm.$nextTick()
-    expect(wrapper.find('.tree-item').attributes('style')).toContain(
+    expect(wrapper.find('.giant-tree__row').attributes('style')).toContain(
       'height: 30px'
     )
   })
@@ -784,15 +784,15 @@ describe('VueGiantTree: 主组件', () => {
     await wrapper.vm.$nextTick()
 
     const arrowBefore = wrapper.find(
-      '.tree-item .giant-tree__mask-button'
+      '.giant-tree__row .giant-tree__mask-button'
     ).element
     expect(arrowBefore.className).toContain('giant-tree__icon-arrow-right')
 
-    await wrapper.findAll('.item-icon')[0].trigger('click')
+    await wrapper.findAll('.giant-tree__arrow-cell')[0].trigger('click')
     await wrapper.vm.$nextTick()
 
     const arrowAfter = wrapper.find(
-      '.tree-item .giant-tree__mask-button'
+      '.giant-tree__row .giant-tree__mask-button'
     ).element
     // 同一个 DOM 节点：浏览器只看到 class 变化，CSS transition 因此能播放。
     // 若这里被换成了新元素（重建），箭头就会直接跳到目标角度、动画消失。
@@ -821,9 +821,9 @@ describe('VueGiantTree: 主组件', () => {
     await wrapper.vm.$nextTick()
 
     const parent = wrapper
-      .findAll('.tree-item')
+      .findAll('.giant-tree__row')
       .find(item => item.text().includes('Parent'))
-    await parent?.find('.item-icon').trigger('click')
+    await parent?.find('.giant-tree__arrow-cell').trigger('click')
     await wrapper.vm.$nextTick()
 
     // 展开后虚拟窗口被 30 个子行填满，Sibling 被挤出窗口；它仍必须留在
@@ -852,9 +852,9 @@ describe('VueGiantTree: 主组件', () => {
     await wrapper.vm.$nextTick()
 
     const parent = wrapper
-      .findAll('.tree-item')
+      .findAll('.giant-tree__row')
       .find(item => item.text().includes('Parent'))
-    await parent?.find('.item-icon').trigger('click')
+    await parent?.find('.giant-tree__arrow-cell').trigger('click')
     await wrapper.vm.$nextTick()
 
     const style =
@@ -879,13 +879,13 @@ describe('VueGiantTree: 主组件', () => {
     await flushPromises()
     await wrapper.vm.$nextTick()
 
-    await wrapper.findAll('.item-icon')[0].trigger('click')
+    await wrapper.findAll('.giant-tree__arrow-cell')[0].trigger('click')
     await waitForBranchAnimation(wrapper)
     // 过渡结束即释放容器；展开出来的行由普通列表常驻渲染
     expect(wrapper.find('.giant-tree__branch-transition').exists()).toBe(false)
     expect(wrapper.text()).toContain('NodeA1')
 
-    await wrapper.findAll('.item-icon')[0].trigger('click')
+    await wrapper.findAll('.giant-tree__arrow-cell')[0].trigger('click')
     await waitForBranchAnimation(wrapper)
     expect(wrapper.find('.giant-tree__branch-transition').exists()).toBe(false)
     // 被收起的行必须真的离开 DOM，否则它们仍可被 Tab 聚焦、被读屏读出来
@@ -898,7 +898,7 @@ describe('VueGiantTree: 主组件', () => {
     })
     await flushPromises()
     await wrapper.vm.$nextTick()
-    expect(wrapper.findAll('.item-guide-cell')).toHaveLength(0)
+    expect(wrapper.findAll('.giant-tree__guide-cell')).toHaveLength(0)
   })
 
   it('showLine 开启后按结构绘制 ├/└ 与祖先竖线', async () => {
@@ -919,10 +919,10 @@ describe('VueGiantTree: 主组件', () => {
     await wrapper.vm.$nextTick()
 
     const rowOf = (label: string) =>
-      wrapper.findAll('.tree-item').find(row => row.text().includes(label))!
+      wrapper.findAll('.giant-tree__row').find(row => row.text().includes(label))!
     const guideClasses = (label: string) =>
       rowOf(label)
-        .findAll('.item-guide-cell')
+        .findAll('.giant-tree__guide-cell')
         .map(cell => cell.find('.giant-tree__guide').classes())
 
     // deep2 叶子 A1a（内层首子）：缩进格两列都贯穿；标记列 full + 横线。
@@ -932,12 +932,12 @@ describe('VueGiantTree: 主组件', () => {
     expect(a1a[0]).not.toContain('giant-tree__guide--h')
     expect(a1a[1]).toContain('giant-tree__guide--v-full')
     expect(a1a[1]).not.toContain('giant-tree__guide--h')
-    const a1aMarker = rowOf('NodeA1a').find('.item-icon .giant-tree__guide')
+    const a1aMarker = rowOf('NodeA1a').find('.giant-tree__arrow-cell .giant-tree__guide')
     expect(a1aMarker.classes()).toContain('giant-tree__guide--m-full')
     expect(a1aMarker.classes()).toContain('giant-tree__guide--h')
 
     // deep2 叶子 A1b（末子）：标记列 upper + 横线。
-    const a1bMarker = rowOf('NodeA1b').find('.item-icon .giant-tree__guide')
+    const a1bMarker = rowOf('NodeA1b').find('.giant-tree__arrow-cell .giant-tree__guide')
     expect(a1bMarker.classes()).toContain('giant-tree__guide--m-upper')
     expect(a1bMarker.classes()).toContain('giant-tree__guide--h')
 
@@ -947,11 +947,11 @@ describe('VueGiantTree: 主组件', () => {
     expect(a2[0]).toContain('giant-tree__guide--v-full')
     expect(a2[0]).not.toContain('giant-tree__guide--h')
     expect(
-      rowOf('NodeA2').find('.item-icon .giant-tree__guide').classes()
+      rowOf('NodeA2').find('.giant-tree__arrow-cell .giant-tree__guide').classes()
     ).toContain('giant-tree__guide--m-upper')
 
     // 顶层节点不缩进，无连接线格。
-    expect(rowOf('NodeB').findAll('.item-guide-cell')).toHaveLength(0)
+    expect(rowOf('NodeB').findAll('.giant-tree__guide-cell')).toHaveLength(0)
   })
 
   it('运行时切换 showLine 即时重绘连接线', async () => {
@@ -961,18 +961,18 @@ describe('VueGiantTree: 主组件', () => {
     await flushPromises()
     await wrapper.vm.$nextTick()
     // 先展开 A，使 deep1 的 A1 进入可见区。
-    await wrapper.findAll('.item-icon')[0].trigger('click')
+    await wrapper.findAll('.giant-tree__arrow-cell')[0].trigger('click')
     await waitForBranchAnimation(wrapper)
     expect(wrapper.text()).toContain('NodeA1')
-    expect(wrapper.findAll('.item-guide-cell')).toHaveLength(0)
+    expect(wrapper.findAll('.giant-tree__guide-cell')).toHaveLength(0)
 
     await wrapper.setProps({ showLine: true })
     await flushPromises()
     await wrapper.vm.$nextTick()
     const a1Row = wrapper
-      .findAll('.tree-item')
+      .findAll('.giant-tree__row')
       .find(row => row.text().includes('NodeA1'))!
-    expect(a1Row.findAll('.item-guide-cell')).toHaveLength(1)
+    expect(a1Row.findAll('.giant-tree__guide-cell')).toHaveLength(1)
   })
 
   it('名称-only 替换走内容 diff，并保留结构状态', async () => {
@@ -1031,9 +1031,9 @@ describe('VueGiantTree: 主组件', () => {
 
     expect(treeApi(wrapper).getBuildMetrics().contentDiffHits).toBe(before + 1)
     const bRow = wrapper
-      .findAll('.tree-item')
+      .findAll('.giant-tree__row')
       .find(row => row.text().includes('NodeB'))!
-    expect(bRow.classes()).toContain('disabled')
+    expect(bRow.classes()).toContain('giant-tree__row--disabled')
     expect(treeApi(wrapper).getTreeSize()).toBe(3)
   })
 
@@ -1077,6 +1077,8 @@ describe('VueGiantTree: 主组件', () => {
 
     expect(treeApi(wrapper).getBuildMetrics().contentDiffHits).toBe(before)
     expect(treeApi(wrapper).getTreeSize()).toBe(100)
-    expect(wrapper.findAll('.tree-item')[0].classes()).toContain('disabled')
+    expect(wrapper.findAll('.giant-tree__row')[0].classes()).toContain(
+      'giant-tree__row--disabled'
+    )
   })
 })

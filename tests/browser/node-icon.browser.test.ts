@@ -33,7 +33,7 @@ describe('VueGiantTree: 节点图标尺寸（真实浏览器）', () => {
     await nextTick()
     await new Promise(resolve => setTimeout(resolve, 80))
 
-    const icon = host.querySelector<HTMLElement>('.item-node-icon')
+    const icon = host.querySelector<HTMLElement>('.giant-tree__node-icon')
     expect(icon).not.toBeNull()
     expect(icon?.className).toContain('giant-tree__icon-node-collapsed')
 

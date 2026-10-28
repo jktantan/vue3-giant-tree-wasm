@@ -25,104 +25,202 @@
 }
 
 .giant-tree {
-  &.tree-container {
-    //margin: 5px;
+  /* ---------- 容器 ---------- */
+  &.giant-tree__container {
     overflow: auto;
     position: relative;
     // 主题变量由 common/var.scss 输出；这里的 SCSS 值只是变量缺失时的兜底。
     color: var(--giant-tree-text-color, #{$giant-tree__text-color});
     background-color: var(--giant-tree-bg-color, #{$giant-tree__bg-color});
     font-size: var(--giant-tree-font-size, #{$giant-tree__font-size});
+    font-family: var(--giant-tree-font-family, #{$giant-tree__font-family});
 
-    .infinite-list-phantom {
-      z-index: -1;
-      position: absolute;
-      left: 0;
-      top: 0;
-      right: 0;
-    }
-    .infinite-list {
-      display: grid;
-      position: absolute;
-      white-space: nowrap;
-      width: 100%;
-    }
-
-    &.tree-container--animating {
+    &.giant-tree__container--animating {
       // The virtual offset is frozen while this layer owns the branch gap.
       // `overflow: auto` is retained so the scrollbar does not jump in/out.
       overscroll-behavior: contain;
     }
+  }
 
-    .giant-tree__branch-transition {
-      display: grid;
-      overflow: hidden;
-      min-width: 0;
-      // 时长由组件按高度换算后通过 CSS 变量注入，使不同高度的分支保持
-      // 相近的像素速度；220ms 仅作为变量缺失时的兜底。
-      transition: height var(--giant-tree-branch-duration, 220ms)
-        cubic-bezier(0.22, 0.72, 0.2, 1);
-      will-change: height;
+  /* ---------- 虚拟滚动层 ---------- */
+  &__phantom {
+    z-index: -1;
+    position: absolute;
+    left: 0;
+    top: 0;
+    right: 0;
+  }
 
-      // 展开是「内容进入」：基础曲线的起步太陡（约 33ms 就走完一半位移），
-      // 视觉上像内容突然冒出来。这里单独换成起步更缓的 ease-out。
-      &--expand {
-        transition-timing-function: cubic-bezier(0.33, 0, 0.2, 1);
-      }
+  &__list {
+    display: grid;
+    position: absolute;
+    white-space: nowrap;
+    width: 100%;
+  }
 
-      @media (prefers-reduced-motion: reduce) {
-        transition-duration: 1ms;
-      }
+  /* ---------- 分支展开 / 折叠动画 ---------- */
+  &__branch-transition {
+    display: grid;
+    overflow: hidden;
+    min-width: 0;
+    // 时长由组件按高度换算后通过 CSS 变量注入，使不同高度的分支保持
+    // 相近的像素速度；220ms 仅作为变量缺失时的兜底。
+    transition: height var(--giant-tree-branch-duration, 220ms)
+      cubic-bezier(0.22, 0.72, 0.2, 1);
+    will-change: height;
+
+    // 展开是「内容进入」：基础曲线的起步太陡（约 33ms 就走完一半位移），
+    // 视觉上像内容突然冒出来。这里单独换成起步更缓的 ease-out。
+    &--expand {
+      transition-timing-function: cubic-bezier(0.33, 0, 0.2, 1);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      transition-duration: 1ms;
     }
   }
-  &__mask-button {
-    height: 100%;
-    background-color: var(--giant-tree-text-color, #{$giant-tree__text-color});
-    transition: var(--giant-tree-transition, #{$giant-tree__trans});
-    cursor: pointer;
 
-    &:hover {
-      background-color: var(
-        --giant-tree-color-primary,
-        #{$giant-tree__color-primary}
+  /* ---------- 行 ---------- */
+  &__row {
+    display: flex;
+    align-items: center;
+    padding: var(--giant-tree-row-padding-y, #{$giant-tree__row-padding-y})
+      var(--giant-tree-row-padding-x, #{$giant-tree__row-padding-x});
+    gap: var(--giant-tree-row-gap, #{$giant-tree__row-gap});
+    border-radius: var(--giant-tree-row-radius, #{$giant-tree__row-radius});
+    cursor: pointer;
+    font-size: var(--giant-tree-font-size, #{$giant-tree__font-size});
+    font-weight: var(--giant-tree-font-weight, #{$giant-tree__font-weight});
+
+    &:hover,
+    &--selected {
+      background: var(
+        --giant-tree-bg-color-hover,
+        #{$giant-tree__bg-color-hover}
       );
     }
-    &.checked {
-      background-color: var(
-        --giant-tree-color-primary,
-        #{$giant-tree__color-primary}
+
+    &--disabled {
+      opacity: var(
+        --giant-tree-disabled-opacity,
+        #{$giant-tree__disabled-opacity}
       );
-      // v-if 切换状态时会重新渲染元素，进入动画即为选中反馈。
-      // 仅在 .giant-tree__animated 存在时播（该类由 TreeItem 在 checked
-      // 真实变化后加，虚拟滚动新挂载的行不带，不会误播）。
-      &.giant-tree__animated {
-        animation: giant-tree__icon-pop 160ms cubic-bezier(0.34, 1.56, 0.64, 1);
+      cursor: not-allowed;
+
+      &:hover {
+        background: transparent;
+      }
+
+      // 复选框/单选框的图标是 .giant-tree__mask-button，它自带
+      // `cursor: pointer`，会盖掉行上的禁用光标；禁用时必须覆盖回
+      // not-allowed。展开箭头同样使用 mask-button，但禁用行仍可展开/
+      // 收起，所以只限定在选择控件内。
+      .giant-tree__selection,
+      .giant-tree__selection .giant-tree__mask-button {
+        cursor: not-allowed;
       }
     }
+
+    // 箭头列与选择列共用同一套居中布局；宽度由下方 :where() 结构规则提供。
+    .giant-tree__arrow-cell,
+    .giant-tree__selection {
+      position: relative;
+      align-self: stretch;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .giant-tree__guide-cell {
+      position: relative;
+      align-self: stretch;
+      flex: 0 0 auto;
+    }
+
+    .giant-tree__text {
+      // Slot content often combines text, badges and small controls. Treat it
+      // as one inline row so all custom children stay vertically centred with
+      // the tree controls instead of aligning by independent text baselines.
+      display: flex;
+      align-items: center;
+      flex: 1 1 0;
+      min-width: 0;
+      text-align: start;
+    }
+
+    .giant-tree__actions {
+      display: flex;
+      flex: 0 0 auto;
+      align-items: center;
+      gap: var(--giant-tree-actions-gap, #{$giant-tree__actions-gap});
+      margin-left: auto;
+    }
+  }
+
+  /* ---------- 复选框 / 单选框 ---------- */
+  &__mask-button {
+    background-color: var(--giant-tree-text-color, #{$giant-tree__text-color});
+    transition: var(--giant-tree-transition, #{$giant-tree__transition});
+    cursor: pointer;
+
+    &:hover,
+    &--checked {
+      background-color: var(
+        --giant-tree-color-primary,
+        #{$giant-tree__color-primary}
+      );
+    }
+
+    // v-if 切换状态时会重新渲染元素，进入动画即为选中反馈。
+    // 仅在 --animated 存在时播（该类由 TreeItem 在 checked 真实变化后加，
+    // 虚拟滚动新挂载的行不带，不会误播）。
+    &--checked#{&}--animated {
+      animation: giant-tree__icon-pop 160ms cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
     // 取消选中时未选中图标元素同样由 v-if 重新渲染进入，给它一个
     // 反向的缩小淡出式进入动画，作为「取消」的视觉反馈（同样仅限
     // 状态真实变化时）
-    &.giant-tree__animated.giant-tree__icon-check-unchecked,
-    &.giant-tree__animated.giant-tree__icon-radio-unchecked {
+    &--animated.giant-tree__icon-check-unchecked,
+    &--animated.giant-tree__icon-radio-unchecked {
       animation: giant-tree__icon-uncheck 160ms ease-out;
     }
 
     @media (prefers-reduced-motion: reduce) {
-      &.checked,
-      &.giant-tree__icon-check-unchecked,
-      &.giant-tree__icon-radio-unchecked {
+      &--checked,
+      &--animated.giant-tree__icon-check-unchecked,
+      &--animated.giant-tree__icon-radio-unchecked {
         animation: none;
       }
     }
-
-    //&:active {
-    //  background-color: $giant-tree__color-primary;
-    //}
   }
+
+  /* ---------- 节点图标 ---------- */
+  &__node-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: contain;
+  }
+
+  /* ---------- 搜索命中高亮 ---------- */
+  &__search-hit {
+    color: var(--giant-tree-search-hit-color, #{$giant-tree__search-hit-color});
+    background-color: var(
+      --giant-tree-search-hit-bg,
+      #{$giant-tree__search-hit-bg}
+    );
+    padding: 0;
+    border-radius: 2px;
+  }
+
   /*
   连接线（showLine 模式）：
-  - .item-guide-cell 是缩进格（列 0..deep-1），画竖向贯穿竖线，延续祖先所在列；
-  - .item-icon（标记列，列 deep）里的 .giant-tree__guide 只用于叶子，画连向父节点的
+  - .giant-tree__guide-cell 是缩进格（列 0..deep-1），画竖向贯穿竖线，延续祖先所在列；
+  - .giant-tree__arrow-cell（标记列，列 deep）里的 .giant-tree__guide 只用于叶子，画连向父节点的
     ├/└：竖线段（按兄弟位置取上半/下半/全高）+ 横向折线。分支行用箭头，不画线。
   竖线定位在格子中心，与逐层缩进对齐；相邻行首尾相接成连续竖线。
 
@@ -142,7 +240,12 @@
     pointer-events: none;
 
     // 周期：竖/横虚线与点的重复节奏。紧凑点状用 4px。
-    $giant-tree__guide-cycle: 4px;
+    $guide-cycle: 4px;
+    // 三态共享的颜色变量，避免在每个选择器里重复 var()。
+    $guide-color: var(
+      --giant-tree-guide-color,
+      var(--giant-tree-line-color, #{$giant-tree__line-color})
+    );
 
     &::before {
       content: '';
@@ -153,12 +256,10 @@
         --giant-tree-guide-width,
         var(--giant-tree-line-width, #{$giant-tree__line-width})
       );
-      background-color: var(
-        --giant-tree-guide-color,
-        var(--giant-tree-line-color, #{$giant-tree__line-color})
-      );
+      background-color: $guide-color;
       // 默认（solid）：整段 background-color 已生效；dashed/dotted 由下方选择器覆盖。
     }
+
     // 缩进格竖线：--v-full 贯穿/延续，--v-none 不画。
     &--v-full::before {
       top: 0;
@@ -196,33 +297,23 @@
         var(--giant-tree-line-width, #{$giant-tree__line-width})
       );
       transform: translateY(-50%);
-      background-color: var(
-        --giant-tree-guide-color,
-        var(--giant-tree-line-color, #{$giant-tree__line-color})
-      );
+      background-color: $guide-color;
     }
-
-    // 三态共享的颜色 / 周期局部变量，避免在每个选择器里重复 var()。
-    $_guide-color: var(
-      --giant-tree-guide-color,
-      var(--giant-tree-line-color, #{$giant-tree__line-color})
-    );
-    $_guide-cycle: $giant-tree__guide-cycle;
 
     // ---- dashed：竖线 / 横线统一用 linear-gradient 切段 ----
     // 4px 实线 + 4px 间隔循环；颜色取自 CSS 变量。
-    .tree-item[style*='--giant-tree-guide-style: dashed'] & {
+    .giant-tree__row[style*='--giant-tree-guide-style: dashed'] & {
       &::before {
         // 竖向段落：每 8px 周期内前 4px 着色。容器是行高，周期循环 repeat-y。
         background-color: transparent;
         background-image: linear-gradient(
           to bottom,
-          $_guide-color 0,
-          $_guide-color $_guide-cycle,
-          transparent $_guide-cycle,
-          transparent (2 * $_guide-cycle)
+          $guide-color 0,
+          $guide-color $guide-cycle,
+          transparent $guide-cycle,
+          transparent (2 * $guide-cycle)
         );
-        background-size: 100% (2 * $_guide-cycle);
+        background-size: 100% (2 * $guide-cycle);
         background-repeat: repeat-y;
       }
       &--h::after {
@@ -230,123 +321,93 @@
         background-color: transparent;
         background-image: linear-gradient(
           to right,
-          $_guide-color 0,
-          $_guide-color $_guide-cycle,
-          transparent $_guide-cycle,
-          transparent (2 * $_guide-cycle)
+          $guide-color 0,
+          $guide-color $guide-cycle,
+          transparent $guide-cycle,
+          transparent (2 * $guide-cycle)
         );
-        background-size: (2 * $_guide-cycle) 100%;
+        background-size: (2 * $guide-cycle) 100%;
         background-repeat: repeat-x;
       }
     }
 
     // ---- dotted：紧凑点状虚线。4x4 网格里密铺一个小圆点 ----
     // 用 radial-gradient 在每个 4x4 单元的中心画直径≈2px 的实心圆。
-    .tree-item[style*='--giant-tree-guide-style: dotted'] & {
+    .giant-tree__row[style*='--giant-tree-guide-style: dotted'] & {
       &::before {
         background-color: transparent;
         background-image: radial-gradient(
           circle,
-          $_guide-color 0 40%,
+          $guide-color 0 40%,
           transparent 41% 100%
         );
-        background-size: $_guide-cycle $_guide-cycle;
+        background-size: $guide-cycle $guide-cycle;
         background-repeat: repeat;
       }
       &--h::after {
         background-color: transparent;
         background-image: radial-gradient(
           circle,
-          $_guide-color 0 40%,
+          $guide-color 0 40%,
           transparent 41% 100%
         );
-        background-size: $_guide-cycle $_guide-cycle;
+        background-size: $guide-cycle $guide-cycle;
         background-repeat: repeat;
       }
     }
   }
 
-  &__node-icon {
-    flex: 0 0 auto;
-    background-repeat: no-repeat;
-    background-position: center;
-    background-size: contain;
+  /*
+   * 结构尺寸（缩进列宽 / 控件列宽 / 节点图标 / 勾选框）刻意放在
+   * `:where()` 里，把特异性压到 `(0,1,0)`：
+   *
+   * - 宿主只写 `.giant-tree__arrow-cell { width: 18px }` 这类普通选择器就能覆盖；
+   * - 想整体缩放时改 `--giant-tree-row-size` / `--giant-tree-indent-size` /
+   *   `--giant-tree-icon-size` 即可，不必碰选择器。
+   *
+   * Structural sizing is wrapped in `:where()` on purpose: it keeps specificity
+   * at (0,1,0) so a plain host selector wins, while the CSS variables still
+   * handle the common "scale everything" case.
+   */
+  :where(.giant-tree__row)
+    :where(.giant-tree__guide-cell, .giant-tree__indent) {
+    width: var(
+      --giant-tree-indent-size,
+      var(
+        --giant-tree-row-size,
+        var(--giant-tree-font-size, #{$giant-tree__indent-size})
+      )
+    );
   }
 
-  .tree-item {
-    display: flex;
-    align-items: center;
-    padding: 0 5px;
-    gap: 3px;
-    cursor: pointer;
-    font-size: var(--giant-tree-font-size, #{$giant-tree__font-size});
+  :where(.giant-tree__row)
+    :where(.giant-tree__arrow-cell, .giant-tree__selection) {
+    width: var(
+      --giant-tree-row-size,
+      var(--giant-tree-font-size, #{$giant-tree__row-size})
+    );
+  }
 
-    &:hover,
-    &.selected {
-      background: var(
-        --giant-tree-bg-color-hover,
-        #{$giant-tree__bg-color-hover}
-      );
-    }
-    &.disabled {
-      opacity: var(
-        --giant-tree-disabled-opacity,
-        #{$giant-tree__disabled-opacity}
-      );
-      cursor: not-allowed;
-      &:hover {
-        background: transparent;
-      }
-      // 复选框/单选框的图标是 .giant-tree__mask-button，它自带
-      // `cursor: pointer`，会盖掉行上的禁用光标；禁用时必须覆盖回
-      // not-allowed。展开箭头同样使用 mask-button，但禁用行仍可展开/
-      // 收起，所以只限定在选择控件内。
-      .item-selection,
-      .item-selection .giant-tree__mask-button {
-        cursor: not-allowed;
-      }
-    }
-    .item-icon {
-      position: relative;
-      // 拉满行高，标记列的折线竖线才能跨行相接。
-      align-self: stretch;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-    .item-guide-cell {
-      position: relative;
-      // 拉满行高，竖线才能跨行首尾相接。
-      align-self: stretch;
-      flex: 0 0 auto;
-    }
-    .item-control {
-      align-self: stretch;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-    .item-node-icon {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-    .item-text {
-      // Slot content often combines text, badges and small controls. Treat it
-      // as one inline row so all custom children stay vertically centred with
-      // the tree controls instead of aligning by independent text baselines.
-      display: flex;
-      align-items: center;
-      flex: 1 1 0;
-      min-width: 0;
-      text-align: start;
-    }
-    .item-actions {
-      display: flex;
-      flex: 0 0 auto;
-      align-items: center;
-      gap: 4px;
-      margin-left: auto;
-    }
+  :where(.giant-tree__row)
+    :where(.giant-tree__node-icon, .giant-tree__mask-button) {
+    width: var(
+      --giant-tree-icon-size,
+      var(
+        --giant-tree-row-size,
+        var(--giant-tree-font-size, #{$giant-tree__icon-size})
+      )
+    );
+    height: var(
+      --giant-tree-icon-size,
+      var(
+        --giant-tree-row-size,
+        var(--giant-tree-font-size, #{$giant-tree__icon-size})
+      )
+    );
+  }
+
+  :where(.giant-tree__row) :where(.giant-tree__indent) {
+    flex: 0 0 auto;
+    align-self: stretch;
   }
 }

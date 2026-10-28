@@ -1,4 +1,4 @@
+// 组件样式入口：图标与主结构。变量层在 common/var.scss，
+// 可按 `@use '.../common/var' with (...)` 做编译期定制。
 @use 'icon';
-@use 'highlight';
 @use 'style';
-@use 'transition';

@@ -683,13 +683,13 @@ onMounted(async () => {
 
 /* 深色预览必须同时把文字与交互态调亮，否则深字压深底根本看不见。 */
 .playground__tree--dark :deep(.giant-tree),
-.playground__tree--dark :deep(.giant-tree .tree-item) {
+.playground__tree--dark :deep(.giant-tree .giant-tree__row) {
   color: #e7edf5;
 }
 
 /* hover / 选中背景跟随主题主色，不再写死深蓝。 */
-.playground__tree--dark :deep(.giant-tree .tree-item:hover),
-.playground__tree--dark :deep(.giant-tree .tree-item.selected) {
+.playground__tree--dark :deep(.giant-tree .giant-tree__row:hover),
+.playground__tree--dark :deep(.giant-tree .giant-tree__row--selected) {
   background: var(--giant-tree-bg-color-hover, #2a4058);
 }
 

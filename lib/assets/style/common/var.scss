@@ -5,8 +5,8 @@
  * ============================
  * 分两层：
  * 1. 下面的 SCSS 变量是**编译期默认值**，可以通过 `@use ... with (...)` 定制；
- * 2. `giant-tree-theme-*` mixin 把它们输出成 `--giant-tree-*` CSS 变量。
- *    运行时的换肤应该覆盖 CSS 变量，而不是重新编译 SCSS。
+ * 2. `giant-tree-light-theme` / `giant-tree-dark-theme` mixin 把它们输出成
+ *    `--giant-tree-*` CSS 变量。运行时的换肤应该覆盖 CSS 变量，而不是重新编译 SCSS。
  *
  * Two layers: SCSS variables are compile-time defaults, and the mixins below
  * emit them as `--giant-tree-*` CSS variables. Consumers should customise the
@@ -15,20 +15,19 @@
 
 /* ---------- 颜色 ---------- */
 $giant-tree__color-primary: #409eff !default;
-$giant-tree__color-primary-invert: #ffac30 !default;
 $giant-tree__color-danger: #ef4f4f !default;
 $giant-tree__color-white: #fff !default;
 $giant-tree__color-black: #000 !default;
 $giant-tree__color-grey: #4d4d4d !default;
 $giant-tree__color-disabled: #aaa !default;
-$giant-tree__color-primary-activate: color.mix(
+$giant-tree__color-primary-active: color.mix(
   $giant-tree__color-primary,
-  #000,
+  $giant-tree__color-black,
   80%
 ) !default;
 $giant-tree__color-primary-hover: color.mix(
   $giant-tree__color-primary,
-  #fff,
+  $giant-tree__color-white,
   30%
 ) !default;
 
@@ -44,8 +43,22 @@ $giant-tree__font-size: 14px !default;
 $giant-tree__row-size: $giant-tree__font-size !default;
 $giant-tree__indent-size: $giant-tree__row-size !default;
 $giant-tree__icon-size: $giant-tree__row-size !default;
-$giant-tree__icon-margin: 10px;
-$giant-tree__trans: all 0.3s ease-in-out !default;
+$giant-tree__transition: all 0.3s ease-in-out !default;
+
+/*
+ * 行盒与排版：宿主按自己的设计系统对齐时最常改的一组值。
+ * 行高不在这里 —— 它参与虚拟滚动计算，只能走 `size` / `lineHeight` prop。
+ *
+ * Row box and typography. Row height is intentionally absent: it feeds the
+ * virtual scroller and can only be set through the `size` / `lineHeight` props.
+ */
+$giant-tree__row-padding-x: 5px !default;
+$giant-tree__row-padding-y: 0 !default;
+$giant-tree__row-gap: 3px !default;
+$giant-tree__actions-gap: 4px !default;
+$giant-tree__row-radius: 0 !default;
+$giant-tree__font-family: inherit !default;
+$giant-tree__font-weight: inherit !default;
 
 /* ---------- 连接线 ---------- */
 $giant-tree__line-color: #d0d4dc !default;
@@ -69,10 +82,11 @@ $giant-tree__dark-color-primary-hover: color.mix(
   $giant-tree__dark-bg-color,
   22%
 ) !default;
-
-$shadow-top-inset: inset 0 12px 10px -12px rgb(0 0 0 / 60%); /* 上内阴影 */
-$shadow-bottom-inset: inset 0 -12px 10px -12px rgb(0 0 0 / 60%); /* 上内阴影 */
-$shadow-horizontal-inset: $shadow-top-inset, $shadow-bottom-inset;
+$giant-tree__dark-color-primary-active: color.mix(
+  $giant-tree__color-primary,
+  $giant-tree__color-black,
+  90%
+) !default;
 
 /*
  * 运行时 CSS 变量。
@@ -86,7 +100,7 @@ $shadow-horizontal-inset: $shadow-top-inset, $shadow-bottom-inset;
 @mixin giant-tree-light-theme {
   --giant-tree-color-primary: #{$giant-tree__color-primary};
   --giant-tree-color-primary-hover: #{$giant-tree__color-primary-hover};
-  --giant-tree-color-primary-active: #{$giant-tree__color-primary-activate};
+  --giant-tree-color-primary-active: #{$giant-tree__color-primary-active};
   --giant-tree-color-danger: #{$giant-tree__color-danger};
   --giant-tree-color-disabled: #{$giant-tree__color-disabled};
   --giant-tree-text-color: #{$giant-tree__text-color};
@@ -95,20 +109,23 @@ $shadow-horizontal-inset: $shadow-top-inset, $shadow-bottom-inset;
   --giant-tree-line-color: #{$giant-tree__line-color};
   --giant-tree-line-width: #{$giant-tree__line-width};
   --giant-tree-disabled-opacity: #{$giant-tree__disabled-opacity};
-  --giant-tree-transition: #{$giant-tree__trans};
+  --giant-tree-transition: #{$giant-tree__transition};
   --giant-tree-search-hit-bg: #{$giant-tree__search-hit-bg};
   --giant-tree-search-hit-color: #{$giant-tree__search-hit-color};
+  --giant-tree-row-padding-x: #{$giant-tree__row-padding-x};
+  --giant-tree-row-padding-y: #{$giant-tree__row-padding-y};
+  --giant-tree-row-gap: #{$giant-tree__row-gap};
+  --giant-tree-actions-gap: #{$giant-tree__actions-gap};
+  --giant-tree-row-radius: #{$giant-tree__row-radius};
+  --giant-tree-font-family: #{$giant-tree__font-family};
+  --giant-tree-font-weight: #{$giant-tree__font-weight};
 }
 
 @mixin giant-tree-dark-theme {
   @include giant-tree-light-theme;
 
   --giant-tree-color-primary-hover: #{$giant-tree__dark-color-primary-hover};
-  --giant-tree-color-primary-active: #{color.mix(
-      $giant-tree__color-primary,
-      #000,
-      90%
-    )};
+  --giant-tree-color-primary-active: #{$giant-tree__dark-color-primary-active};
   --giant-tree-color-disabled: #{$giant-tree__dark-color-disabled};
   --giant-tree-text-color: #{$giant-tree__dark-text-color};
   --giant-tree-bg-color: #{$giant-tree__dark-bg-color};
@@ -119,12 +136,17 @@ $shadow-horizontal-inset: $shadow-top-inset, $shadow-bottom-inset;
 }
 
 /*
- * 默认浅色变量放在 `:root`，这样宿主在 `:root` 上的覆盖与组件默认值处于
- * 同一层，按源码顺序后加载的自定义样式即可生效。
+ * 默认浅色变量放在 `:root`；暗色变量放在 `html.dark`（而不是
+ * `html.dark .giant-tree`）。这一步是可对齐性的关键：
  *
- * 尺寸变量不放进主题 mixin：它们需要被 `.giant-tree--small/--large` 在组件
- * 根节点上覆盖，而暗色规则 `html.dark .giant-tree` 作用在同一个元素上，
- * 若在那里重复声明尺寸会把 size 预设压掉。
+ * CSS 变量的继承规则是「元素自身的声明永远压过祖先的声明」，与选择器
+ * 特异性无关。暗色变量如果写在组件根节点上，宿主在 `.brand-tree` 之类的
+ * 祖先上做的品牌色覆盖会在切暗色时整片失效（回退默认蓝）。把它们前移到
+ * `html` 后，宿主的祖先覆盖始终位于继承链更近的一端，浅色 / 暗色都生效。
+ *
+ * Dark variables live on `html.dark`, not on the component root: an element's
+ * own declaration always wins over inherited ones, so declaring them on the
+ * root would silently discard host overrides placed on an ancestor.
  */
 :root {
   @include giant-tree-light-theme;
@@ -132,19 +154,21 @@ $shadow-horizontal-inset: $shadow-top-inset, $shadow-bottom-inset;
   --giant-tree-font-size: #{$giant-tree__font-size};
 }
 
+html.dark {
+  @include giant-tree-dark-theme;
+}
+
 /*
- * 暗色可以两种方式触发：
- * 1. 全局约定：`html.dark`（与 Element Plus 的暗色模式一致），自动生效；
- * 2. 组件显式指定：`theme="dark"`，只影响这一个实例。
+ * 暗色也可以只作用于单个实例：`theme="dark"`。它仍然声明在组件根节点上，
+ * 因此宿主要覆盖这个实例的品牌色时，需要用 `:style` 内联变量，或写
+ * `html.dark .brand-tree .giant-tree--dark` 这类命中组件根的选择器。
  *
- * 显式 `theme="light"` 会压过全局 `html.dark`，用于「暗色页面里放一块浅色面板」。
+ * `theme="light"` 用于「暗色页面里放一块浅色面板」，优先级高于 `html.dark`。
  */
-html.dark .giant-tree,
 .giant-tree--dark {
   @include giant-tree-dark-theme;
 }
 
-html.dark .giant-tree--light,
 .giant-tree--light {
   @include giant-tree-light-theme;
 }

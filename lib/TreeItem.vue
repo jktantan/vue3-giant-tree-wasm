@@ -20,11 +20,13 @@ const props = defineProps<{
   /**
    * 行内字号兜底，仅用于脱离 VueGiantTree 单独挂载 TreeItem 的场景。
    * 正常使用时由 VueGiantTree 根节点的 `--giant-tree-font-size` 等变量驱动，
-   * 这样宿主可以用 CSS 覆盖字号/图标/缩进。
+   * 这样宿主可以用 CSS 覆盖字号/图标/缩进；结构尺寸规则在
+   * `assets/style/style.scss` 里以 `:where()` 低特异性提供。
    *
    * Inline font-size fallback for mounting TreeItem standalone. Within
    * VueGiantTree the row inherits `--giant-tree-font-size` and friends from the
-   * root element, so hosts can override them with CSS.
+   * root element, so hosts can override them with CSS; structural sizing lives
+   * in `assets/style/style.scss` behind `:where()` to keep specificity low.
    */
   fontSize?: string
   selectType: SelectType
@@ -245,7 +247,7 @@ const actionsSlotProps = computed(() => ({ node: props.item }))
  * 选中反馈动画开关：虚拟滚动滚动时会不断卸载/重建行元素，若动画挂在
  * 元素的进入上，新滚入视口的行会被误播动画。因此初始挂载不播，只有
  * 组件存活期间 checked 状态真正变化时（nextTick 后）才加上
- * giant-tree__animated 类，让 CSS 只对状态切换播动画。
+ * giant-tree__mask-button--animated 类，让 CSS 只对状态切换播动画。
  */
 const checkAnimated = ref(false)
 watch(
@@ -292,9 +294,12 @@ const contextMenu = (event: MouseEvent) => {
 
 <template>
   <div
-    class="tree-item"
+    class="giant-tree__row"
     :style="[rowStyle, guideStyle]"
-    :class="{ selected: item.selected, disabled: item.disabled }"
+    :class="{
+      'giant-tree__row--selected': item.selected,
+      'giant-tree__row--disabled': item.disabled,
+    }"
     @click="itemClick"
     @contextmenu="contextMenu"
   >
@@ -302,7 +307,7 @@ const contextMenu = (event: MouseEvent) => {
       <div
         v-for="cell in guideCells"
         :key="cell.key"
-        class="item-guide-cell"
+        class="giant-tree__guide-cell"
         aria-hidden="true"
       >
         <span
@@ -312,11 +317,11 @@ const contextMenu = (event: MouseEvent) => {
       </div>
     </template>
     <template v-else>
-      <div v-for="i in item.deep" :key="i" class="item-indent-cell"></div>
+      <div v-for="i in item.deep" :key="i" class="giant-tree__indent"></div>
     </template>
     <div
       v-if="isBranch"
-      class="item-icon item-control"
+      class="giant-tree__arrow-cell"
       role="button"
       tabindex="0"
       :aria-label="`${item.collapsed ? '展开' : '折叠'} ${item.name}`"
@@ -334,7 +339,7 @@ const contextMenu = (event: MouseEvent) => {
         "
       />
     </div>
-    <div v-else class="item-icon">
+    <div v-else class="giant-tree__arrow-cell">
       <!-- 叶子行：标记列按位置画竖线段（上半/下半/全高）加横向折线，构成 ├/└。 -->
       <span
         v-if="showMarkerLine"
@@ -345,7 +350,7 @@ const contextMenu = (event: MouseEvent) => {
     </div>
     <div
       v-if="selectType === SelectType.CHECKBOX"
-      class="item-selection item-control"
+      class="giant-tree__selection"
       role="checkbox"
       :tabindex="item.disabled ? -1 : 0"
       :aria-checked="
@@ -362,22 +367,22 @@ const contextMenu = (event: MouseEvent) => {
       <div
         v-if="item.checked === CheckType.UNCHECKED"
         class="giant-tree__mask-button giant-tree__icon-check-unchecked"
-        :class="{ 'giant-tree__animated': checkAnimated }"
+        :class="{ 'giant-tree__mask-button--animated': checkAnimated }"
       ></div>
       <div
         v-else-if="item.checked === CheckType.HALF_CHECKED"
-        class="giant-tree__mask-button giant-tree__icon-check-half checked"
-        :class="{ 'giant-tree__animated': checkAnimated }"
+        class="giant-tree__mask-button giant-tree__icon-check-half giant-tree__mask-button--checked"
+        :class="{ 'giant-tree__mask-button--animated': checkAnimated }"
       ></div>
       <div
         v-else-if="item.checked === CheckType.CHECKED"
-        class="giant-tree__mask-button giant-tree__icon-check-checked checked"
-        :class="{ 'giant-tree__animated': checkAnimated }"
+        class="giant-tree__mask-button giant-tree__icon-check-checked giant-tree__mask-button--checked"
+        :class="{ 'giant-tree__mask-button--animated': checkAnimated }"
       ></div>
     </div>
     <div
       v-else-if="selectType === SelectType.RADIO && showRadio"
-      class="item-selection item-control"
+      class="giant-tree__selection"
       role="radio"
       :tabindex="item.disabled ? -1 : 0"
       :aria-checked="item.checked === CheckType.CHECKED"
@@ -389,22 +394,22 @@ const contextMenu = (event: MouseEvent) => {
     >
       <div
         v-if="item.checked === CheckType.CHECKED"
-        class="giant-tree__mask-button giant-tree__icon-radio-checked checked"
-        :class="{ 'giant-tree__animated': checkAnimated }"
+        class="giant-tree__mask-button giant-tree__icon-radio-checked giant-tree__mask-button--checked"
+        :class="{ 'giant-tree__mask-button--animated': checkAnimated }"
       ></div>
       <div
         v-else-if="item.checked === CheckType.UNCHECKED"
         class="giant-tree__mask-button giant-tree__icon-radio-unchecked"
-        :class="{ 'giant-tree__animated': checkAnimated }"
+        :class="{ 'giant-tree__mask-button--animated': checkAnimated }"
       ></div>
     </div>
     <div
       v-if="nodeIconClass"
-      class="item-node-icon giant-tree__node-icon"
+      class="giant-tree__node-icon"
       :class="nodeIconClass"
       aria-hidden="true"
     ></div>
-    <div class="item-text">
+    <div class="giant-tree__text">
       <!-- 宿主的渲染函数 prop 优先；没有时退回 #node 插槽，再退回默认文本。 -->
       <slot-renderer
         v-if="renderNode"
@@ -425,7 +430,7 @@ const contextMenu = (event: MouseEvent) => {
     </div>
     <div
       v-if="renderActions || $slots.actions"
-      class="item-actions"
+      class="giant-tree__actions"
       @click.stop
     >
       <slot-renderer
@@ -437,54 +442,3 @@ const contextMenu = (event: MouseEvent) => {
     </div>
   </div>
 </template>
-
-<style scoped>
-/*
- * Row sizing is self-contained: consumers may mount the component without the
- * package-wide stylesheet, and tests import the SFC directly. The CSS variable
- * is set on the row root by `rowStyle`.
- */
-.tree-item {
-  font-size: var(--giant-tree-font-size, 14px);
-}
-.tree-item .item-guide-cell,
-.tree-item .item-indent-cell {
-  width: var(
-    --giant-tree-indent-size,
-    var(--giant-tree-row-size, var(--giant-tree-font-size, 14px))
-  );
-}
-.tree-item .item-icon,
-.tree-item .item-selection {
-  width: var(--giant-tree-row-size, var(--giant-tree-font-size, 14px));
-}
-/*
- * The node icon is an empty, background-only box: width alone would leave it 0px
- * tall and the image would never paint. Match the old inline
- * `{ width: fontSize, height: fontSize }` it replaced.
- */
-.tree-item .item-node-icon {
-  width: var(
-    --giant-tree-icon-size,
-    var(--giant-tree-row-size, var(--giant-tree-font-size, 14px))
-  );
-  height: var(
-    --giant-tree-icon-size,
-    var(--giant-tree-row-size, var(--giant-tree-font-size, 14px))
-  );
-}
-.tree-item .item-indent-cell {
-  align-self: stretch;
-  flex: 0 0 auto;
-}
-.tree-item .giant-tree__mask-button {
-  width: var(
-    --giant-tree-icon-size,
-    var(--giant-tree-row-size, var(--giant-tree-font-size, 14px))
-  );
-  height: var(
-    --giant-tree-icon-size,
-    var(--giant-tree-row-size, var(--giant-tree-font-size, 14px))
-  );
-}
-</style>

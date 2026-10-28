@@ -205,7 +205,22 @@ for (const field of ['main', 'module', 'types']) {
 }
 for (const spec of declaredSpecs) {
   if (!spec.startsWith('./')) continue
-  if (!packedPaths.has(spec.slice(2))) {
+  const relative = spec.slice(2)
+  // 通配导出（例如 "./scss/*": "./scss/*"）不能按单个文件检查，
+  // 只要求它指向的目录在 tarball 里真实存在。
+  if (relative.includes('*')) {
+    const prefix = relative.split('*')[0].replace(/\/$/, '')
+    const hasMatch = [...packedPaths].some(
+      path => path === prefix || path.startsWith(`${prefix}/`)
+    )
+    if (!hasMatch) {
+      fatal.push(
+        `tarball 里没有 ${spec} 能匹配到的文件（检查 files / exports 配置）`
+      )
+    }
+    continue
+  }
+  if (!packedPaths.has(relative)) {
     fatal.push(
       `tarball 里没有 package.json 声称的文件 ${spec}（检查 files / exports 配置）`
     )

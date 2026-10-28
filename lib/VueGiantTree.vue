@@ -2596,21 +2596,21 @@ defineExpose({
 <template>
   <div
     ref="container"
-    class="giant-tree tree-container"
+    class="giant-tree giant-tree__container"
     :class="[
       themeClass,
       sizeClass,
-      { 'tree-container--animating': isTreeAnimating() },
+      { 'giant-tree__container--animating': isTreeAnimating() },
     ]"
     :style="rootStyle"
     tabindex="0"
     @scroll="scrollEvent"
   >
     <div
-      class="infinite-list-phantom"
+      class="giant-tree__phantom"
       :style="{ height: listHeight + 'px' }"
     ></div>
-    <div class="infinite-list" :style="{ transform: transformOffset }">
+    <div class="giant-tree__list" :style="{ transform: transformOffset }">
       <!--
         普通行由 currentTreeList 常驻渲染，只有参与过渡的子行被抽进下面这个容器，
         容器按顺序插在父节点行之后。所以未变化的行——以及它们的箭头、焦点、子组件

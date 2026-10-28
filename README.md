@@ -223,6 +223,13 @@ yarn add vue3-giant-tree-wasm
 import 'vue3-giant-tree-wasm/style.css'
 ```
 
+`package.json` 同时提供了 `style` 字段，支持自动注入样式的构建工具（如
+`vite-plugin-style-import`、部分 webpack 配置）可以省略这行。**不引入样式表时组件
+没有任何样式**（包括行高、列宽等基础布局），因为库不会在运行时注入 CSS。
+
+需要按项目设计系统做编译期定制（改 Sass 变量而不是覆盖 CSS 变量）时，改用
+[编译期定制（SCSS）](#编译期定制scss) 里的入口，二者只引其一。
+
 ### 快速上手
 
 ```vue
@@ -251,7 +258,7 @@ const selected = ref<string[]>([])
 
 ### 主题与尺寸
 
-组件的主题参考 Element Plus 的组织方式：**颜色与尺寸全部通过 CSS 变量在运行时生效**，`theme` / `size` 只是在组件根节点上挂对应的类。宿主在 `:root`、组件祖先或组件自身上覆盖 `--giant-tree-*` 即可换肤，不需要重新编译样式。
+组件的主题参考 Element Plus 的组织方式：**颜色与尺寸通过 CSS 变量在运行时生效**，`theme` / `size` 只是在组件根节点上挂对应的类。浅色变量定义在 `:root`，暗色变量定义在 `html.dark`（都在祖先层），因此宿主在组件祖先上覆盖 `--giant-tree-*` 时，浅色和暗色都会跟随，不需要重新编译样式。
 
 #### 主题模式
 
@@ -266,6 +273,12 @@ const selected = ref<string[]>([])
 ```
 
 与 Element Plus 同时使用时，Element Plus 的 `html.dark` 会自动生效，无需额外配置。
+
+覆盖优先级（实测行为）：
+
+- 浅色 / 暗色变量都在祖先层（`:root` 与 `html.dark`），宿主在 `.brand-tree` 这类祖先上覆盖，切暗色后仍然生效；
+- `theme="dark"` 的实例变量声明在组件根节点上。CSS 变量的规则是「元素自身的声明压过祖先的声明」，所以要覆盖这个实例的品牌色，需要用 `:style` 内联变量，或写命中组件根的选择器（如 `html.dark .brand-tree .giant-tree--dark`）；
+- 与库同层、同特异性的规则（例如宿主也写 `:root`）由 CSS 加载顺序决定。推荐用作用域类，避免依赖打包顺序。
 
 #### 尺寸预设
 
@@ -299,6 +312,13 @@ const selected = ref<string[]>([])
 | `--giant-tree-row-size` | 跟随 `--giant-tree-font-size`（14px） | 同左 | 箭头/勾选框所在控件列宽 |
 | `--giant-tree-indent-size` | 跟随 `--giant-tree-row-size` | 同左 | 每层缩进宽度 |
 | `--giant-tree-icon-size` | 跟随 `--giant-tree-row-size` | 同左 | 节点图标、勾选框尺寸 |
+| `--giant-tree-row-padding-x` | `5px` | 同左 | 行左右内边距 |
+| `--giant-tree-row-padding-y` | `0` | 同左 | 行上下内边距（行高仍由 `size` / `lineHeight` 决定） |
+| `--giant-tree-row-gap` | `3px` | 同左 | 行内各列间距 |
+| `--giant-tree-actions-gap` | `4px` | 同左 | `#actions` 插槽内元素间距 |
+| `--giant-tree-row-radius` | `0` | 同左 | 行背景圆角（hover / selected） |
+| `--giant-tree-font-family` | `inherit` | 同左 | 行字体族，默认继承宿主 |
+| `--giant-tree-font-weight` | `inherit` | 同左 | 行字重，默认继承宿主 |
 | `--giant-tree-disabled-opacity` | `0.45` | 同左 | 禁用行透明度 |
 | `--giant-tree-search-hit-bg` | `#ffe58f` | `#6b5410` | 搜索命中底色 |
 | `--giant-tree-search-hit-color` | `inherit` | `#e5eaf3` | 搜索命中文字色 |
@@ -322,10 +342,10 @@ const treeThemeVars = computed(() =>
 
 该函数接受 `#rgb` / `#rrggbb`；其它格式返回空对象，交给主题默认值。
 
-全局换肤：
+全局换肤（推荐用作用域类；与库的 `:root` 同层时，最终生效值取决于 CSS 加载顺序）：
 
 ```css
-:root {
+.app {
   --giant-tree-color-primary: #7c3aed;
   --giant-tree-color-primary-hover: #f3e8ff;
   --giant-tree-bg-color-hover: #f3e8ff;
@@ -334,7 +354,7 @@ const treeThemeVars = computed(() =>
 }
 ```
 
-只作用于某个实例（变量会沿 DOM 继承）：
+只作用于某个实例（变量会沿 DOM 继承，暗色下同样生效）：
 
 ```vue
 <div class="brand-tree">
@@ -349,9 +369,82 @@ const treeThemeVars = computed(() =>
 </style>
 ```
 
+#### 按项目设计系统对齐
+
+**1. 行盒与排版**：优先用变量，避免碰选择器。
+
+```css
+.brand-tree {
+  --giant-tree-font-family: 'Inter', system-ui, sans-serif;
+  --giant-tree-font-size: 13px;
+  --giant-tree-row-size: 13px;
+  --giant-tree-indent-size: 16px;
+  --giant-tree-icon-size: 16px;
+  --giant-tree-row-padding-x: 8px;
+  --giant-tree-row-gap: 4px;
+  --giant-tree-row-radius: 4px;
+  --giant-tree-actions-gap: 6px;
+}
+```
+
+行高（虚拟滚动使用的每行高度）不在这组变量里：它必须通过 `size` 或 `lineHeight` prop 传给组件。只改字号不改行高，会让文字与行高错位。
+
+**2. 结构样式**：组件内部的结构尺寸规则以 `:where()` 提供，特异性只有 `(0,1,0)`，普通选择器即可覆盖；在 scoped 样式里用 `:deep()` 穿透。
+
+```css
+.my-tree .giant-tree__arrow-cell { width: 18px; }
+.my-tree .giant-tree__indent { width: 20px; }
+.my-tree .giant-tree__text { font-size: 13px; gap: 6px; }
+```
+
+```vue
+<style scoped>
+.my-tree :deep(.giant-tree__text) {
+  font-size: 13px;
+}
+</style>
+```
+
+节点图标沿用全局类名，直接换 `background-image` / `mask`：
+
+```css
+.my-tree .giant-tree__icon-node-collapsed {
+  background-image: url('@/assets/folder-closed.svg');
+}
+.my-tree .giant-tree__icon-arrow-right {
+  mask-image: url('@/assets/chevron.svg');
+}
+```
+
+**3. 主题切换**：需要在运行时按品牌色重算 hover / active 时，用入口导出的
+`createGiantTreeThemeVars` 把变量内联到组件根节点（内联样式优先级最高，
+`theme="dark"` 的实例也压得住）。
+
 > 说明：显式传入 `fontSize` 时，组件会在根节点内联写入 `--giant-tree-font-size` 等相关变量，其优先级高于外部 CSS；不传时则完全交给样式表控制。
->
-> 只改 `--giant-tree-font-size` 不会改变行高（行高由虚拟滚动使用），需要同步调整 `lineHeight` 或 `size`，避免文字与行高不匹配。
+
+#### 编译期定制（SCSS）
+
+包根随包发布 `scss/` 源码。需要把设计系统的 Sass 变量编译进样式表时，先配置
+`common/var`，再加载 `index`（Sass 模块只加载一次，顺序不能反）：
+
+```scss
+// src/styles/tree.scss
+@use 'vue3-giant-tree-wasm/scss/style/common/var' with (
+  $giant-tree__color-primary: #7c3aed,
+  $giant-tree__row-gap: 4px,
+  $giant-tree__row-padding-x: 8px
+);
+@use 'vue3-giant-tree-wasm/scss/style/index';
+```
+
+```ts
+// 替代 import 'vue3-giant-tree-wasm/style.css'
+import './styles/tree.scss'
+```
+
+可配置的 Sass 变量（均为 `!default`）见
+`node_modules/vue3-giant-tree-wasm/scss/style/common/var.scss`。编译期定制与
+`style.css` 只引其一，避免同一份样式被生成两次。
 
 ### 性能
 

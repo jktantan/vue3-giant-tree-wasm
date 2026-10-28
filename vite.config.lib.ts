@@ -1,10 +1,56 @@
 import { fileURLToPath, URL } from 'node:url'
+import { cpSync, existsSync, rmSync } from 'node:fs'
 import dts from 'vite-plugin-dts'
-import { defineConfig } from 'vite'
+import { defineConfig, type Plugin } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import vueJsx from '@vitejs/plugin-vue-jsx'
 import loadVersion from 'vite-plugin-package-version'
 import assemblyscriptPlugin from './vite-plugin-assemblyscript.ts'
+
+/**
+ * 把 SCSS 源发布到包根的 `scss/`，让消费者能做编译期定制：
+ *
+ *   @use 'vue3-giant-tree-wasm/scss/style/common/var' with (
+ *     $giant-tree__color-primary: #7c3aed
+ *   );
+ *   @use 'vue3-giant-tree-wasm/scss/style/index';
+ *
+ * 放到包根而不是 dist 下，是因为 Sass 的普通 filesystem importer 不会读
+ * package.json 的 exports：裸包名会被解析成
+ * `node_modules/<pkg>/scss/...`，只有真实存在这个目录才找得到。`files`
+ * 里同步加上 "scss"，发布时才会带上。
+ *
+ * Ship the SCSS sources at the package root so consumers can customise them
+ * at compile time. Sass's filesystem importer resolves bare package imports to
+ * `node_modules/<pkg>/scss/...`, so a root-level directory is required.
+ */
+const copyScssSources = (): Plugin => ({
+  name: 'copy-library-scss',
+  apply: 'build',
+  closeBundle() {
+    const from = fileURLToPath(new URL('./lib/assets', import.meta.url))
+    const to = fileURLToPath(new URL('./scss', import.meta.url))
+    if (!existsSync(from)) return
+    rmSync(to, { recursive: true, force: true })
+    cpSync(from, to, {
+      recursive: true,
+      filter: source => !source.endsWith('.DS_Store'),
+    })
+
+    // `lib/style.ts` 只是 CSS 的构建载体：它生成的 JS（以及多入口带来的
+    // 空声明文件）没有运行时意义，发布前清掉，避免 dist 里出现无用文件。
+    for (const relativePath of [
+      './dist/style.js',
+      './dist/style.d.ts',
+      './dist/index.d.ts',
+      './dist/lib/style.d.ts',
+    ]) {
+      rmSync(fileURLToPath(new URL(relativePath, import.meta.url)), {
+        force: true,
+      })
+    }
+  },
+})
 
 // https://vitejs.dev/config/
 export default defineConfig(() => ({
@@ -17,6 +63,7 @@ export default defineConfig(() => ({
     vueJsx(),
     loadVersion(),
     dts({ insertTypesEntry: true, tsconfigPath: 'tsconfig.lib.json' }),
+    copyScssSources(),
   ],
   resolve: {
     alias: {
@@ -50,19 +97,28 @@ export default defineConfig(() => ({
     copyPublicDir: false,
     publicDir: false,
     lib: {
-      entry: fileURLToPath(new URL('./lib/index.ts', import.meta.url)),
+      // 两个入口：公开 JS 入口，以及只用于生成 `style.css` 的样式入口。
+      // 后者不导出给消费者，构建完会删掉它的 JS 产物。
+      entry: {
+        index: fileURLToPath(new URL('./lib/index.ts', import.meta.url)),
+        style: fileURLToPath(new URL('./lib/style.ts', import.meta.url)),
+      },
       name: 'vue-giant-tree',
       formats: ['es'],
-      fileName: () => 'vue-giant-tree.es.js',
+      fileName: (_format, entryName) =>
+        entryName === 'index' ? 'vue-giant-tree.es.js' : 'style.js',
       // 固定 CSS 文件名（默认是包名），让 package.json 的 exports 能用稳定的
       // `./style.css` 子路径导出，消费者不必关心带 hash 的产物名。
       cssFileName: 'style',
     },
     rolldownOptions: {
       external: ['vue'],
-      // 显式只把 lib/index.ts 作为入口；防止 buildRelease 的产物被
-      // Vite 隐式当做额外 entry，产生孤儿 release chunk。
-      input: fileURLToPath(new URL('./lib/index.ts', import.meta.url)),
+      // 显式列出两个入口；防止 buildRelease 的产物被 Vite 隐式当做额外
+      // entry，产生孤儿 release chunk。
+      input: {
+        index: fileURLToPath(new URL('./lib/index.ts', import.meta.url)),
+        style: fileURLToPath(new URL('./lib/style.ts', import.meta.url)),
+      },
       output: {
         globals: {
           vue: 'Vue',

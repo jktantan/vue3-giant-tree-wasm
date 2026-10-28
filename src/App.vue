@@ -1430,12 +1430,12 @@ input[type='range'] {
 }
 
 .dev-container--dark-icons .giant-tree,
-.dev-container--dark-icons .giant-tree .tree-item {
+.dev-container--dark-icons .giant-tree .giant-tree__row {
   color: #e7edf5;
 }
 
-.dev-container--dark-icons .giant-tree .tree-item:hover,
-.dev-container--dark-icons .giant-tree .tree-item.selected {
+.dev-container--dark-icons .giant-tree .giant-tree__row:hover,
+.dev-container--dark-icons .giant-tree .giant-tree__row--selected {
   background: var(--giant-tree-bg-color-hover, #2a4058);
 }
 
