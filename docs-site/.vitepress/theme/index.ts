@@ -1,6 +1,9 @@
 import DefaultTheme from 'vitepress/theme'
 import type { Theme } from 'vitepress'
 import WasmProbe from './components/WasmProbe.vue'
+// 组件库入口不再带样式副作用（lib/index.ts 只导出组件），
+// 站点需要显式引入一次组件样式；放在 custom.css 之前，方便站点覆盖。
+import '@lib/assets/style/index.scss'
 import './custom.css'
 
 /**
