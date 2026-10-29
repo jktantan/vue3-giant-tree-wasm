@@ -5,7 +5,7 @@
  */
 import { computed, ref } from 'vue'
 import { VueGiantTree, SelectType, CheckedOutputMode } from '@lib/index'
-import type { FilterFn, NodeIconResolver, TreeNodeData } from '@lib/types'
+import type { FilterFn, NodeIconResolver, TreeNodeData } from '@lib/core/types'
 import { buildTreeData, type TreePreset } from './treeData'
 import { useMessages } from './i18n'
 

@@ -1,4 +1,4 @@
-import type { TreeNodeData } from '@lib/types'
+import type { TreeNodeData } from '@lib/core/types'
 
 /** ID 列表最多显示多少个。 */
 const MAX_ITEMS = 8

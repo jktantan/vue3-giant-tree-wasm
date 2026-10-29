@@ -8,7 +8,7 @@ import {
   statSync,
   writeFileSync,
 } from 'node:fs'
-import { dirname, resolve } from 'node:path'
+import { dirname, relative, resolve } from 'node:path'
 import type { Plugin, ViteDevServer } from 'vite'
 
 interface AssemblyScriptPluginOptions {
@@ -109,8 +109,8 @@ export default function assemblyscriptPlugin(
       }
     },
 
-    // 接管 `'../build/release'` 模块：返回 virtual id，让后续 load 完全控制产物。
-    // lib/ 下的代码用 `from '../build/release'` 引用 AS 编译产物，
+    // 接管 `'../build/release'`（分组后 `lib/components`、`lib/core` 里是
+    // `'../../build/release'`）模块：返回 virtual id，让后续 load 完全控制产物。
     // 我们在这里把它劫持掉，避免 Vite 把整个 loader 当 entry 二次 bundle 时
     // 把 wasm 自动 inline 进去。
     //
@@ -128,9 +128,13 @@ export default function assemblyscriptPlugin(
       ) {
         return VIRTUAL_RELEASE_DTS_ID
       }
+      // lib/ 分组后，components/ 与 core/ 下的引用是 `'../../build/release'`，
+      // 因此按「任意层级的相对路径」匹配，而不是写死两层 `../`。
       if (
         source === '../build/release' ||
-        source === '../build/release.wasm'
+        source === '../build/release.wasm' ||
+        source.endsWith('/build/release') ||
+        source.endsWith('/build/release.wasm')
       ) {
         return VIRTUAL_RELEASE_ID
       }
@@ -184,11 +188,7 @@ export default function assemblyscriptPlugin(
       // 精确匹配 AS loader 末尾那行 IIFE 调用：
       //   ))(new URL("release.wasm", import.meta.url));
       // 把它替换成对下方 `__releaseWasmUrl` 的引用，asset 通过 generateBundle 注入。
-      if (
-        !source.includes(
-          '))(new URL("release.wasm", import.meta.url));'
-        )
-      ) {
+      if (!source.includes('))(new URL("release.wasm", import.meta.url));')) {
         throw new Error(
           `[vite-plugin-assemblyscript] unexpected loader footer; please regenerate build/release.js`
         )
@@ -229,7 +229,8 @@ export default function assemblyscriptPlugin(
       for (const fileName of Object.keys(bundle_)) {
         const chunk = bundle_[fileName]
         if (chunk.type !== 'chunk') continue
-        if (!chunk.code || !chunk.code.includes('__VITE_ASM_WASM_URL__')) continue
+        if (!chunk.code || !chunk.code.includes('__VITE_ASM_WASM_URL__'))
+          continue
         // 产物里该字面量的形态可能是 "…" / '…' / `…`（rolldown 常把普通字符串
         // 输出成模板字符串），这里同时容忍三种引号，避免再次静默漏替换。
         chunk.code = chunk.code.replace(
@@ -272,29 +273,54 @@ export default function assemblyscriptPlugin(
 
     // closeBundle 在 Vite 写完所有产物到磁盘之后调用，
     // 此时 `dist/lib/` 已经存在；用它来重写产物 .d.ts 里的 import 路径，
-    // 改为 `from './wasm'`，让下游 consumer 在 node_modules 里能解析到
-    // CheckType / SelectType / DisplayType / CheckedOutputMode 等枚举。
+    // 改为指向 `dist/lib/wasm.d.ts` 的相对路径，让下游 consumer 在
+    // node_modules 里能解析到 CheckType / SelectType / DisplayType /
+    // CheckedOutputMode 等枚举。
+    //
+    // 源码分组后（lib/components、lib/core）引用深度不同，产物 .d.ts 也会
+    // 落在 dist/lib 的子目录里，因此要递归遍历，并按每个文件自身位置算出
+    // 到 dist/lib/wasm.d.ts 的相对路径：
+    //   dist/lib/index.d.ts          -> './wasm'
+    //   dist/lib/core/types.d.ts     -> '../wasm'
     closeBundle() {
       const outDir = resolve(projectRoot, 'dist')
       const libDir = resolve(outDir, 'lib')
       if (!existsSync(libDir)) return
+      const wasmDts = resolve(libDir, 'wasm.d.ts')
+      // 对外说明符不带 `.d.ts` 后缀：`allowImportingTsExtensions` 关闭时，
+      // `from '../wasm.d.ts'` 会让消费者报 TS5097。
+      const wasmSpecifierBase = resolve(dirname(wasmDts), 'wasm')
+      const collectDts = (dir: string): string[] =>
+        readdirSync(dir, { withFileTypes: true }).flatMap(entry => {
+          const p = resolve(dir, entry.name)
+          if (entry.isDirectory()) return collectDts(p)
+          return entry.name.endsWith('.d.ts') ? [p] : []
+        })
       let rewroteCount = 0
-      for (const fileName of readdirSync(libDir)) {
-        if (!fileName.endsWith('.d.ts')) continue
-        const p = resolve(libDir, fileName)
+      for (const p of collectDts(libDir)) {
         const content = readFileSync(p, 'utf8')
-        if (!content.includes("'../build/release'")) continue
-        const rewritten = content.replace(
-          /from\s+['"]\.\.\/build\/release['"]/g,
-          "from './wasm'"
+        if (!/from\s+['"](?:\.\.\/)+build\/release['"]/.test(content)) continue
+        let specifier = relative(dirname(p), wasmSpecifierBase).replace(
+          /\\/g,
+          '/'
         )
+        if (!specifier.startsWith('.')) specifier = `./${specifier}`
+        const rewritten = content
+          .replace(
+            /from\s+['"](?:\.\.\/)+build\/release['"]/g,
+            `from '${specifier}'`
+          )
+          .replace(
+            /import\(\s*['"](?:\.\.\/)+build\/release['"]\s*\)/g,
+            `import('${specifier}')`
+          )
         writeFileSync(p, rewritten, 'utf8')
         rewroteCount++
         console.log(`\x1b[36m[AS]\x1b[0m Rewrote import in ${p}`)
       }
       if (rewroteCount === 0) {
         console.warn(
-          `\x1b[33m[AS]\x1b[0m closeBundle: no ../build/release import found in dist/lib/*.d.ts`
+          `\x1b[33m[AS]\x1b[0m closeBundle: no ../build/release import found in dist/lib/**/*.d.ts`
         )
       }
     },

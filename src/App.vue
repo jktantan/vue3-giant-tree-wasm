@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import '@lib/assets/style/index.scss'
-import VueGiantTree from '@lib/VueGiantTree.vue'
+import VueGiantTree from '@lib/components/VueGiantTree.vue'
 import { SelectType, DisplayType, CheckedOutputMode } from '../build/release'
 
 import { nanoid } from 'nanoid'
 import { ref, shallowRef, computed, watch } from 'vue'
-import type { TreeNodeData, FilterFn, NodeIconResolver } from '@lib/types'
-import { createGiantTreeThemeVars } from '@lib/theme'
-import type { GiantTreeTheme } from '@lib/theme'
+import type { TreeNodeData, FilterFn, NodeIconResolver } from '@lib/core/types'
+import { createGiantTreeThemeVars } from '@lib/core/theme'
+import type { GiantTreeTheme } from '@lib/core/theme'
 
 const TREE_SIZES = {
   guide: { guide: true },
@@ -87,7 +87,7 @@ const SHOW_LINE_COLOR_TABLE: Record<typeof showLineColorKey.value, string> = {
 /** 粗细（像素，1–4）。 */
 const showLineWidth = ref(1)
 /**
- * 与 `lib/VueGiantTree.vue` 中 `showLine` 同形状：`false` 关闭；`true` 使用默认。
+ * 与 `lib/components/VueGiantTree.vue` 中 `showLine` 同形状：`false` 关闭；`true` 使用默认。
  * 这里为了清晰，把对象形式（style/color/width）直接传给组件。
  */
 const showLineConfig = computed(() => {

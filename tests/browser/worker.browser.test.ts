@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { createApp, h, nextTick, ref } from 'vue'
-import VueGiantTree from '../../lib/VueGiantTree.vue'
+import VueGiantTree from '../../lib/components/VueGiantTree.vue'
 import { SelectType } from '../../build/release'
 
 const nextPaint = () =>

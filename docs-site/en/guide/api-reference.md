@@ -1,6 +1,6 @@
 # API reference
 
-These four tables mirror `lib/VueGiantTree.vue`'s `defineProps` / `defineExpose` / slots and
+These four tables mirror `lib/components/VueGiantTree.vue`'s `defineProps` / `defineExpose` / slots and
 `defineEmits`; defaults come from `withDefaults`.
 
 ## Props

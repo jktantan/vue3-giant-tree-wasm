@@ -1,17 +1,17 @@
 <script setup lang="ts">
-import { SelectType, CheckType } from '../build/release'
+import { SelectType, CheckType } from '../../build/release'
 import type {
   FilterFn,
   NodeIconResolver,
   SearchHighlightPart,
   ShowLineStyle,
   TreeNodeData,
-} from './types'
+} from '../core/types'
 import {
   DEFAULT_SHOW_LINE_COLOR,
   DEFAULT_SHOW_LINE_STYLE,
   DEFAULT_SHOW_LINE_WIDTH,
-} from './guide'
+} from '../core/guide'
 import { computed, nextTick, ref, watch, type VNodeChild } from 'vue'
 import { SlotRenderer } from './SlotRenderer'
 

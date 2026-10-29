@@ -21,6 +21,11 @@ export default defineConfig(({ command }) => {
               '../build/release': fileURLToPath(
                 new URL('./build/debug', import.meta.url)
               ),
+              // 分组后 lib/components、lib/core 里的引用比 lib 根深一层，
+              // alias 是前缀匹配，必须单独登记，否则 dev 下解析到不存在的路径。
+              '../../build/release': fileURLToPath(
+                new URL('./build/debug', import.meta.url)
+              ),
             }
           : {}),
       },

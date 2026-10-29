@@ -283,8 +283,9 @@ export default defineConfig({
         '@lib': fileURLToPath(new URL('../../lib', import.meta.url)),
       },
     },
-    // lib/VueGiantTree.vue 用 `new Worker(new URL('./tree.worker.ts', import.meta.url))`，
-    // worker 需按 ESM 产物输出；worker 内也会 import '../build/release'，故同样挂上插件。
+    // lib/components/VueGiantTree.vue 用
+    // `new Worker(new URL('../core/tree.worker.ts', import.meta.url))`，
+    // worker 需按 ESM 产物输出；worker 内也会 import '../../build/release'，故同样挂上插件。
     worker: {
       format: 'es',
       plugins: () => [assemblyscriptSite()],

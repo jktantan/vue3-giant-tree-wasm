@@ -24,7 +24,7 @@ import type {
   NodeIconResolver,
   TreeInputItem,
   TreeNodeData,
-} from '@lib/types'
+} from '@lib/core/types'
 import { buildPreorderedTreeData, buildTreeData } from './treeData'
 import type { TreePreset } from './treeData'
 import ControlPanel from './playground/ControlPanel.vue'
@@ -37,9 +37,9 @@ import {
 } from './playground/settings'
 import { formatCheckedResult } from './playground/format'
 import { useMessages } from './i18n'
-import { createGiantTreeThemeVars } from '@lib/theme'
+import { createGiantTreeThemeVars } from '@lib/core/theme'
 // Worker 脚本的产物 URL：用来在页面空闲时提前预取（见 warmUpWorker）。
-import workerUrl from '@lib/tree.worker.ts?worker&url'
+import workerUrl from '@lib/core/tree.worker.ts?worker&url'
 
 const settings = reactive<PlaygroundSettings>({ ...DEFAULT_SETTINGS })
 const t = useMessages()

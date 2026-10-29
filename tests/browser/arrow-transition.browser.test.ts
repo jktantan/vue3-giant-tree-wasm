@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createApp, h, nextTick, ref } from 'vue'
 import '../../lib/assets/style/index.scss'
-import VueGiantTree from '../../lib/VueGiantTree.vue'
+import VueGiantTree from '../../lib/components/VueGiantTree.vue'
 
 /**
  * 展开/折叠会重建整块视口 DOM，箭头元素是新建的。若新元素一出生就是目标

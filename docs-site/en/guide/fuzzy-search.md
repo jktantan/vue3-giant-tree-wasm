@@ -40,7 +40,7 @@ Turn on `search-highlight` and each result wraps only **the typed keyword** in
 - Off by default. Ancestors that only complete the path are not highlighted unless their own name matches.
 - Matching uses the same case-sensitive substring rule as the WASM search, and every occurrence is marked.
 - Clearing the search (`fuzzySearchRaw('')`) removes the highlight immediately.
-- Styles live in `lib/assets/style/highlight.scss`; override them with the
+- Styles live in `lib/assets/style/style.scss` (`.giant-tree__search-hit`); override them with the
   `--giant-tree-search-hit-bg` / `--giant-tree-search-hit-color` CSS variables.
 
 When you render rows through the `#node` slot, the built-in `<mark>` does not apply. The slot

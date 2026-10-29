@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeAll } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
-import VueGiantTree from '../../lib/VueGiantTree.vue'
-import type { TreeInputItem } from '../../lib/types'
+import VueGiantTree from '../../lib/components/VueGiantTree.vue'
+import type { TreeInputItem } from '../../lib/core/types'
 import { SelectType } from '../wasm-bridge'
 
 beforeAll(() => {

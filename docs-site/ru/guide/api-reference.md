@@ -1,7 +1,7 @@
 # Справочник API
 
 Четыре таблицы соответствуют `defineProps` / `defineExpose` / слотам и `defineEmits` в
-`lib/VueGiantTree.vue`; значения по умолчанию взяты из `withDefaults`.
+`lib/components/VueGiantTree.vue`; значения по умолчанию взяты из `withDefaults`.
 
 ## Props
 

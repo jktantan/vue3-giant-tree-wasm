@@ -3,7 +3,7 @@
 ## What this page covers
 
 `showLine` adds hierarchy connectors to row rendering. The geometry is **precomputed once** in
-`lib/guide.ts` and depends only on the hierarchy, never on the collapsed state — so each node is
+`lib/core/guide.ts` and depends only on the hierarchy, never on the collapsed state — so each node is
 computed once and scrolling, expanding and collapsing never invalidate it.
 
 Each node therefore gains three fields:

@@ -10,6 +10,8 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+# 包根 scss/ 是 `pnpm lib:build` 从 lib/assets/ 复制出的发布产物（供消费者
+# `@use 'vue3-giant-tree-wasm/scss/...'`），不是源码，不入库。
 /scss
 *.local
 build

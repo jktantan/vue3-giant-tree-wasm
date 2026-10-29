@@ -27,7 +27,7 @@
 | `guideMask` | `number?` | 祖先列贯穿位掩码（仅开启 `showLine` 时写入） |
 | `markerLine` | `'none' \| 'upper' \| 'lower' \| 'full'?` | 标记列竖线段形态（仅开启 `showLine` 时写入） |
 
-最后三个字段是**渲染层预计算**的（见 `lib/guide.ts`），不是 WASM 数据；`showLine` 关闭时不写入，行对象保持轻量。
+最后三个字段是**渲染层预计算**的（见 `lib/core/guide.ts`），不是 WASM 数据；`showLine` 关闭时不写入，行对象保持轻量。
 
 ## 用法
 

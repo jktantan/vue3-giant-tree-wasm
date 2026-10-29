@@ -8,7 +8,7 @@ export type FieldKeysMode = 'default' | 'custom'
 export type ThemeMode = 'inherit' | 'light' | 'dark'
 export type ComponentSize = 'small' | 'default' | 'large'
 
-/** 完整演示场的全部可调项。默认值与 `lib/VueGiantTree.vue` 的 `withDefaults` 对齐。 */
+/** 完整演示场的全部可调项。默认值与 `lib/components/VueGiantTree.vue` 的 `withDefaults` 对齐。 */
 export interface PlaygroundSettings {
   size: TreePreset
   /**

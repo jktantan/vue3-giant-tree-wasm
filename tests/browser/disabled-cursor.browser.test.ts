@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createApp, h, nextTick } from 'vue'
 import '../../lib/assets/style/index.scss'
-import VueGiantTree from '../../lib/VueGiantTree.vue'
+import VueGiantTree from '../../lib/components/VueGiantTree.vue'
 import { SelectType } from '../../build/release'
 
 /**

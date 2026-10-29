@@ -1,4 +1,4 @@
-import type { CheckType } from '../build/release'
+import type { CheckType } from '../../build/release'
 
 /**
  * 自定义过滤回调：接收节点的 extendData（原始 JSON），返回 true 表示该项可选/可输出
@@ -109,9 +109,9 @@ export interface TreeNodeData {
    * data. Present only when `showLine` is enabled, keeping default rows light.
    */
   isLastChild?: boolean
-  /** 祖先列贯穿位掩码，见 lib/guide.ts。 / Ancestor-column continuation bitmask, see lib/guide.ts. */
+  /** 祖先列贯穿位掩码，见 lib/core/guide.ts。 / Ancestor-column continuation bitmask, see lib/core/guide.ts. */
   guideMask?: number
-  /** 标记列（箭头/图标那一格）竖线段形态，见 lib/guide.ts。 */
+  /** 标记列（箭头/图标那一格）竖线段形态，见 lib/core/guide.ts。 */
   markerLine?: 'none' | 'upper' | 'lower' | 'full'
 }
 

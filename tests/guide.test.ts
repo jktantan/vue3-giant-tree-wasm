@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { computeGuideLines, resolveShowLineOptions } from '@lib/guide'
-import type { TreeInputItem } from '@lib/types'
+import { computeGuideLines, resolveShowLineOptions } from '@lib/core/guide'
+import type { TreeInputItem } from '@lib/core/types'
 
 /**
  * 结构：

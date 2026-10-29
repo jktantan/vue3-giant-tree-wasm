@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   createGiantTreeThemeVars,
   mixHexColors,
-} from '../lib/theme'
+} from '../lib/core/theme'
 
 describe('theme helpers: 主色派生', () => {
   it('浅色派生色与内置主题一致', () => {

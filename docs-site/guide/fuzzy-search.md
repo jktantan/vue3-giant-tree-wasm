@@ -35,7 +35,7 @@
 - 默认关闭；祖先节点只是因为补全路径出现，名称不含关键词时不会被高亮；
 - 匹配语义与 WASM 搜索一致（区分大小写的子串匹配），名称中出现多次时全部标记；
 - 清空搜索（`fuzzySearchRaw('')`）后高亮立即消失；
-- 样式在 `lib/assets/style/highlight.scss`，可用 CSS 变量
+- 样式在 `lib/assets/style/style.scss`（`.giant-tree__search-hit`），可用 CSS 变量
   `--giant-tree-search-hit-bg` / `--giant-tree-search-hit-color` 覆盖。
 
 使用 `#node` 插槽自定义节点内容时，组件默认的 `<mark>` 不会生效；插槽收到的

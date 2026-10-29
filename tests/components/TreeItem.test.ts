@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { mount } from '@vue/test-utils'
-import TreeItem from '../../lib/TreeItem.vue'
-import type { TreeNodeData } from '../../lib/types'
+import TreeItem from '../../lib/components/TreeItem.vue'
+import type { TreeNodeData } from '../../lib/core/types'
 import { SelectType, CheckType } from '../wasm-bridge'
 
 function makeItem(overrides: Partial<TreeNodeData> = {}): TreeNodeData {

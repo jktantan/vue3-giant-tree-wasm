@@ -31,7 +31,7 @@ unchanged, the previous serialization result is reused.
 | `guideMask` | `number?` | Ancestor-column continuation bitmask (only when `showLine` is on) |
 | `markerLine` | `'none' \| 'upper' \| 'lower' \| 'full'?` | Marker-column vertical segment (only when `showLine` is on) |
 
-The last three are **precomputed by the render layer** (see `lib/guide.ts`), not WASM data; they are
+The last three are **precomputed by the render layer** (see `lib/core/guide.ts`), not WASM data; they are
 not written when `showLine` is off, so rows stay light.
 
 ## Usage

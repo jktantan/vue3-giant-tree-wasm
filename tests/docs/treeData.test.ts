@@ -3,7 +3,7 @@ import {
   buildPreorderedTreeData,
   buildTreeData,
 } from '../../docs-site/.vitepress/theme/components/treeData'
-import type { TreeInputItem } from '@lib/types'
+import type { TreeInputItem } from '@lib/core/types'
 
 /** 按 parentId 关系做一次深度优先遍历，返回前序 id 序列。 */
 function dfsOrder(rows: TreeInputItem[]): string[] {

@@ -51,7 +51,7 @@ import {
   setUsePreorderedNeighborInput,
   updateNodeName,
   updateNodeDisabled,
-} from '../build/release'
+} from '../../build/release'
 
 import { debounce } from 'throttle-debounce'
 import {
@@ -63,17 +63,17 @@ import {
   toRaw,
   watch,
 } from 'vue'
-import TreeItem from '@lib/TreeItem.vue'
+import TreeItem from '@lib/components/TreeItem.vue'
 import {
   computePackedGuideLines,
   decodeGuideLine,
   resolveShowLineOptions,
-} from './guide'
+} from '../core/guide'
 import {
   resolveGiantTreeSizePreset,
   type GiantTreeSize,
   type GiantTreeTheme,
-} from './theme'
+} from '../core/theme'
 import type {
   TreeNodeData,
   TreeInputItem,
@@ -83,7 +83,7 @@ import type {
   ShowLineOptions,
   TreeMutationItem,
   TreeNodePatch,
-} from './types'
+} from '../core/types'
 const props = withDefaults(
   defineProps<{
     modelValue: TreeNodeData | TreeNodeData[] | string | string[]
@@ -145,7 +145,7 @@ const props = withDefaults(
     /**
      * 是否高亮模糊搜索命中的关键词片段。默认 `false`，保持既有视觉不变；
      * 开启后只高亮输入的关键词本身，未命中关键词的祖先行不受影响。
-     * 样式见 `lib/assets/style/highlight.scss`。
+     * 样式见 `lib/assets/style/style.scss` 的 `.giant-tree__search-hit`。
      *
      * Whether to highlight the matched keyword inside fuzzy search results.
      * Defaults to `false`; only the typed keyword is highlighted, while ancestor
@@ -1804,7 +1804,7 @@ const startWorker = () => {
   // Worker snapshot rows carry only the four tree fields; JSON/records output
   // still needs the original input objects. Build that reverse index here, once.
   ensureInputNodeById()
-  worker = new Worker(new URL('./tree.worker.ts', import.meta.url), {
+  worker = new Worker(new URL('../core/tree.worker.ts', import.meta.url), {
     type: 'module',
   })
   workerMetrics.enabled = true

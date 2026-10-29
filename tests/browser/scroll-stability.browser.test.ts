@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { createApp, h, nextTick, ref } from 'vue'
 import '../../lib/assets/style/index.scss'
-import VueGiantTree from '../../lib/VueGiantTree.vue'
-import type { TreeNodeData } from '../../lib/types'
+import VueGiantTree from '../../lib/components/VueGiantTree.vue'
+import type { TreeNodeData } from '../../lib/core/types'
 
 const ROW_HEIGHT = 26
 

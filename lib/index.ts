@@ -11,20 +11,20 @@
  * `dist/style.css` as a separate lib entry, so consumers import
  * `vue3-giant-tree-wasm/style.css` themselves.
  */
-export { default as VueGiantTree } from './VueGiantTree.vue'
-export { computeGuideLines } from './guide'
-export type { GuideLineInfo } from './guide'
+export { default as VueGiantTree } from './components/VueGiantTree.vue'
+export { computeGuideLines } from './core/guide'
+export type { GuideLineInfo } from './core/guide'
 export {
   GIANT_TREE_SIZE_PRESETS,
   createGiantTreeThemeVars,
   mixHexColors,
   resolveGiantTreeSizePreset,
-} from './theme'
+} from './core/theme'
 export type {
   GiantTreeSize,
   GiantTreeSizePreset,
   GiantTreeTheme,
-} from './theme'
+} from './core/theme'
 
 // 枚举：组件的 selectType / checkedOutputMode 等 prop 直接以这些值为参数，
 // 从入口 re-export，避免使用者必须去 internal 路径导入。
@@ -48,4 +48,4 @@ export type {
   ShowLineOptions,
   ResolvedShowLineOptions,
   SearchHighlightPart,
-} from './types'
+} from './core/types'

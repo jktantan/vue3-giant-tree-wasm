@@ -1,6 +1,6 @@
 # API 汇总
 
-四张表对应 `lib/VueGiantTree.vue` 的 `defineProps` / `defineExpose` / 插槽与 `defineEmits`，
+四张表对应 `lib/components/VueGiantTree.vue` 的 `defineProps` / `defineExpose` / 插槽与 `defineEmits`，
 默认值取自 `withDefaults`。
 
 ## Props

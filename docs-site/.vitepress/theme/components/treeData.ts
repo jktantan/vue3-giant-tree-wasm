@@ -1,4 +1,4 @@
-import type { TreeInputItem } from '@lib/types'
+import type { TreeInputItem } from '@lib/core/types'
 
 /** 演示数据的规模档位。 */
 export type TreePreset = 'small' | 'medium' | '10k' | '100k' | '1m'

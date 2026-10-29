@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { userEvent } from 'vitest/browser'
 import { createApp, h, nextTick, ref } from 'vue'
-import VueGiantTree from '../../lib/VueGiantTree.vue'
+import VueGiantTree from '../../lib/components/VueGiantTree.vue'
 
 const runHundredThousandWorkload = import.meta.env.MODE === 'browser-100k'
 const runBuildProfile = import.meta.env.MODE === 'browser-build-profile'

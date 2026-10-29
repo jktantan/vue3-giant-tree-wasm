@@ -1,10 +1,14 @@
 /// <reference lib="webworker" />
-import type { CheckType, CheckedOutputMode, SelectType } from '../build/release'
+import type {
+  CheckType,
+  CheckedOutputMode,
+  SelectType,
+} from '../../build/release'
 // release loader 静态导入（而非动态 import()）：这样它会被打进 worker 自己的 chunk，
 // worker 首次启动只需要一次请求，详见文件末尾的说明。
-import * as wasmModule from '../build/release'
+import * as wasmModule from '../../build/release'
 
-type WasmModule = typeof import('../build/release')
+type WasmModule = typeof import('../../build/release')
 /** 树实例句柄（AssemblyScript 生成的内部引用类型）。 */
 type TreeInstance = ReturnType<WasmModule['newTree']>
 type Input = Record<string, unknown>

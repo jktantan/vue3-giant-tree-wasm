@@ -424,8 +424,9 @@ const treeThemeVars = computed(() =>
 
 #### 编译期定制（SCSS）
 
-包根随包发布 `scss/` 源码。需要把设计系统的 Sass 变量编译进样式表时，先配置
-`common/var`，再加载 `index`（Sass 模块只加载一次，顺序不能反）：
+包根随包发布 `scss/` 源码。该目录由 `pnpm lib:build` 从 `lib/assets/` 复制生成
+（已在 `.gitignore` 中，不是手写源码；改样式请改 `lib/assets/style/`）。需要把设计系统的
+Sass 变量编译进样式表时，先配置 `common/var`，再加载 `index`（Sass 模块只加载一次，顺序不能反）：
 
 ```scss
 // src/styles/tree.scss
